@@ -126,7 +126,11 @@ static void error_expected(PlumParser *p, const char *what) {
         return;
     }
     char found[96];
-    describe(tok, found, sizeof found);
+    if (tok->kind == PLUM_TOK_NEWLINE && peek_at(p, 1)->kind == PLUM_TOK_EOF) {
+        snprintf(found, sizeof found, "end of file"); /* the lexer's closing newline */
+    } else {
+        describe(tok, found, sizeof found);
+    }
     error_at(p, tok->span, "expected %s, found %s", what, found);
 }
 
@@ -234,11 +238,16 @@ PlumType *plum_parse_type(PlumParser *p) {
         return new_type(p, PLUM_TYPE_ERROR, peek(p)->span);
     }
 
+    if (check(p, PLUM_TOK_QUESTION_QUESTION)) {
+        /* `T??` lexes as the ?? operator; it is a doubled optional. */
+        error_at(p, peek(p)->span, "a type can be optional only once: write 'T?'");
+        advance(p);
+    }
     if (match(p, PLUM_TOK_QUESTION)) {
         PlumType *opt = new_type(p, PLUM_TYPE_OPTIONAL, join(type->span, previous(p)->span));
         opt->as.optional = type;
         type = opt;
-        if (check(p, PLUM_TOK_QUESTION)) {
+        if (check(p, PLUM_TOK_QUESTION) || check(p, PLUM_TOK_QUESTION_QUESTION)) {
             error_at(p, peek(p)->span, "a type can be optional only once: write 'T?'");
         }
     }
