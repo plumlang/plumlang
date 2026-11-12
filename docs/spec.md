@@ -288,3 +288,227 @@ plant count = 0                  # int, inferred
 plant ratio: float = 1           # float
 plant scores: list[int] = []
 ```
+
+## 4. Variables and expressions
+
+### 4.1 Declarations
+
+`plant` declares a variable, `root` a constant. A declaration always has a
+value.
+
+```plum
+plant score = 0
+score = score + 10        # fine: plant can change
+
+root MAX_SCORE = 100
+MAX_SCORE = 200           # compile error: MAX_SCORE is a root
+```
+
+Using a variable before it is declared is a compile error. Declaring the
+same name twice in one block is a compile error; an inner block may shadow
+an outer name.
+
+### 4.2 Scope
+
+A name is visible from its declaration to the end of the block `{ }` that
+contains it. Names declared at the top level of a file belong to the module
+(section 9).
+
+### 4.3 Assignment
+
+`=` assigns to a `plant` variable, a list element, a map entry or a field.
+Assignment is a statement, not an expression: `if x = 5 {` is a syntax
+error.
+
+Compound assignment applies an operator and assigns:
+`+=` `-=` `*=` `/=` `//=` `%=` `**=` `&=` `|=` `^=` `<<=` `>>=`.
+`x += 1` means `x = x + 1`, with the same type rules. There is no `++` or
+`--`.
+
+### 4.4 Arithmetic
+
+| Operator | Meaning | Types |
+|---|---|---|
+| `a + b` | add | numbers; `str + str` and `list + list` concatenate |
+| `a - b` | subtract | numbers |
+| `a * b` | multiply | numbers |
+| `a / b` | divide | numbers; **always a `float`**: `7 / 2 == 3.5` |
+| `a // b` | floor division | `int // int` is an `int`: `7 // 2 == 3`, `-7 // 2 == -4` |
+| `a % b` | remainder, same sign as `b` | numbers: `-7 % 2 == 1` |
+| `a ** b` | power | `int ** int` is an `int` (exponent must be ≥ 0); otherwise `float` |
+| `-a` | negate | numbers |
+
+Integer overflow, `//` or `%` by zero, and `int ** negative` are runtime
+errors. Float division by zero follows IEEE 754 (`inf`, `nan`).
+
+### 4.5 Comparison
+
+`==` `!=` `<` `<=` `>` `>=`. Both sides must have the same type, except that
+`int` and `float` compare by value. Strings compare by Unicode code point;
+lists and maps compare element by element with `==`. Trees compare by
+identity unless they implement `Equal` (section 8.5).
+
+Comparisons do not chain: `a < b < c` is a syntax error; write
+`a < b and b < c`.
+
+### 4.6 Logic
+
+`and`, `or` and `not` take and give `bool`. `and` and `or` evaluate the
+right side only when needed.
+
+```plum
+if age >= 18 and not banned {
+    drop("Welcome")
+}
+```
+
+### 4.7 Bitwise
+
+On `int` (and `byte`) only: `&` and, `|` or, `^` xor, `~` not, `<<` and
+`>>` shifts. A shift count must be between 0 and 63; `>>` is arithmetic.
+
+### 4.8 Precedence
+
+From lowest to highest; operators on one row group left to right, except
+`**`, which groups right to left.
+
+| Level | Operators |
+|---|---|
+| 1 | `??` |
+| 2 | `or` |
+| 3 | `and` |
+| 4 | `not` |
+| 5 | `==` `!=` `<` `<=` `>` `>=` `is` `in` |
+| 6 | `\|` |
+| 7 | `^` |
+| 8 | `&` |
+| 9 | `<<` `>>` |
+| 10 | `..` `..=` |
+| 11 | `+` `-` |
+| 12 | `*` `/` `//` `%` |
+| 13 | unary `-` `~` |
+| 14 | `**` |
+| 15 | `as` |
+| 16 | call `f()`, index `a[i]`, field `a.b`, `a?.b` |
+
+So `-2 ** 2 == -4`, `1 + 2 * 3 == 7`, and `a & b == c` means
+`a & (b == c)` (a type error unless `a` is a `bool`… which `&` rejects), so
+write `(a & b) == c`. The compiler suggests the parentheses.
+
+### 4.9 Membership and type tests
+
+`x in collection` tests membership in a list, set, map (keys) or string
+(substring). `value is Type` tests the runtime type of a trait or optional
+value.
+
+### 4.10 Interpolation
+
+`"{expr}"` converts the value with `str()`. A tree converts with its
+`to_str()` method if it has one (trait `Show`), else as `<TreeName>`.
+Formatting options follow a `:`:
+
+```plum
+drop("{price:.2}")        # 2 digits after the point
+drop("{count:5}")         # right-aligned in 5 columns
+drop("{name:<10}|")       # left-aligned
+drop("{n:x}  {n:b}")      # hex, binary
+```
+
+### 4.11 Ranges
+
+`a..b` is the integers from `a` up to but not including `b`; `a..=b`
+includes `b`. Ranges are used in `for` loops and slices:
+
+```plum
+for i in 0..5 { }          # 0 1 2 3 4
+plant middle = items[1..3] # a new list of items 1 and 2
+plant word = text[0..5]    # characters 0 to 4
+```
+
+## 5. Statements
+
+### 5.1 Blocks
+
+A block is a sequence of statements in `{ }`. The opening brace goes on the
+same line as the statement that owns it.
+
+### 5.2 if
+
+```plum
+if score >= 90 {
+    drop("A")
+} else if score >= 80 {
+    drop("B")
+} else {
+    drop("C")
+}
+```
+
+The condition must be a `bool`. No parentheses are needed around it.
+
+`if` is also an expression when both branches are single expressions:
+
+```plum
+plant label = if count == 1 { "item" } else { "items" }
+```
+
+### 5.3 match
+
+`match` picks the first arm whose pattern fits. It must cover every case;
+`else` covers the rest.
+
+```plum
+match command {
+    "start" => start()
+    "stop", "halt" => stop()
+    else => drop("Unknown command: {command}")
+}
+
+match shape {
+    Circle(r) => drop("circle of radius {r}")
+    Square(side) => drop("square of side {side}")
+}
+```
+
+Patterns are literals, `kind` cases with their values (section 8.6), ranges
+(`0..10`), and `_`, which matches anything. `match` is also an expression
+when every arm is a single expression.
+
+### 5.4 while
+
+```plum
+plant n = 10
+while n > 0 {
+    n -= 3
+}
+```
+
+### 5.5 for
+
+`for` walks over a range, a list, a set, a map, a string (its characters)
+or anything with an `iter()` method (trait `Iterable`).
+
+```plum
+for i in 0..10 { drop(i) }
+
+for name in names { drop(name) }
+
+for i, name in names.enumerate() { drop("{i}: {name}") }
+
+for key, value in ages { drop("{key} is {value}") }
+```
+
+The loop variable is a new constant on each iteration. Changing a
+collection while looping over it is a runtime error.
+
+There is no C-style `for (init; condition; step)`; use a range or `while`.
+
+### 5.6 break and continue
+
+`break` leaves the innermost loop; `continue` starts its next iteration.
+Outside a loop they are compile errors.
+
+### 5.7 Expression statements
+
+A call can stand on its own as a statement. Any other expression standing
+alone (`x + 1`) is a compile error, since its value would be lost.
