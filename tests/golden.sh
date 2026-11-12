@@ -25,6 +25,11 @@
 PLUM=${1:-./plum}
 DIR=${2:-tests/lang}
 
+# Expected output is plain text, whatever the environment asks for.
+NO_COLOR=1
+export NO_COLOR
+unset FORCE_COLOR
+
 # A stand-in written as a shell script (the runner's self-test) is run
 # through sh, since executable bits don't survive every checkout.
 run_plum() {

@@ -1,0 +1,3 @@
+# command: tokens
+# The underline lines up after a tab and after multi-byte characters.
+plant	name = "héllo wörld 🍑" && ok
