@@ -3,26 +3,33 @@
 
 #include "util/alloc.h"
 
-#include <stdalign.h>
 #include <stdint.h>
 #include <string.h>
 
 #define PLUM_ARENA_CHUNK_SIZE ((size_t)64 * 1024)
-#define PLUM_ARENA_ALIGN      alignof(max_align_t)
 
+/*
+ * A chunk is this header followed by its data, which starts at the header
+ * size rounded up to PLUM_MAX_ALIGN (no flexible array member, which MSVC
+ * treats as an extension).
+ */
 struct PlumArenaChunk {
     PlumArenaChunk *next;
     size_t capacity; /* bytes of data */
     size_t used;
-    alignas(max_align_t) unsigned char data[];
 };
 
 static size_t align_up(size_t n) {
-    return plum_add_size(n, PLUM_ARENA_ALIGN - 1) & ~(PLUM_ARENA_ALIGN - 1);
+    return plum_add_size(n, PLUM_MAX_ALIGN - 1) & ~(PLUM_MAX_ALIGN - 1);
+}
+
+static unsigned char *chunk_data(PlumArenaChunk *chunk) {
+    return (unsigned char *)chunk + align_up(sizeof(PlumArenaChunk));
 }
 
 static PlumArenaChunk *new_chunk(PlumArena *arena, size_t capacity) {
-    PlumArenaChunk *chunk = plum_alloc(plum_add_size(sizeof(PlumArenaChunk), capacity));
+    /* malloc returns memory aligned for any basic type, so the data is too. */
+    PlumArenaChunk *chunk = plum_alloc(plum_add_size(align_up(sizeof(PlumArenaChunk)), capacity));
     chunk->next = NULL;
     chunk->capacity = capacity;
     chunk->used = 0;
@@ -53,14 +60,14 @@ void *plum_arena_alloc(PlumArena *arena, size_t size) {
                 head->next = big;
             }
             arena->bytes_used += need;
-            return big->data;
+            return chunk_data(big);
         }
         PlumArenaChunk *fresh = new_chunk(arena, PLUM_ARENA_CHUNK_SIZE);
         fresh->next = head;
         arena->head = head = fresh;
     }
 
-    void *p = head->data + head->used;
+    void *p = chunk_data(head) + head->used;
     head->used += need;
     arena->bytes_used += need;
     return p;

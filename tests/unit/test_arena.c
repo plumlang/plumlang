@@ -3,7 +3,6 @@
 #include "suites.h"
 #include "util/arena.h"
 
-#include <stdalign.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -15,7 +14,7 @@ void plum_test_arena(void) {
     int aligned = 1;
     for (size_t size = 1; size < 100; size++) {
         void *p = plum_arena_alloc(&arena, size);
-        aligned = aligned && ((uintptr_t)p % alignof(max_align_t)) == 0;
+        aligned = aligned && ((uintptr_t)p % PLUM_MAX_ALIGN) == 0;
     }
     CHECK(aligned);
 

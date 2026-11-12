@@ -9,6 +9,20 @@
 
 #include <stddef.h>
 
+/*
+ * A type with the strictest alignment of the basic C types. C11's
+ * max_align_t would do, but MSVC's C library doesn't provide it.
+ */
+typedef union PlumMaxAlign {
+    long long ll;
+    long double ld;
+    double d;
+    void *p;
+    void (*fp)(void);
+} PlumMaxAlign;
+
+#define PLUM_MAX_ALIGN (_Alignof(PlumMaxAlign))
+
 typedef struct PlumArenaChunk PlumArenaChunk;
 
 typedef struct PlumArena {
