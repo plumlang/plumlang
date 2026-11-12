@@ -1,0 +1,69 @@
+name: Bug report
+description: The compiler, the virtual machine, the standard library or the plum command does not behave as the spec says.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. The smallest program that shows the bug
+        helps most. Security problems go to a
+        [private advisory](https://github.com/plumlang/plumlang/security/advisories/new), not here.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is the bug?
+      options:
+        - Syntax or parse errors
+        - Type checking
+        - Running a program (wrong result or crash)
+        - Standard library
+        - The plum command (run, repl, fmt, ...)
+        - Building Plumlang from source
+        - Docs or spec
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Plumlang version
+      description: The output of `plum version`, or the commit you built.
+      placeholder: "e.g. plum 0.1.0 (abc1234)"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and compiler
+      description: Your OS and CPU, and the C compiler if you built from source.
+      placeholder: "e.g. Ubuntu 24.04 x86_64, GCC 14"
+    validations:
+      required: true
+
+  - type: textarea
+    id: program
+    attributes:
+      label: Smallest program that shows it
+      render: plum
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Paste the output or error as is.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the project's [Code of Conduct](https://github.com/plumlang/plumlang/blob/main/CODE_OF_CONDUCT.md).
+          required: true

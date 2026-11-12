@@ -1,0 +1,46 @@
+name: Other idea
+description: Tooling, editor support, docs, the build or anything that is not a bug, a language change or a library module.
+title: "idea: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bugs, language changes and library modules have their own forms;
+        please use those when they fit. This one is for the rest.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - The plum command
+        - Editor support
+        - Docs
+        - Build and CI
+        - Releases and installers
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: pitch
+    attributes:
+      label: Pitch
+      description: What you want and why, in a sentence or two.
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: How would it work?
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the project's [Code of Conduct](https://github.com/plumlang/plumlang/blob/main/CODE_OF_CONDUCT.md).
+          required: true

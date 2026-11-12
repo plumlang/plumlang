@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas (Discussions)
+    url: https://github.com/plumlang/plumlang/discussions
+    about: Ask a question or talk an idea through before opening an issue.
+  - name: Commercial licensing
+    url: mailto:hello@elixpo.com
+    about: Using Plumlang in a business, product or hosted service.
+  - name: Security issue
+    url: https://github.com/plumlang/plumlang/security/advisories/new
+    about: Report a vulnerability privately with a security advisory, not a public issue (see docs/SECURITY.md).
