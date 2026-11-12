@@ -10,7 +10,7 @@
 #define PLUM_STR_(x) #x
 #define PLUM_STR(x)  PLUM_STR_(x)
 
-#define PLUM_VERSION                                                                               \
+#define PLUM_VERSION \
     PLUM_STR(PLUM_VERSION_MAJOR) "." PLUM_STR(PLUM_VERSION_MINOR) "." PLUM_STR(PLUM_VERSION_PATCH)
 
 /* The build passes the short commit hash with -DPLUM_COMMIT="abc1234". */
