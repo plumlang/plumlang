@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
 #
 # Tests the golden-file runner against tests/harness/cases with a fake
-# plum: 3 cases must pass, 1 be pending, and 4 fail (a wrong output, a
+# plum: 4 cases must pass (one through `# command: tokens`), 1 be pending, and 4 fail (a wrong output, a
 # wrong exit code, a stale pending marker, a missing expectation file).
 here=$(dirname "$0")
 out=$(sh "$here/../golden.sh" "$here/fake-plum.sh" "$here/cases" 2>&1)
 status=$?
 summary=$(printf '%s\n' "$out" | tail -n 1)
-want="golden: 3 passed, 1 pending, 4 failed"
+want="golden: 4 passed, 1 pending, 4 failed"
 if [ "$status" -ne 0 ] && [ "$summary" = "$want" ]; then
     echo "harness: runner self-test passed"
     exit 0

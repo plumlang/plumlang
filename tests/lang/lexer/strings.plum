@@ -1,0 +1,9 @@
+# command: tokens
+"plain"
+"tab:\t newline:\n quote:\" backslash:\\ nul:\0"
+"braces: \{ \} unicode: \u{1F351} \u{e9}"
+"héllo wörld"
+"Hi {name}!"
+"{a}{b}"
+"sum: {a + b:>5} map: {m["key"]} nested: {"inner {x}"}"
+"" "{x}"

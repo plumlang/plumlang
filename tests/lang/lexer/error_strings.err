@@ -1,0 +1,7 @@
+tests/lang/lexer/error_strings.plum:2:13: error: unknown escape '\q'
+tests/lang/lexer/error_strings.plum:3:2: error: \u{110000} is not a Unicode character
+tests/lang/lexer/error_strings.plum:3:13: error: \u{D800} is not a Unicode character
+tests/lang/lexer/error_strings.plum:3:22: error: \u{...} needs 1 to 6 hexadecimal digits
+tests/lang/lexer/error_strings.plum:3:27: error: \u needs a code point in braces, like \u{1F351}
+tests/lang/lexer/error_strings.plum:4:4: error: '}' in a string must be written '\}'
+tests/lang/lexer/error_strings.plum:5:1: error: string is not closed; add a '"' before the end of the line

@@ -1,0 +1,9 @@
+tests/lang/lexer/error_numbers.plum:2:1: error: a number can't start with 0; write 7, or 0o7 for an octal number
+tests/lang/lexer/error_numbers.plum:3:1: error: hexadecimal number has no digits
+tests/lang/lexer/error_numbers.plum:4:5: error: '2' is not a digit in a binary number
+tests/lang/lexer/error_numbers.plum:5:2: error: '_' must be between two digits
+tests/lang/lexer/error_numbers.plum:6:2: error: '_' must be between two digits
+tests/lang/lexer/error_numbers.plum:7:3: error: unexpected 'a' after a number
+tests/lang/lexer/error_numbers.plum:8:1: error: integer is too large; the largest int is 9223372036854775807
+tests/lang/lexer/error_numbers.plum:9:1: error: float is too large
+tests/lang/lexer/error_numbers.plum:10:1: error: exponent has no digits

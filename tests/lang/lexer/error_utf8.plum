@@ -1,0 +1,4 @@
+# command: tokens
+plant ok = 1
+plant bad = "ÿþ"
+plant x = Ã

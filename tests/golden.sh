@@ -7,6 +7,9 @@
 #   NAME.out   expected standard output; the program must exit 0
 #   NAME.err   expected standard error;  the program must exit 1
 #
+# A `# command: NAME` line among the first two runs `plum NAME` instead of
+# `plum run` (for example `tokens` to test the lexer).
+#
 # A test whose first line is `# pending: <reason>` is expected to fail
 # until the feature lands: it is reported as pending and does not fail
 # the run. A pending test that passes fails the run, so the marker is
@@ -73,7 +76,8 @@ for test in $(find "$DIR" -name '*.plum' | sort); do
         is_pending=1
     fi
 
-    run_plum run "$test" >"$tmp/out" 2>"$tmp/err"
+    subcommand=$(head -n 2 "$test" | sed -n 's/^# command: *\([a-z]*\).*/\1/p' | head -n 1)
+    run_plum "${subcommand:-run}" "$test" >"$tmp/out" 2>"$tmp/err"
     got_exit=$?
     tr -d '\r' <"$tmp/$stream" >"$tmp/actual"
     tr -d '\r' <"$expect" >"$tmp/expected"
