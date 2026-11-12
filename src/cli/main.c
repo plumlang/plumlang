@@ -9,10 +9,12 @@
  *   plum <file.plum> [args]  shorthand for `plum run`
  *   plum tokens <file>       print the tokens of a file (for debugging)
  *   plum ast <file>          print the syntax tree of a file (for debugging)
+ *   plum check <file>        report every error without running the program
  *
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
  */
+#include "check/resolve.h"
 #include "diag/diag.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -39,6 +41,7 @@ static void print_help(FILE *out) {
           "Usage:\n"
           "  plum run <file> [args...]   Run a Plumlang program\n"
           "  plum <file.plum> [args...]  Same as `plum run`\n"
+          "  plum check <file>           Report every error without running\n"
           "  plum version                Show the version and build\n"
           "  plum tokens <file>          Print the tokens of a file (debugging)\n"
           "  plum ast <file>             Print the syntax tree of a file (debugging)\n"
@@ -110,6 +113,14 @@ static char *read_file(const char *path, size_t *len_out, int *err) {
     return buf;
 }
 
+typedef enum FrontStage {
+    STAGE_TOKENS, /* plum tokens: print the tokens */
+    STAGE_AST,    /* plum ast: print the syntax tree */
+    STAGE_CHECK,  /* plum check, plum run: report errors only */
+} FrontStage;
+
+static int cmd_front(const char *name, FrontStage stage, int argc, char **argv);
+
 static int cmd_run(int argc, char **argv) {
     if (argc < 1) {
         fputs("plum: error: `plum run` needs a file to run\n"
@@ -117,22 +128,15 @@ static int cmd_run(int argc, char **argv) {
               stderr);
         return PLUM_EXIT_USAGE;
     }
-
-    const char *path = argv[0];
-    size_t len = 0;
-    int err = 0;
-    char *source = read_file(path, &len, &err);
-    if (source == NULL) {
-        fprintf(stderr, "plum: error: cannot read '%s': %s\n", path, strerror(err));
-        return PLUM_EXIT_NOINPUT;
+    int status = cmd_front("run", STAGE_CHECK, 1, argv);
+    if (status != PLUM_EXIT_OK) {
+        return status;
     }
-
-    /* The compiler and virtual machine arrive in roadmap stages 2 to 4. */
+    /* The compiler and virtual machine arrive in roadmap stage 4. */
     fprintf(stderr,
-            "plum: error: this build cannot run programs yet; it read '%s' (%zu bytes)\n"
-            "  note: the compiler and virtual machine arrive in roadmap stages 2 to 4 (#36)\n",
-            path, len);
-    free(source);
+            "plum: error: this build cannot run programs yet; '%s' has no errors\n"
+            "  note: the compiler and virtual machine arrive in roadmap stage 4 (#36)\n",
+            argv[0]);
     return PLUM_EXIT_FAILED;
 }
 
@@ -164,11 +168,6 @@ static void print_token(const PlumToken *tok) {
     }
     putchar('\n');
 }
-
-typedef enum FrontStage {
-    STAGE_TOKENS,
-    STAGE_AST,
-} FrontStage;
 
 /* plum tokens / plum ast: run the front end on one file and print it. */
 static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) {
@@ -206,7 +205,13 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
         PlumParser parser;
         plum_parser_init(&parser, &tokens, &arena, &names, &diags);
         PlumProgram program = plum_parse_program(&parser);
-        plum_print_program(stdout, &program);
+        if (stage == STAGE_AST) {
+            plum_print_program(stdout, &program);
+        } else if (diags.errors == 0) {
+            /* Names are only resolved in a program that parsed, so a
+             * syntax error doesn't also show up as unknown names. */
+            plum_resolve(&program, &arena, &names, &diags);
+        }
     }
     fflush(stdout);
     plum_diag_print(&diags, stderr, plum_diag_use_color(stderr));
@@ -247,6 +252,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "ast") == 0) {
         return cmd_front("ast", STAGE_AST, argc - 2, argv + 2);
+    }
+    if (strcmp(cmd, "check") == 0) {
+        return cmd_front("check", STAGE_CHECK, argc - 2, argv + 2);
     }
     if (strcmp(cmd, "run") == 0) {
         return cmd_run(argc - 2, argv + 2);
