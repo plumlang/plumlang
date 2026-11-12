@@ -1,13 +1,13 @@
-tests/lang/lexer/error_brackets.plum:2:5: error: '(' is never closed
+tests/lang/lexer/error_brackets.plum:2:5: error[E0130]: '(' is never closed
 2 | drop((1 + 2)
   |     ^
-tests/lang/lexer/error_brackets.plum:3:16: error: ')' doesn't match the '[' opened at 3:11
+tests/lang/lexer/error_brackets.plum:3:16: error[E0131]: ')' doesn't match the '[' opened at 3:11
 3 | plant x = [1, 2)
   |                ^
-tests/lang/lexer/error_brackets.plum:4:12: error: ']' has no matching '['
+tests/lang/lexer/error_brackets.plum:4:12: error[E0132]: ']' has no matching '['
 4 | plant y = 3]
   |            ^
-tests/lang/lexer/error_brackets.plum:5:11: error: '(' is never closed
+tests/lang/lexer/error_brackets.plum:5:11: error[E0130]: '(' is never closed
 5 | plant z = (4
   |           ^
 4 errors

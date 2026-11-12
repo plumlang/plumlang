@@ -1,4 +1,4 @@
-tests/lang/diagnostics/alignment.plum:3:30: error: '&&' is written 'and' in Plumlang
+tests/lang/diagnostics/alignment.plum:3:30: error[E0103]: '&&' is written 'and' in Plumlang
 3 | plant	name = "héllo wörld 🍑" && ok
   |      	                       ^~
 1 error

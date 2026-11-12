@@ -162,7 +162,8 @@ static bool advance(Lexer *lx) {
     if (n == 0) {
         PlumSpan at = here(lx);
         at.length = 1;
-        plum_diag_error(lx->diags, at, "invalid UTF-8 byte 0x%02X; source files must be UTF-8",
+        plum_diag_error(lx->diags, at, "E0101",
+                        "invalid UTF-8 byte 0x%02X; source files must be UTF-8",
                         (unsigned)(unsigned char)c);
         lx->pos++;
         lx->column++;
@@ -281,7 +282,7 @@ static void close_forgotten_brackets(Lexer *lx) {
     }
     while (lx->open.len > 0 && (open_top(lx) == '(' || open_top(lx) == '[')) {
         Open *o = &plum_array_last(&lx->open);
-        plum_diag_error(lx->diags, o->span, "'%c' is never closed", o->kind);
+        plum_diag_error(lx->diags, o->span, "E0130", "'%c' is never closed", o->kind);
         lx->open.len--;
     }
 }
@@ -331,7 +332,7 @@ static void read_digits(Lexer *lx, int radix, const char *radix_name) {
             at.length = 1;
             advance(lx);
             if ((!prev_digit || digit_value(peek(lx)) >= radix) && !reported) {
-                plum_diag_error(lx->diags, at, "'_' must be between two digits");
+                plum_diag_error(lx->diags, at, "E0110", "'_' must be between two digits");
                 reported = true;
             }
             prev_digit = false;
@@ -350,9 +351,10 @@ static void read_digits(Lexer *lx, int radix, const char *radix_name) {
             PlumSpan at = here(lx);
             at.length = 1;
             if (radix != 10 && d < 16) {
-                plum_diag_error(lx->diags, at, "'%c' is not a digit in a %s number", c, radix_name);
+                plum_diag_error(lx->diags, at, "E0111", "'%c' is not a digit in a %s number", c,
+                                radix_name);
             } else {
-                plum_diag_error(lx->diags, at, "unexpected '%c' after a number", c);
+                plum_diag_error(lx->diags, at, "E0112", "unexpected '%c' after a number", c);
             }
             while (is_alnum(peek(lx))) {
                 advance(lx);
@@ -381,7 +383,8 @@ static void lex_number(Lexer *lx) {
         advance(lx);
         read_digits(lx, radix, radix_name);
         if (lx->buf.len == 0 && lx->diags->errors == errors_before) {
-            plum_diag_error(lx->diags, span_from(lx, start), "%s number has no digits", radix_name);
+            plum_diag_error(lx->diags, span_from(lx, start), "E0113", "%s number has no digits",
+                            radix_name);
         }
     } else {
         read_digits(lx, 10, radix_name);
@@ -407,7 +410,7 @@ static void lex_number(Lexer *lx) {
             size_t before = lx->buf.len;
             read_digits(lx, 10, radix_name);
             if (lx->buf.len == before) {
-                plum_diag_error(lx->diags, span_from(lx, start), "exponent has no digits");
+                plum_diag_error(lx->diags, span_from(lx, start), "E0114", "exponent has no digits");
             }
         }
     }
@@ -423,7 +426,7 @@ static void lex_number(Lexer *lx) {
     if (is_float) {
         double value = strtod(lx->buf.items, NULL);
         if (isinf(value)) {
-            plum_diag_error(lx->diags, span, "float is too large");
+            plum_diag_error(lx->diags, span, "E0117", "float is too large");
             emit(lx, PLUM_TOK_ERROR, span);
             return;
         }
@@ -436,7 +439,7 @@ static void lex_number(Lexer *lx) {
         while (digits[0] == '0' && digits[1] != '\0') {
             digits++;
         }
-        plum_diag_error(lx->diags, span,
+        plum_diag_error(lx->diags, span, "E0115",
                         "a number can't start with 0; write %s, or 0o%s for an octal number",
                         digits, digits);
         emit(lx, PLUM_TOK_ERROR, span);
@@ -447,7 +450,7 @@ static void lex_number(Lexer *lx) {
     for (const char *d = lx->buf.items; *d != '\0'; d++) {
         uint64_t digit = (uint64_t)digit_value(*d);
         if (value > (UINT64_C(0x7FFFFFFFFFFFFFFF) - digit) / (uint64_t)radix) {
-            plum_diag_error(lx->diags, span,
+            plum_diag_error(lx->diags, span, "E0116",
                             "integer is too large; the largest int is 9223372036854775807");
             emit(lx, PLUM_TOK_ERROR, span);
             return;
@@ -575,7 +578,7 @@ static void read_escape(Lexer *lx, PlumSpan backslash) {
     if (c == 'u') {
         advance(lx);
         if (peek(lx) != '{') {
-            plum_diag_error(lx->diags, span_from(lx, backslash),
+            plum_diag_error(lx->diags, span_from(lx, backslash), "E0122",
                             "\\u needs a code point in braces, like \\u{1F351}");
             return;
         }
@@ -596,13 +599,13 @@ static void read_escape(Lexer *lx, PlumSpan backslash) {
             if (peek(lx) == '}') {
                 advance(lx);
             }
-            plum_diag_error(lx->diags, span_from(lx, backslash),
+            plum_diag_error(lx->diags, span_from(lx, backslash), "E0123",
                             "\\u{...} needs 1 to 6 hexadecimal digits");
             return;
         }
         advance(lx);
         if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
-            plum_diag_error(lx->diags, span_from(lx, backslash),
+            plum_diag_error(lx->diags, span_from(lx, backslash), "E0124",
                             "\\u{%X} is not a Unicode character", (unsigned)cp);
             return;
         }
@@ -615,7 +618,7 @@ static void read_escape(Lexer *lx, PlumSpan backslash) {
         return; /* the unclosed string is reported by the caller */
     }
     advance(lx);
-    plum_diag_error(lx->diags, span_from(lx, backslash), "unknown escape '\\%c'%s", c,
+    plum_diag_error(lx->diags, span_from(lx, backslash), "E0121", "unknown escape '\\%c'%s", c,
                     c == '\'' ? "; a single quote needs no escape" : "");
 }
 
@@ -660,7 +663,7 @@ static void skip_indent(Lexer *lx, size_t indent) {
     bool blank = peek(lx) == '\n' || (peek(lx) == '\r' && peek_at(lx, 1) == '\n');
     bool closing = peek(lx) == '"' && peek_at(lx, 1) == '"' && peek_at(lx, 2) == '"';
     if (n < indent && !blank && !closing && !at_end(lx)) {
-        plum_diag_error(lx->diags, span_from(lx, start),
+        plum_diag_error(lx->diags, span_from(lx, start), "E0126",
                         "this line is indented less than the closing \"\"\"");
     }
 }
@@ -696,7 +699,7 @@ static void lex_string_part(Lexer *lx, bool first, bool triple, size_t indent, P
         char c = peek(lx);
 
         if (at_end(lx) || (c == '\n' && !triple)) {
-            plum_diag_error(lx->diags, quote, "string is not closed; add a '\"'%s",
+            plum_diag_error(lx->diags, quote, "E0120", "string is not closed; add a '\"'%s",
                             triple ? "\"\" at its end" : " before the end of the line");
             PlumSpan span = span_from(lx, start);
             PlumToken *tok = emit(lx, first ? PLUM_TOK_STRING : PLUM_TOK_STRING_TAIL, span);
@@ -739,7 +742,7 @@ static void lex_string_part(Lexer *lx, bool first, bool triple, size_t indent, P
             PlumSpan at = here(lx);
             at.length = 1;
             advance(lx);
-            plum_diag_error(lx->diags, at, "'}' in a string must be written '\\}'");
+            plum_diag_error(lx->diags, at, "E0125", "'}' in a string must be written '\\}'");
             continue;
         }
 
@@ -787,7 +790,7 @@ static void lex_format(Lexer *lx) {
     }
     PlumSpan span = span_from(lx, start);
     if (span.length == 0) {
-        plum_diag_error(lx->diags, span, "empty format after ':'");
+        plum_diag_error(lx->diags, span, "E0127", "empty format after ':'");
     }
     PlumToken *tok = emit(lx, PLUM_TOK_FORMAT, span);
     tok->as.str.chars = plum_arena_strndup(lx->arena, lx->text + span.offset, span.length);
@@ -827,18 +830,20 @@ static void close_bracket(Lexer *lx, char close, PlumTokenKind tok) {
         }
         if (i > 0 && lx->open.items[i - 1].kind == want) {
             Open *inner = &lx->open.items[lx->open.len - 1];
-            plum_diag_error(lx->diags, at, "'%c' doesn't match the '%c' opened at %u:%u", close,
-                            inner->kind, (unsigned)inner->span.line, (unsigned)inner->span.column);
+            plum_diag_error(lx->diags, at, "E0131", "'%c' doesn't match the '%c' opened at %u:%u",
+                            close, inner->kind, (unsigned)inner->span.line,
+                            (unsigned)inner->span.column);
             lx->open.len = i - 1;
         } else if (open_top(lx) == '(' || open_top(lx) == '[' || open_top(lx) == '{') {
             /* Nothing further out matches either: most likely the closer is
              * a typo for the innermost bracket's, so treat it as closing it. */
             Open *inner = &plum_array_last(&lx->open);
-            plum_diag_error(lx->diags, at, "'%c' doesn't match the '%c' opened at %u:%u", close,
-                            inner->kind, (unsigned)inner->span.line, (unsigned)inner->span.column);
+            plum_diag_error(lx->diags, at, "E0131", "'%c' doesn't match the '%c' opened at %u:%u",
+                            close, inner->kind, (unsigned)inner->span.line,
+                            (unsigned)inner->span.column);
             lx->open.len--;
         } else {
-            plum_diag_error(lx->diags, at, "'%c' has no matching '%c'", close, want);
+            plum_diag_error(lx->diags, at, "E0132", "'%c' has no matching '%c'", close, want);
         }
     }
     emit(lx, tok, at);
@@ -918,7 +923,7 @@ static bool lex_operator(Lexer *lx) {
             advance(lx);
             advance(lx);
             PlumSpan span = span_from(lx, start);
-            plum_diag_error(lx->diags, span, "%s", foreign[i].hint);
+            plum_diag_error(lx->diags, span, "E0103", "%s", foreign[i].hint);
             emit(lx, PLUM_TOK_ERROR, span);
             return true;
         }
@@ -947,7 +952,7 @@ static void unexpected(Lexer *lx) {
     PlumSpan span = span_from(lx, start);
     switch (c) {
     case ';':
-        plum_diag_error(lx->diags, span,
+        plum_diag_error(lx->diags, span, "E0104",
                         "Plumlang doesn't use ';'; end the statement with a new line");
         break;
     case '\'': {
@@ -962,19 +967,19 @@ static void unexpected(Lexer *lx) {
             advance(lx);
         }
         span = span_from(lx, start);
-        plum_diag_error(lx->diags, span, "strings use double quotes: \"%.*s\"", (int)text_len,
-                        lx->text + text_from);
+        plum_diag_error(lx->diags, span, "E0105", "strings use double quotes: \"%.*s\"",
+                        (int)text_len, lx->text + text_from);
         PlumToken *tok = emit(lx, PLUM_TOK_STRING, span);
         tok->as.str.chars = plum_arena_strndup(lx->arena, lx->text + text_from, text_len);
         tok->as.str.len = text_len;
         return;
     }
     case '!':
-        plum_diag_error(lx->diags, span, "'!' is written 'not' in Plumlang");
+        plum_diag_error(lx->diags, span, "E0103", "'!' is written 'not' in Plumlang");
         break;
     default:
-        plum_diag_error(lx->diags, span, "unexpected character '%.*s'", (int)(lx->pos - from),
-                        lx->text + from);
+        plum_diag_error(lx->diags, span, "E0102", "unexpected character '%.*s'",
+                        (int)(lx->pos - from), lx->text + from);
         break;
     }
     emit(lx, PLUM_TOK_ERROR, span);
@@ -1048,9 +1053,9 @@ void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, P
     for (size_t i = lx.open.len; i > 0; i--) {
         Open *o = &lx.open.items[i - 1];
         if (o->kind == 'I') {
-            plum_diag_error(diags, o->span, "string is not closed; add a '\"'");
+            plum_diag_error(diags, o->span, "E0120", "string is not closed; add a '\"'");
         } else {
-            plum_diag_error(diags, o->span, "'%c' is never closed", o->kind);
+            plum_diag_error(diags, o->span, "E0130", "'%c' is never closed", o->kind);
         }
     }
 

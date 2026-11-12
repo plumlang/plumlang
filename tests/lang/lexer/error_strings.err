@@ -1,22 +1,22 @@
-tests/lang/lexer/error_strings.plum:2:13: error: unknown escape '\q'
+tests/lang/lexer/error_strings.plum:2:13: error[E0121]: unknown escape '\q'
 2 | "bad escape \q here"
   |             ^~
-tests/lang/lexer/error_strings.plum:3:2: error: \u{110000} is not a Unicode character
+tests/lang/lexer/error_strings.plum:3:2: error[E0124]: \u{110000} is not a Unicode character
 3 | "\u{110000} \u{D800} \u{} \u41"
   |  ^~~~~~~~~~
-tests/lang/lexer/error_strings.plum:3:13: error: \u{D800} is not a Unicode character
+tests/lang/lexer/error_strings.plum:3:13: error[E0124]: \u{D800} is not a Unicode character
 3 | "\u{110000} \u{D800} \u{} \u41"
   |             ^~~~~~~~
-tests/lang/lexer/error_strings.plum:3:22: error: \u{...} needs 1 to 6 hexadecimal digits
+tests/lang/lexer/error_strings.plum:3:22: error[E0123]: \u{...} needs 1 to 6 hexadecimal digits
 3 | "\u{110000} \u{D800} \u{} \u41"
   |                      ^~~~
-tests/lang/lexer/error_strings.plum:3:27: error: \u needs a code point in braces, like \u{1F351}
+tests/lang/lexer/error_strings.plum:3:27: error[E0122]: \u needs a code point in braces, like \u{1F351}
 3 | "\u{110000} \u{D800} \u{} \u41"
   |                           ^~
-tests/lang/lexer/error_strings.plum:4:4: error: '}' in a string must be written '\}'
+tests/lang/lexer/error_strings.plum:4:4: error[E0125]: '}' in a string must be written '\}'
 4 | "a } b"
   |    ^
-tests/lang/lexer/error_strings.plum:5:1: error: string is not closed; add a '"' before the end of the line
+tests/lang/lexer/error_strings.plum:5:1: error[E0120]: string is not closed; add a '"' before the end of the line
 5 | "never closed
   | ^
 7 errors
