@@ -16,6 +16,7 @@
 
 typedef struct PlumExpr PlumExpr;
 typedef struct PlumStmt PlumStmt;
+typedef struct PlumSymbol PlumSymbol; /* filled in by the resolver (src/check/) */
 typedef struct PlumType PlumType;
 
 /* ------------------------------------------------------------------ */
@@ -37,6 +38,7 @@ struct PlumType {
             const char *name; /* interned */
             PlumType **args;  /* generic arguments: list[T] */
             size_t arg_count;
+            PlumSymbol *symbol; /* the type it names, after resolution */
         } name;
         PlumType *optional; /* the T of T? */
         struct {
@@ -112,11 +114,13 @@ typedef struct PlumParam {
     PlumType *type;     /* NULL when left out (lambdas only) */
     PlumExpr *fallback; /* default value, or NULL */
     PlumSpan span;
+    PlumSymbol *symbol; /* after resolution */
 } PlumParam;
 
 struct PlumExpr {
     PlumExprKind kind;
     PlumSpan span;
+    PlumSymbol *symbol; /* NAME: what it refers to, after resolution */
     union {
         int64_t i;
         double f;
@@ -221,6 +225,7 @@ typedef struct PlumCatch {
     PlumType *type;   /* NULL: catches every error */
     PlumStmt *body;
     PlumSpan span;
+    PlumSymbol *symbol; /* after resolution */
 } PlumCatch;
 
 typedef struct PlumField {
@@ -251,6 +256,10 @@ typedef struct PlumBranch {
 struct PlumStmt {
     PlumStmtKind kind;
     PlumSpan span;
+    /* After resolution: what DECL, IF_PLANT, BRANCH, TREE, TRAIT and KIND
+     * declare, and FOR's first name; symbol2 is FOR's second name. */
+    PlumSymbol *symbol;
+    PlumSymbol *symbol2;
     union {
         PlumExpr *expr; /* EXPR, THROW; RETURN (NULL: bare return) */
         struct {

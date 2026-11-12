@@ -1,0 +1,33 @@
+# command: check
+# Everything here resolves: no output, exit 0.
+drop(twice(21))                       # a function before its declaration
+branch twice(x: int) -> int => x * 2
+
+root LIMIT = 10
+branch over(n: int) -> bool => n > LIMIT and n > later   # module names inside bodies
+
+plant later = 3
+plant x = 1
+if good {
+    plant x = 2                       # shadows the outer x in a block
+    drop(x)
+}
+for i, name in ["a", "b"].enumerate() { drop("{i} {name}") }
+branch counter() -> () -> int {
+    plant n = 0
+    return () => n + 1                # a closure over n
+}
+tree Animal {
+    name: str
+    branch speak() -> str => "{self.name}"
+}
+kind Shape {
+    Circle(radius: float)
+    Square(side: float)
+}
+branch area(s: Shape) -> float => match s {
+    Circle(r) => 3.14 * r * r
+    Square(side) => side * side
+}
+try { risky() } catch e: ValueError { drop(e.message) }
+branch risky() { throw ValueError("no") }

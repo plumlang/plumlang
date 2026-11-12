@@ -1,0 +1,7 @@
+# command: check
+drop(self)
+return 5
+branch outer() {
+    tree Inner { }
+    kind K { A }
+}

@@ -1,0 +1,4 @@
+tests/lang/names/error_modules.plum:2:1: error[E0308]: importing modules is not supported yet; it arrives with #23
+2 | seed math
+  | ^~~~~~~~~
+1 error

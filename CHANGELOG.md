@@ -25,6 +25,7 @@ Format for a new entry:
 - **Parser**: statements and declarations (functions, trees, traits, kinds, seed, try, match), recovering after errors without losing the next line.
 - **Errors**: each error shows the source line with the mistake underlined, in colour on a terminal (`NO_COLOR` / `FORCE_COLOR`), and a count at the end.
 - **Error codes**: every error has a code (`error[E0201]`) explained in `docs/errors.md`.
+- **Names**: `plum check` reports unknown names (with "did you mean"), duplicates, use before declaration and changes to constants; `plum run` checks first.
 - **Tests**: golden-file tests (`tests/lang/`) with pending markers and `make golden-update`; the Python prototype's programs ported to the spec's syntax.
 - **CI**: builds and tests on Linux (x86_64, arm64), macOS and Windows (MSVC, mingw-w64), under ASan and UBSan, with a clang-format check.
 - **Licensing and governance**: the Plumlang Commercial License 1.0 with its

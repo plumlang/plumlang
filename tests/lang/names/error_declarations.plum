@@ -1,0 +1,9 @@
+# command: check
+plant a = 1
+plant a = 2
+branch f(x: int) {
+    plant x = 3
+}
+drop(late)
+plant late = 1
+plant self_ref = self_ref + 1

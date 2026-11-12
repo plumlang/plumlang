@@ -1,0 +1,13 @@
+tests/lang/names/error_declarations.plum:3:1: error[E0302]: 'a' is already declared on line 2, as a variable
+3 | plant a = 2
+  | ^~~~~~~~~~~
+tests/lang/names/error_declarations.plum:5:5: error[E0302]: 'x' is already declared on line 4, as a parameter
+5 |     plant x = 3
+  |     ^~~~~~~~~~~
+tests/lang/names/error_declarations.plum:7:6: error[E0303]: 'late' is used before its declaration on line 8; move the declaration up
+7 | drop(late)
+  |      ^~~~
+tests/lang/names/error_declarations.plum:9:18: error[E0303]: 'self_ref' is used before its declaration on line 9; move the declaration up
+9 | plant self_ref = self_ref + 1
+  |                  ^~~~~~~~
+4 errors

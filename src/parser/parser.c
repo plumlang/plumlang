@@ -444,7 +444,7 @@ static PlumExpr *parse_lambda(PlumParser *p) {
             break;
         }
         const PlumToken *name = advance(p);
-        PlumParam param = {name->as.name, NULL, NULL, name->span};
+        PlumParam param = {name->as.name, NULL, NULL, name->span, NULL};
         if (match(p, PLUM_TOK_COLON)) {
             param.type = plum_parse_type(p);
         }
@@ -913,7 +913,7 @@ static PlumStmt *parse_try_stmt(PlumParser *p) {
             break;
         }
         const PlumToken *c = advance(p);
-        PlumCatch handler = {NULL, NULL, NULL, c->span};
+        PlumCatch handler = {NULL, NULL, NULL, c->span, NULL};
         handler.name = expect_name(p, "a name for the error, like 'catch e'");
         if (match(p, PLUM_TOK_COLON)) {
             handler.type = plum_parse_type(p);
@@ -944,7 +944,7 @@ static void parse_params(PlumParser *p, PlumParam **out, size_t *count) {
     bool defaults_seen = false;
     while (!check(p, PLUM_TOK_RPAREN) && !check(p, PLUM_TOK_EOF)) {
         const PlumToken *name = peek(p);
-        PlumParam param = {expect_name(p, "a parameter name"), NULL, NULL, name->span};
+        PlumParam param = {expect_name(p, "a parameter name"), NULL, NULL, name->span, NULL};
         if (expect(p, PLUM_TOK_COLON, "':' and the parameter's type")) {
             param.type = plum_parse_type(p);
         }
