@@ -1,0 +1,7 @@
+# pending: needs the compiler and VM (#16)
+# From the prototype's v0.9-extended.plum.
+plant i = 10
+while i < 20 {
+    drop(i)
+    i = i + 1
+}

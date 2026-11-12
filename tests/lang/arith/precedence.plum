@@ -1,0 +1,6 @@
+# pending: needs the compiler and VM (#16)
+drop(1 + 2 * 3)
+drop((1 + 2) * 3)
+drop(10 - 4 - 3)
+drop(2 * 3 + 4 * 5)
+drop(100 // 10 // 2)

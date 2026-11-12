@@ -1,0 +1,13 @@
+# pending: needs the compiler and VM (#16)
+# A statement continues inside brackets and after a binary operator.
+plant total = 1 +
+    2 +
+    3
+drop(total)
+drop(
+    "inside",
+    "parentheses",
+)
+plant big = (10
+    * 10)
+drop(big)

@@ -5,8 +5,9 @@
 #   make                  release build -> ./plum
 #   make debug            debug build (-O0 -g)
 #   make sanitize         debug build under AddressSanitizer + UBSan
-#   make test             unit tests, then the smoke tests, on the selected build
+#   make test             unit, smoke, harness and golden tests on the selected build
 #   make sanitize test    the tests, under the sanitizers
+#   make golden-update    rewrite golden expectations from actual output
 #   make format           format the C sources with clang-format
 #   make format-check     fail if anything is not formatted
 #   make clean
@@ -58,7 +59,7 @@ BIN       := $(BUILD)/plum
 UNIT_BIN  := $(BUILD)/unit-tests
 PLUM      := ./plum
 
-.PHONY: all release debug sanitize test format format-check clean
+.PHONY: all release debug sanitize test golden-update format format-check clean
 
 # Always refresh ./plum, so it is the binary of the mode asked for even when
 # another mode's copy is newer.
@@ -79,6 +80,12 @@ $(BUILD)/%.o: %.c
 test: all $(UNIT_BIN)
 	@$(UNIT_BIN)
 	@sh tests/smoke.sh $(PLUM)
+	@sh tests/harness/self-test.sh
+	@sh tests/golden.sh $(PLUM)
+
+# Rewrite the golden expectations from actual output (review the diff!).
+golden-update: all
+	@UPDATE=1 sh tests/golden.sh $(PLUM)
 
 C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)
 

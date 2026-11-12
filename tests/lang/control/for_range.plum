@@ -1,0 +1,11 @@
+# pending: needs the compiler and VM (#16)
+# From the prototype's v0.9.plum: for(plant int i=0; i<=10; i++)
+for i in 0..=10 {
+    drop(i)
+}
+for i in 0..3 {
+    drop("row {i}")
+}
+for i in 5..5 {
+    drop("never")
+}

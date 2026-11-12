@@ -1,0 +1,15 @@
+# pending: needs the compiler and VM (#16)
+# From the prototype's variable.plum, in the spec's syntax.
+plant age = 21
+drop(age)
+plant price: float = 19.99
+drop(price)
+plant name = "Plum"
+drop(name)
+plant is_ready = true
+drop(is_ready)
+
+root MAX_COUNT = 100
+drop(MAX_COUNT)
+root VERSION = "0.6.0"
+drop(VERSION)

@@ -1,0 +1,4 @@
+# pending: needs the compiler and VM (#16)
+plant count = 1
+plant label = if count == 1 { "item" } else { "items" }
+drop("{count} {label}")

@@ -1,0 +1,30 @@
+# pending: needs the compiler and VM (#16)
+# From the prototype's v0.10-compound-assignment.plum. a /= 3 would make
+# a float, which an int variable cannot hold, so this uses //=.
+plant a = 10
+a += 5
+drop(a)
+a -= 2
+drop(a)
+a *= 3
+drop(a)
+a //= 3
+drop(a)
+a %= 4
+drop(a)
+a **= 3
+drop(a)
+a <<= 2
+drop(a)
+a >>= 1
+drop(a)
+a |= 1
+drop(a)
+a &= 6
+drop(a)
+a ^= 7
+drop(a)
+
+plant f = 10.0
+f /= 4
+drop(f)

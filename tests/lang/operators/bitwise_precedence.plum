@@ -1,0 +1,7 @@
+# pending: needs the compiler and VM (#16)
+# Bitwise operators bind tighter than comparisons (spec 4.8), unlike C.
+drop(2 + 3 & 1)
+drop(6 | 3 ^ 1 & 3)
+drop((5 | 2) & 3)
+drop(5 & 3 == 1)
+drop(12 & 4 != 0)

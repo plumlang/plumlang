@@ -1,0 +1,9 @@
+# pending: needs the compiler and VM (#16)
+# The right side of and/or runs only when needed.
+branch loud(label: str, value: bool) -> bool {
+    drop(label)
+    return value
+}
+drop(loud("left", bad) and loud("right", good))
+drop(loud("left", good) or loud("right", good))
+drop(loud("left", good) and loud("right", bad))

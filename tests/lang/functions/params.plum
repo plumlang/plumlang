@@ -1,0 +1,11 @@
+# pending: needs the compiler and VM (#16)
+branch add(a: int, b: int) -> int {
+    return a + b
+}
+branch greet(name: str) {
+    drop("Hello, {name}")
+}
+branch square(x: int) -> int => x * x
+drop(add(2, 3))
+greet("Ada")
+drop(square(add(1, 2)))

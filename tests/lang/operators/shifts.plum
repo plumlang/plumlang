@@ -1,0 +1,12 @@
+# pending: needs the compiler and VM (#16)
+# From the prototype's v0.10-shifts.plum.
+drop(5 << 1)
+drop(20 >> 2)
+drop(5 << 0)
+drop(16 >> 4)
+drop(-8 >> 1)
+drop(3 << 2)
+drop(2 + 3 << 1)
+drop(1 << 2 + 1)
+drop(8 >> 1 + 1)
+drop(8 & 3 << 1)
