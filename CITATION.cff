@@ -1,0 +1,35 @@
+# GitHub renders this file on the repo's right-hand sidebar as a
+# "Cite this repository" widget. Citation format: CFF v1.2.0.
+#
+# Update this file when:
+#   * a new public version is released  -> bump `version` + `date-released`
+#   * the project's identity / URL changes -> update `repository-code`
+
+cff-version: 1.2.0
+message: "If you use Plumlang in your work, please cite this software."
+title: "Plumlang: a small, fast, memory-safe programming language"
+type: software
+abstract: >
+  Plumlang is a statically typed programming language with an easy syntax,
+  object-oriented programming and a standard library for files, networking
+  and HTTP backends. It is written in C11 and ships as a single binary: a
+  compiler to bytecode and a virtual machine that manages memory by
+  reference counting, with no garbage-collector pauses.
+authors:
+  - name: Elixpo
+    website: "https://elixpo.com"
+keywords:
+  - programming-language
+  - compiler
+  - bytecode
+  - virtual-machine
+  - reference-counting
+  - c
+  - plumlang
+license: LicenseRef-Plumlang-Commercial-1.0
+repository-code: "https://github.com/plumlang/plumlang"
+contact:
+  - name: Elixpo
+    email: hello@elixpo.com
+version: "0.0.0"
+date-released: "2026-11-12"
