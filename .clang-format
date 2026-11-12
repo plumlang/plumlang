@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+BreakBeforeBraces: Attach
+PointerAlignment: Right
+SortIncludes: true
+IncludeBlocks: Preserve
+SpaceAfterCStyleCast: false
+AlignConsecutiveMacros: true
+AlignEscapedNewlines: Left
