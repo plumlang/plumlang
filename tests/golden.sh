@@ -38,6 +38,15 @@ pass=0
 pending=0
 fail=0
 
+# Compare two files exactly, with only the shell: minimal Windows
+# environments (MSYS2) have neither cmp nor diff. The trailing "." keeps
+# $(...) from dropping final newlines, so they count too.
+same_file() {
+    a=$(cat "$1"; printf .)
+    b=$(cat "$2"; printf .)
+    [ "$a" = "$b" ]
+}
+
 show_diff() {
     if command -v diff >/dev/null 2>&1; then
         diff -u "$1" "$2" | sed '1,2d; s/^/    /' | head -n 40
@@ -71,7 +80,7 @@ for test in $(find "$DIR" -name '*.plum' | sort); do
 
     ok=1
     [ "$got_exit" -eq "$want_exit" ] || ok=0
-    cmp -s "$tmp/expected" "$tmp/actual" || ok=0
+    same_file "$tmp/expected" "$tmp/actual" || ok=0
 
     if [ "$is_pending" -eq 1 ]; then
         if [ "$ok" -eq 1 ]; then
