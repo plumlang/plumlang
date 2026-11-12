@@ -1,0 +1,48 @@
+schema_version: '1.0'
+project:
+  id: plumlang
+  name: plumlang
+  title: Plumlang
+  description: A small, fast, memory-safe programming language written in C,
+    with easy syntax, OOP and networking, shipped as one binary.
+  family: project
+  artifact_type: software
+  profile: language-toolchain
+  technologies:
+  - C
+  - compilers
+  - virtual machines
+  - programming languages
+  chapter_status: null
+  lifecycle: active
+  relationship: core
+  custody: elixpo-owned
+  stack: c
+  repository: https://github.com/plumlang/plumlang
+  deployment: null
+  discussions: https://github.com/plumlang/plumlang/discussions
+  status_owner: elixpo
+  status_verified_at: '2026-11-12'
+publication:
+  public: true
+  featured: false
+  canonical_slug: plumlang
+  canonical_url: https://elixpo.com/projects/plumlang
+license:
+  current_file: LICENSE
+  notice_file: LICENSES/NOTICE
+  migration_status: settled
+  target_code_license: LicenseRef-Plumlang-Commercial-1.0
+  trademark_policy: TRADEMARKS.md
+ci:
+  # Filled in when the C scaffold lands (#2).
+  lint_cmd: ''
+  test_cmd: ''
+  build_cmd: ''
+maintainers:
+- github: Circuit-Overtime
+  skills:
+  - C
+  - compilers
+  - programming languages
+  lead: true

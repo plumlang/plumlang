@@ -1,0 +1,35 @@
+NOTICE
+======
+
+Plumlang is licensed under the Plumlang Commercial License 1.0 (see
+`../LICENSE` and `preferred/LicenseRef-Plumlang-Commercial-1.0`).
+Non-commercial use is free; commercial use needs a commercial licence from
+Elixpo. Brand rules - names, logos, domains and official listings - are
+separate and documented in `../TRADEMARKS.md`.
+
+REPOSITORY
+----------
+
+  Name:        Plumlang
+  What it is:  A small, fast, memory-safe programming language written in
+               C: the compiler, the bytecode virtual machine, the standard
+               library, and the `plum` command-line tool.
+
+OFFICIAL NAMES AND LISTINGS
+---------------------------
+
+The following identify official Elixpo releases and are covered by
+`../TRADEMARKS.md`:
+
+  - the "Plumlang" and "Plum" names and the `plum` command name
+  - the `.plum` file extension as used by official tooling
+  - the official release channel on this repository's GitHub Releases
+  - official editor extensions published under the Elixpo or Plumlang name
+
+THIRD-PARTY MATERIAL
+--------------------
+
+  Third-party components keep their own licences. See
+  `notices/notice-board` for the attribution list.
+
+Contact: hello@elixpo.com

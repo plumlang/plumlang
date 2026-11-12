@@ -1,0 +1,48 @@
+name: Language proposal
+description: Add or change syntax, semantics or the type system.
+title: "lang: "
+labels: ["area-spec", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Language changes land as a change to `docs/spec.md`, with tests and
+        the implementation, in one pull request. Agree on the design here
+        first. Easy to write comes first (PREAMBLE 2.3).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is hard to write today?
+      description: A real program or snippet that the change would make simpler or safer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed syntax and meaning
+      description: Show the new code, and say exactly what it does.
+      render: plum
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other designs, and how other languages solve it.
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: Cost
+      description: What it costs in compiler size, run time, memory, and in what a beginner has to learn. Does it break existing programs?
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the project's [Code of Conduct](https://github.com/plumlang/plumlang/blob/main/CODE_OF_CONDUCT.md).
+          required: true
