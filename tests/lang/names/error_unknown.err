@@ -1,0 +1,34 @@
+tests/lang/names/error_unknown.plum:3:6: error[E0301]: unknown name 'scroe'; did you mean 'score'?
+ 3 | drop(scroe)
+   |      ^~~~~
+tests/lang/names/error_unknown.plum:4:1: error[E0301]: unknown name 'print'; Plumlang prints with drop(...)
+ 4 | print("hi")
+   | ^~~~~
+tests/lang/names/error_unknown.plum:5:6: error[E0301]: unknown name 'totally_unknown'
+ 5 | drop(totally_unknown)
+   |      ^~~~~~~~~~~~~~~
+tests/lang/names/error_unknown.plum:6:14: error[E0305]: unknown type 'Strng'; did you mean 'str'?
+ 6 | plant total: Strng = "x"
+   |              ^~~~~
+tests/lang/names/error_unknown.plum:7:10: error[E0305]: 'score' is a variable, not a type
+ 7 | plant n: score = 1
+   |          ^~~~~
+tests/lang/names/error_unknown.plum:8:15: error[E0301]: unknown name 'null'; the absent value is 'none'
+ 8 | plant empty = null
+   |               ^~~~
+tests/lang/names/error_unknown.plum:9:12: error[E0301]: unknown name 'True'; true is written 'good' (or 'true')
+ 9 | plant on = True
+   |            ^~~~
+tests/lang/names/error_unknown.plum:10:13: error[E0305]: unknown type 'boolean'; in Plumlang it is 'bool'
+10 | plant flag: boolean = good
+   |             ^~~~~~~
+tests/lang/names/error_unknown.plum:11:14: error[E0305]: unknown type 'String'; in Plumlang it is 'str'
+11 | plant label: String = "x"
+   |              ^~~~~~
+tests/lang/names/error_unknown.plum:12:6: error[E0301]: unknown name 'lne'; did you mean 'len'?
+12 | drop(lne("abc"))
+   |      ^~~
+tests/lang/names/error_unknown.plum:13:6: error[E0301]: unknown name 'Score'; did you mean 'score'?
+13 | drop(Score)
+   |      ^~~~~
+11 errors

@@ -1,0 +1,4 @@
+tests/lang/names/error_seed.plum:3:1: error[E0215]: 'seed' must come before other statements; move it to the top
+3 | seed math
+  | ^~~~~~~~~
+1 error

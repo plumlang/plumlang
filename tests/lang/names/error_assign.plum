@@ -1,0 +1,12 @@
+# command: check
+root MAX = 100
+MAX = 200
+branch f(n: int) {
+    n += 1
+}
+for i in 0..3 {
+    i = 5
+}
+drop = 3
+tree T { }
+T = 1

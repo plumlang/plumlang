@@ -7,7 +7,7 @@ each one, with an example that causes it and the fix.
 |---|---|
 | E01xx | Reading the source text (lexer) |
 | E02xx | Syntax (parser) |
-| E03xx | Names (planned, #12) |
+| E03xx | Names |
 | E04xx | Types (planned, #13) |
 | E05xx | Control flow (planned, #14) |
 
@@ -352,3 +352,90 @@ A `seed` after other statements. Imports go at the top of the file.
 
 A `{` at the start of a statement. Plumlang has no free-standing blocks;
 for an empty map write `plant m = {:}`.
+
+## Names
+
+### E0301
+
+A name that isn't declared anywhere visible. If it is close to a name that
+exists, the message suggests it; names from other languages get the
+Plumlang word.
+
+```plum
+plant score = 10
+drop(scroe)           # error: did you mean 'score'?
+print("hi")           # error: Plumlang prints with drop(...)
+```
+
+### E0302
+
+The same name declared twice in one scope. An inner block may reuse an outer
+name, but a function's body shares its parameters' scope.
+
+```plum
+branch greet(name: str) {
+    plant name = "x"  # error: already declared, as a parameter
+}
+```
+
+### E0303
+
+A module variable used before the line that declares it. Functions, trees,
+traits and kinds can be used anywhere in the file; variables only after
+their `plant` or `root` line (inside a function body, any module variable is
+visible, since the body runs later).
+
+```plum
+drop(total)           # error
+plant total = 5
+```
+
+### E0304
+
+A change to something that can't change: a `root` constant, a parameter, a
+loop variable, a function or a type.
+
+```plum
+root MAX = 100
+MAX = 200             # error: declare it with 'plant' to change it
+```
+
+### E0305
+
+A type that doesn't exist, or a name used as a type that isn't one.
+
+```plum
+plant s: Strng = ""   # error: did you mean 'str'?
+plant b: boolean = good   # error: in Plumlang it is 'bool'
+```
+
+### E0306
+
+`self` or `super` outside a method of a tree.
+
+### E0307
+
+`return` outside a function.
+
+### E0308
+
+`seed`: importing modules arrives with #23.
+
+### E0309
+
+Something in a `match` pattern that can't be one. A pattern is a literal, a
+range, a kind case (with names to bind its values), a `root` constant, or
+`_`. A bare name doesn't match anything: use `else`.
+
+```plum
+match light {
+    Red => stop()
+    other => go()     # error
+    else => go()      # fix
+}
+```
+
+### E0310
+
+A `tree`, `trait` or `kind` declared inside a function. Declare it at the
+top of the file.

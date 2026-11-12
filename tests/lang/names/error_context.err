@@ -1,0 +1,13 @@
+tests/lang/names/error_context.plum:2:6: error[E0306]: 'self' can only be used inside a method
+2 | drop(self)
+  |      ^~~~
+tests/lang/names/error_context.plum:3:1: error[E0307]: 'return' can only be used inside a function
+3 | return 5
+  | ^~~~~~~~
+tests/lang/names/error_context.plum:5:5: error[E0310]: a tree can only be declared at the top of a file
+5 |     tree Inner { }
+  |     ^~~~~~~~~~~~~~
+tests/lang/names/error_context.plum:6:5: error[E0310]: a kind can only be declared at the top of a file
+6 |     kind K { A }
+  |     ^~~~~~~~~~~~
+4 errors

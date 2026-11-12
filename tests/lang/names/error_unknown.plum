@@ -1,0 +1,13 @@
+# command: check
+plant score = 10
+drop(scroe)
+print("hi")
+drop(totally_unknown)
+plant total: Strng = "x"
+plant n: score = 1
+plant empty = null
+plant on = True
+plant flag: boolean = good
+plant label: String = "x"
+drop(lne("abc"))
+drop(Score)

@@ -1,0 +1,16 @@
+tests/lang/names/error_assign.plum:3:1: error[E0304]: can't change 'MAX': it is a root constant; declare it with 'plant' to change it
+ 3 | MAX = 200
+   | ^~~
+tests/lang/names/error_assign.plum:5:5: error[E0304]: can't change the parameter 'n'; copy it first: plant n2 = n
+ 5 |     n += 1
+   |     ^
+tests/lang/names/error_assign.plum:8:5: error[E0304]: can't change the loop variable 'i'; it is set by the loop
+ 8 |     i = 5
+   |     ^
+tests/lang/names/error_assign.plum:10:1: error[E0304]: can't change 'drop': it is a built-in function
+10 | drop = 3
+   | ^~~~
+tests/lang/names/error_assign.plum:12:1: error[E0304]: can't change 'T': it is a tree
+12 | T = 1
+   | ^
+5 errors

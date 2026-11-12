@@ -1,0 +1,10 @@
+tests/lang/names/error_patterns.plum:9:5: error[E0309]: 'n' is not a kind case or a root constant; a pattern can't bind a bare name (use 'else' to match anything)
+ 9 |     n => drop("a variable can't be a pattern")
+   |     ^
+tests/lang/names/error_patterns.plum:11:5: error[E0309]: a pattern must be a literal, a range, a kind case or '_'
+11 |     f() => drop("not a pattern")
+   |     ^~~
+tests/lang/names/error_patterns.plum:13:11: error[E0309]: '_' can only be used in a pattern or as a for loop name
+13 | plant y = _
+   |           ^
+3 errors

@@ -1,0 +1,13 @@
+# command: check
+kind Light { Red, Green }
+root LIMIT = 3
+plant n = 1
+plant c = Light.Red
+match c {
+    Red => drop("stop")
+    LIMIT => drop("a constant matches by value")
+    n => drop("a variable can't be a pattern")
+    Green(x) => drop(x)
+    f() => drop("not a pattern")
+}
+plant y = _
