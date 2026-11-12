@@ -35,10 +35,10 @@ license:
   target_code_license: LicenseRef-Plumlang-Commercial-1.0
   trademark_policy: TRADEMARKS.md
 ci:
-  # Filled in when the C scaffold lands (#2).
+  # The full OS/compiler matrix is .github/workflows/build.yml.
   lint_cmd: ''
-  test_cmd: ''
-  build_cmd: ''
+  test_cmd: make test
+  build_cmd: make
 maintainers:
 - github: Circuit-Overtime
   skills:
