@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+
+# Show Plumlang sources on GitHub; highlighting comes once a grammar exists.
+*.plum linguist-language=Text linguist-detectable=true
+tests/**/*.out linguist-generated=false
