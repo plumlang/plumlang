@@ -1,0 +1,150 @@
+Plumlang Commercial License
+Version 1.0
+
+Copyright (c) 2026 Elixpo. All rights reserved.
+
+==============================================================================
+PREAMBLE
+==============================================================================
+
+Plumlang is a programming language, compiler, virtual machine, standard
+library, and set of tools (together, "the Software"). We publish its source
+code openly so that anyone can read it, learn from it, try it, and help make
+it better.
+
+We also want Plumlang to be a sustainable project. Building and maintaining a
+language that runs everywhere takes years of work, and that work is funded
+by the businesses that rely on it. This license therefore draws one simple
+line:
+
+  * If you are learning, teaching, experimenting, evaluating, or building
+    something for yourself that you do not sell or use to run a business,
+    Plumlang is free for you.
+
+  * If you use Plumlang to make money, to run a business, or to ship it to
+    other people as part of a product or service, you need a commercial
+    license from us.
+
+Programs you write in the Plumlang language are yours. This license governs
+the Software itself, not the code you write with it. The full terms below
+are binding. This preamble only explains their purpose; it is not part of
+the terms.
+
+==============================================================================
+TERMS AND CONDITIONS
+==============================================================================
+
+1. DEFINITIONS
+
+   "Licensor" means Elixpo and its successors and assigns.
+
+   "Software" means the Plumlang source code, object code, binaries,
+   documentation, standard library, tools, and any other material
+   distributed by the Licensor in this repository or in official releases.
+
+   "You" means the individual or legal entity exercising rights under this
+   License.
+
+   "Your Programs" means source code written by You in the Plumlang
+   language, and the outputs of compiling or running it, excluding any part
+   of the Software.
+
+   "Commercial Use" means any use of the Software (a) by or on behalf of a
+   for-profit organization in the course of its business, (b) in connection
+   with a product or service that is sold, licensed, or offered for a fee,
+   or that generates revenue (including through advertising or
+   subscriptions), (c) to provide services to third parties, or
+   (d) to operate production systems of any organization.
+
+   "Non-Commercial Use" means any use that is not Commercial Use, including
+   personal projects, private study, research, teaching, and use by
+   accredited educational institutions for instruction.
+
+   "Evaluation" means internal use by any person or organization, for a
+   period of no more than sixty (60) days, solely to assess whether to
+   obtain a commercial license, and not in production.
+
+2. FREE GRANT
+
+   Subject to these terms, the Licensor grants You a worldwide,
+   non-exclusive, non-transferable, non-sublicensable, royalty-free license
+   to download, read, compile, run, and modify the Software, solely for
+   Non-Commercial Use or Evaluation.
+
+3. COMMERCIAL USE
+
+   Commercial Use of the Software requires a separate, written commercial
+   license agreement with the Licensor. No right to Commercial Use is
+   granted by this License. To obtain a commercial license, write to the
+   Licensor at hello@elixpo.com.
+
+4. YOUR PROGRAMS
+
+   The Licensor claims no ownership of Your Programs. Running Your Programs
+   with the Software is governed by Sections 2 and 3: running them for
+   Commercial Use requires a commercial license.
+
+5. RESTRICTIONS
+
+   Except as expressly permitted by this License or a written agreement
+   with the Licensor, You may not:
+
+   (a) distribute, publish, sublicense, sell, rent, or lease the Software
+       or any modified version of it, in source or binary form;
+   (b) offer the Software, or any modified version, to third parties as a
+       hosted, managed, or embedded service;
+   (c) remove, alter, or obscure any copyright, license, or trademark
+       notice in the Software;
+   (d) circumvent any license-key or technical measure the Licensor uses to
+       enforce this License; or
+   (e) use the Software to build a competing programming language,
+       compiler, or runtime derived from the Software.
+
+   You may share unmodified copies of this repository's source code for
+   Non-Commercial Use, provided this License is included in full.
+
+6. CONTRIBUTIONS
+
+   By submitting a contribution (including code, documentation, or issues)
+   to the Software, You grant the Licensor a perpetual, worldwide,
+   irrevocable, royalty-free license to use, modify, sublicense, and
+   relicense Your contribution under any terms, including commercial terms.
+   You represent that You have the right to grant this license. Every
+   commit carries a Developer Certificate of Origin sign-off; no separate
+   Contributor License Agreement is required.
+
+7. TRADEMARKS
+
+   "Elixpo", "Plumlang", "Plum", and the Elixpo and Plumlang logos are
+   trademarks of the Licensor (see TRADEMARKS.md). This License grants no right to use them, except to truthfully
+   state that Your Programs are written in Plumlang. Modified versions of the
+   Software must not be called Plumlang or use the Plumlang logo.
+
+8. TERMINATION
+
+   This License terminates automatically if You breach any of its terms.
+   If You cure the breach within thirty (30) days of first becoming aware
+   of it, this License is reinstated, unless You have breached it before.
+   On termination You must stop using the Software and destroy all copies.
+   Sections 4, 6, 7, 9, 10 and 11 survive termination.
+
+9. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+10. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE LICENSOR OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM,
+   DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+   OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR
+   THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+11. GENERAL
+
+   This License is the entire agreement between You and the Licensor about
+   its subject matter, unless superseded by a written commercial agreement.
+   If any provision is held unenforceable, the remainder remains in effect.
+   The Licensor may publish new versions of this License; versions of the
+   Software released under this version remain governed by it.
