@@ -6,3 +6,6 @@
 # Show Plumlang sources on GitHub; highlighting comes once a grammar exists.
 *.plum linguist-language=Text linguist-detectable=true
 tests/**/*.out linguist-generated=false
+
+# The golden runner's CRLF case must keep its carriage returns.
+tests/harness/cases/pass_crlf.* -text
