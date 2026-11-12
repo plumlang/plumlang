@@ -259,6 +259,8 @@ PlumType *plum_parse_type(PlumParser *p) {
 /* ------------------------------------------------------------------ */
 
 static PlumExpr *parse_prec(PlumParser *p, int min_prec);
+static PlumStmt *parse_block(PlumParser *p);
+static PlumStmt *parse_stmt(PlumParser *p);
 
 /* The precedence of a token used as an infix operator, or PREC_NONE. */
 static int infix_prec(PlumTokenKind kind) {
@@ -444,11 +446,10 @@ static PlumExpr *parse_lambda(PlumParser *p) {
     expect(p, PLUM_TOK_RPAREN, "',' or ')' after the parameters");
     expect(p, PLUM_TOK_FAT_ARROW, "'=>'");
 
-    PlumExpr *body;
+    PlumExpr *body = NULL;
+    PlumStmt *block = NULL;
     if (check(p, PLUM_TOK_LBRACE)) {
-        /* Block bodies are statements, which arrive with #10. */
-        error_at(p, peek(p)->span, "lambdas with a { } body are not supported yet (#10)");
-        body = error_expr(p);
+        block = parse_block(p);
     } else {
         body = plum_parse_expr(p);
     }
@@ -456,6 +457,7 @@ static PlumExpr *parse_lambda(PlumParser *p) {
     e->as.lambda.params = to_arena(p, params.items, params.len, sizeof(PlumParam));
     e->as.lambda.param_count = params.len;
     e->as.lambda.body = body;
+    e->as.lambda.block = block;
     plum_array_free(&params);
     return e;
 }
@@ -486,6 +488,52 @@ static PlumExpr *parse_if(PlumParser *p) {
     e->as.if_.cond = cond;
     e->as.if_.then = then;
     e->as.if_.otherwise = otherwise;
+    return e;
+}
+
+/*
+ * match subject {
+ *     pattern, pattern => expression-or-block
+ *     else => ...
+ * }
+ */
+static PlumExpr *parse_match(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumExpr *subject = plum_parse_expr(p);
+    PLUM_ARRAY(PlumMatchArm) arms = {0};
+    if (expect(p, PLUM_TOK_LBRACE, "'{' to start the match arms")) {
+        skip_newlines(p);
+        while (!check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
+            PlumMatchArm arm = {NULL, 0, NULL, peek(p)->span};
+            PLUM_ARRAY(PlumExpr *) patterns = {0};
+            if (!match(p, PLUM_TOK_ELSE)) {
+                do {
+                    plum_array_push(&patterns, plum_parse_expr(p));
+                } while (match(p, PLUM_TOK_COMMA));
+            }
+            arm.patterns = to_arena(p, patterns.items, patterns.len, sizeof(PlumExpr *));
+            arm.pattern_count = patterns.len;
+            plum_array_free(&patterns);
+            expect(p, PLUM_TOK_FAT_ARROW, "'=>' after the pattern");
+            if (check(p, PLUM_TOK_LBRACE)) {
+                arm.body = parse_block(p);
+            } else {
+                arm.body = parse_stmt(p);
+            }
+            arm.span = join(arm.span, previous(p)->span);
+            plum_array_push(&arms, arm);
+            skip_newlines(p);
+            if (p->panic) {
+                break;
+            }
+        }
+        expect(p, PLUM_TOK_RBRACE, "'}' to end the match");
+    }
+    PlumExpr *e = new_expr(p, PLUM_EXPR_MATCH, join(kw->span, previous(p)->span));
+    e->as.match.subject = subject;
+    e->as.match.arms = to_arena(p, arms.items, arms.len, sizeof(PlumMatchArm));
+    e->as.match.arm_count = arms.len;
+    plum_array_free(&arms);
     return e;
 }
 
@@ -545,6 +593,11 @@ static PlumExpr *parse_primary(PlumParser *p) {
         return parse_map(p);
     case PLUM_TOK_IF:
         return parse_if(p);
+    case PLUM_TOK_MATCH:
+        return parse_match(p);
+    case PLUM_TOK_UNDERSCORE:
+        advance(p);
+        return new_expr(p, PLUM_EXPR_WILDCARD, tok->span);
     case PLUM_TOK_ERROR:
         advance(p);
         p->panic = true; /* the lexer reported it */
@@ -709,30 +762,545 @@ PlumExpr *plum_parse_expr(PlumParser *p) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Lines of expressions (until statements arrive)                      */
+/* Statements                                                          */
 /* ------------------------------------------------------------------ */
 
-PlumExpr **plum_parse_expr_lines(PlumParser *p, size_t *count) {
-    PLUM_ARRAY(PlumExpr *) exprs = {0};
-    skip_newlines(p);
+static PlumStmt *new_stmt(PlumParser *p, PlumStmtKind kind, PlumSpan span) {
+    PlumStmt *s = plum_arena_alloc_zeroed(p->arena, sizeof *s);
+    s->kind = kind;
+    s->span = span;
+    return s;
+}
+
+/* Finish a statement's span at the last token it used. */
+static PlumStmt *finish(PlumParser *p, PlumStmt *s) {
+    s->span = join(s->span, previous(p)->span);
+    return s;
+}
+
+/*
+ * After an error, skip to the end of the statement: the next newline or
+ * '}' outside any brackets opened while skipping. Braces stay balanced, so
+ * the enclosing block still ends where it should.
+ */
+static void synchronize(PlumParser *p) {
+    if (previous(p)->kind == PLUM_TOK_NEWLINE) {
+        /* The statement with the error still ended at its newline; the
+         * next statement is fine to parse. */
+        p->panic = false;
+        return;
+    }
+    int depth = 0;
     while (!check(p, PLUM_TOK_EOF)) {
-        plum_array_push(&exprs, plum_parse_expr(p));
-        if (!check(p, PLUM_TOK_NEWLINE)) {
-            error_expected(p, "the end of the line");
+        PlumTokenKind k = peek(p)->kind;
+        if (depth == 0 && (k == PLUM_TOK_NEWLINE || k == PLUM_TOK_RBRACE)) {
+            break;
         }
-        /* Resynchronise at the next line. */
-        while (!check(p, PLUM_TOK_NEWLINE) && !check(p, PLUM_TOK_EOF)) {
-            advance(p);
+        if (k == PLUM_TOK_LBRACE || k == PLUM_TOK_LPAREN || k == PLUM_TOK_LBRACKET) {
+            depth++;
+        } else if ((k == PLUM_TOK_RBRACE || k == PLUM_TOK_RPAREN || k == PLUM_TOK_RBRACKET) &&
+                   depth > 0) {
+            depth--;
+        }
+        advance(p);
+    }
+    p->panic = false;
+}
+
+/* A statement ends at a newline, or just before '}' or the end of the file. */
+static void end_statement(PlumParser *p) {
+    if (match(p, PLUM_TOK_NEWLINE) || check(p, PLUM_TOK_RBRACE) || check(p, PLUM_TOK_EOF)) {
+        return;
+    }
+    error_expected(p, "the end of the statement");
+}
+
+static const char *expect_name(PlumParser *p, const char *what) {
+    if (check(p, PLUM_TOK_IDENT)) {
+        return advance(p)->as.name;
+    }
+    error_expected(p, what);
+    return plum_intern_cstr(p->names, "<error>");
+}
+
+/* `{ statements }` */
+static PlumStmt *parse_block(PlumParser *p) {
+    const PlumToken *open = peek(p);
+    PlumStmt *block = new_stmt(p, PLUM_STMT_BLOCK, open->span);
+    if (!expect(p, PLUM_TOK_LBRACE, "'{'")) {
+        return block;
+    }
+    PLUM_ARRAY(PlumStmt *) stmts = {0};
+    skip_newlines(p);
+    while (!check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
+        PlumStmt *s = parse_stmt(p);
+        plum_array_push(&stmts, s);
+        if (p->panic) {
+            synchronize(p);
         }
         skip_newlines(p);
-        p->panic = false;
     }
-    *count = exprs.len;
-    PlumExpr **out = plum_arena_alloc(p->arena, (exprs.len + 1) * sizeof(PlumExpr *));
-    if (exprs.len > 0) {
-        memcpy(out, exprs.items, exprs.len * sizeof(PlumExpr *));
+    expect(p, PLUM_TOK_RBRACE, "'}' to close the block");
+    block->as.block.stmts = to_arena(p, stmts.items, stmts.len, sizeof(PlumStmt *));
+    block->as.block.count = stmts.len;
+    plum_array_free(&stmts);
+    return finish(p, block);
+}
+
+/* `else` may follow '}' on the same line or on the next one. */
+static bool match_else(PlumParser *p) {
+    if (check(p, PLUM_TOK_NEWLINE) && peek_at(p, 1)->kind == PLUM_TOK_ELSE) {
+        advance(p);
     }
-    out[exprs.len] = NULL;
-    plum_array_free(&exprs);
-    return out;
+    return match(p, PLUM_TOK_ELSE);
+}
+
+static PlumStmt *parse_if_stmt(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s;
+    if (match(p, PLUM_TOK_PLANT)) {
+        /* if plant name = optional { } */
+        s = new_stmt(p, PLUM_STMT_IF_PLANT, kw->span);
+        s->as.if_.name = expect_name(p, "a name after 'if plant'");
+        expect(p, PLUM_TOK_EQ, "'=' and the optional value to unwrap");
+        s->as.if_.value = plum_parse_expr(p);
+    } else {
+        s = new_stmt(p, PLUM_STMT_IF, kw->span);
+        s->as.if_.cond = plum_parse_expr(p);
+    }
+    s->as.if_.then = parse_block(p);
+    if (match_else(p)) {
+        s->as.if_.otherwise = check(p, PLUM_TOK_IF) ? parse_if_stmt(p) : parse_block(p);
+    }
+    return finish(p, s);
+}
+
+static PlumStmt *parse_for(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s = new_stmt(p, PLUM_STMT_FOR, kw->span);
+    const char *wildcard = plum_intern_cstr(p->names, "_");
+    s->as.for_.first = match(p, PLUM_TOK_UNDERSCORE) ? wildcard : expect_name(p, "a loop name");
+    if (match(p, PLUM_TOK_COMMA)) {
+        s->as.for_.second =
+            match(p, PLUM_TOK_UNDERSCORE) ? wildcard : expect_name(p, "a second loop name");
+    }
+    expect(p, PLUM_TOK_IN, "'in'");
+    s->as.for_.iterable = plum_parse_expr(p);
+    s->as.for_.body = parse_block(p);
+    return finish(p, s);
+}
+
+static PlumStmt *parse_try_stmt(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s = new_stmt(p, PLUM_STMT_TRY, kw->span);
+    s->as.try_.body = parse_block(p);
+    PLUM_ARRAY(PlumCatch) catches = {0};
+    for (;;) {
+        if (check(p, PLUM_TOK_NEWLINE) && peek_at(p, 1)->kind == PLUM_TOK_CATCH) {
+            advance(p);
+        }
+        if (!check(p, PLUM_TOK_CATCH)) {
+            break;
+        }
+        const PlumToken *c = advance(p);
+        PlumCatch handler = {NULL, NULL, NULL, c->span};
+        handler.name = expect_name(p, "a name for the error, like 'catch e'");
+        if (match(p, PLUM_TOK_COLON)) {
+            handler.type = plum_parse_type(p);
+        }
+        handler.body = parse_block(p);
+        handler.span = join(c->span, previous(p)->span);
+        plum_array_push(&catches, handler);
+    }
+    if (check(p, PLUM_TOK_NEWLINE) && peek_at(p, 1)->kind == PLUM_TOK_FINALLY) {
+        advance(p);
+    }
+    if (match(p, PLUM_TOK_FINALLY)) {
+        s->as.try_.finally = parse_block(p);
+    }
+    if (catches.len == 0 && s->as.try_.finally == NULL) {
+        error_at(p, kw->span, "a try block needs at least one 'catch' or a 'finally'");
+    }
+    s->as.try_.catches = to_arena(p, catches.items, catches.len, sizeof(PlumCatch));
+    s->as.try_.catch_count = catches.len;
+    plum_array_free(&catches);
+    return finish(p, s);
+}
+
+/* `(name: type = default, ...)` for functions and methods. */
+static void parse_params(PlumParser *p, PlumParam **out, size_t *count) {
+    PLUM_ARRAY(PlumParam) params = {0};
+    expect(p, PLUM_TOK_LPAREN, "'(' and the parameters");
+    bool defaults_seen = false;
+    while (!check(p, PLUM_TOK_RPAREN) && !check(p, PLUM_TOK_EOF)) {
+        const PlumToken *name = peek(p);
+        PlumParam param = {expect_name(p, "a parameter name"), NULL, NULL, name->span};
+        if (expect(p, PLUM_TOK_COLON, "':' and the parameter's type")) {
+            param.type = plum_parse_type(p);
+        }
+        if (match(p, PLUM_TOK_EQ)) {
+            param.fallback = plum_parse_expr(p);
+            defaults_seen = true;
+        } else if (defaults_seen && !p->panic) {
+            error_at(p, name->span, "parameters with defaults must come last");
+        }
+        param.span = join(name->span, previous(p)->span);
+        plum_array_push(&params, param);
+        if (!match(p, PLUM_TOK_COMMA) || p->panic) {
+            break;
+        }
+    }
+    expect(p, PLUM_TOK_RPAREN, "',' or ')' after the parameters");
+    *out = to_arena(p, params.items, params.len, sizeof(PlumParam));
+    *count = params.len;
+    plum_array_free(&params);
+}
+
+/*
+ * branch name(params) -> Result { body }
+ * branch name(params) -> Result => expression
+ * branch name(params) -> Result          (trait methods only: no body)
+ */
+static PlumBranch parse_branch_decl(PlumParser *p, bool body_optional) {
+    PlumBranch b;
+    memset(&b, 0, sizeof b);
+    b.name = expect_name(p, "the function's name");
+    parse_params(p, &b.params, &b.param_count);
+    if (match(p, PLUM_TOK_ARROW)) {
+        b.result = plum_parse_type(p);
+    }
+    if (match(p, PLUM_TOK_FAT_ARROW)) {
+        b.arrow = plum_parse_expr(p);
+    } else if (check(p, PLUM_TOK_LBRACE)) {
+        b.body = parse_block(p);
+    } else if (!body_optional) {
+        error_expected(p, "'{' or '=>' and the function's body");
+    }
+    return b;
+}
+
+static PlumStmt *parse_branch(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s = new_stmt(p, PLUM_STMT_BRANCH, kw->span);
+    s->as.branch = parse_branch_decl(p, false);
+    return finish(p, s);
+}
+
+/* tree Name : Parent, Trait { fields and methods } -- and trait, without fields. */
+static PlumStmt *parse_tree(PlumParser *p, bool is_trait) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s = new_stmt(p, is_trait ? PLUM_STMT_TRAIT : PLUM_STMT_TREE, kw->span);
+    s->as.tree.name = expect_name(p, is_trait ? "the trait's name" : "the tree's name");
+
+    PLUM_ARRAY(PlumType *) supers = {0};
+    if (match(p, PLUM_TOK_COLON)) {
+        do {
+            plum_array_push(&supers, plum_parse_type(p));
+        } while (match(p, PLUM_TOK_COMMA));
+    }
+
+    PLUM_ARRAY(PlumField) fields = {0};
+    PLUM_ARRAY(PlumBranch) methods = {0};
+    if (expect(p, PLUM_TOK_LBRACE, "'{' to start the body")) {
+        skip_newlines(p);
+        while (!check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
+            if (match(p, PLUM_TOK_BRANCH)) {
+                plum_array_push(&methods, parse_branch_decl(p, is_trait));
+                end_statement(p);
+            } else if (check(p, PLUM_TOK_IDENT) && !is_trait) {
+                const PlumToken *name = advance(p);
+                PlumField field = {name->as.name, NULL, NULL, false, name->span};
+                if (expect(p, PLUM_TOK_COLON, "':' and the field's type")) {
+                    field.weak = match(p, PLUM_TOK_WEAK);
+                    field.type = plum_parse_type(p);
+                    if (match(p, PLUM_TOK_EQ)) {
+                        field.fallback = plum_parse_expr(p);
+                    }
+                }
+                field.span = join(name->span, previous(p)->span);
+                plum_array_push(&fields, field);
+                end_statement(p);
+            } else {
+                error_expected(p, is_trait ? "a method ('branch ...')"
+                                           : "a field ('name: type') or a method ('branch ...')");
+            }
+            if (p->panic) {
+                synchronize(p);
+            }
+            skip_newlines(p);
+        }
+        expect(p, PLUM_TOK_RBRACE, "'}' to end the body");
+    }
+
+    s->as.tree.supers = to_arena(p, supers.items, supers.len, sizeof(PlumType *));
+    s->as.tree.super_count = supers.len;
+    s->as.tree.fields = to_arena(p, fields.items, fields.len, sizeof(PlumField));
+    s->as.tree.field_count = fields.len;
+    s->as.tree.methods = to_arena(p, methods.items, methods.len, sizeof(PlumBranch));
+    s->as.tree.method_count = methods.len;
+    plum_array_free(&supers);
+    plum_array_free(&fields);
+    plum_array_free(&methods);
+    return finish(p, s);
+}
+
+/* kind Name { Case, Case(name: type), ... } -- cases split by ',' or newlines. */
+static PlumStmt *parse_kind(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s = new_stmt(p, PLUM_STMT_KIND, kw->span);
+    s->as.kind.name = expect_name(p, "the kind's name");
+    PLUM_ARRAY(PlumCase) cases = {0};
+    if (expect(p, PLUM_TOK_LBRACE, "'{' and the cases")) {
+        skip_newlines(p);
+        while (!check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
+            const PlumToken *name = peek(p);
+            PlumCase c = {expect_name(p, "a case name"), NULL, 0, name->span};
+            if (check(p, PLUM_TOK_LPAREN)) {
+                parse_params(p, &c.params, &c.param_count);
+            }
+            c.span = join(name->span, previous(p)->span);
+            plum_array_push(&cases, c);
+            if (p->panic) {
+                synchronize(p);
+            }
+            if (!match(p, PLUM_TOK_COMMA) && !check(p, PLUM_TOK_NEWLINE)) {
+                break;
+            }
+            skip_newlines(p);
+        }
+        skip_newlines(p);
+        expect(p, PLUM_TOK_RBRACE, "',' or '}' after the case");
+    }
+    if (cases.len == 0 && !p->panic) {
+        error_at(p, kw->span, "a kind needs at least one case");
+    }
+    s->as.kind.cases = to_arena(p, cases.items, cases.len, sizeof(PlumCase));
+    s->as.kind.case_count = cases.len;
+    plum_array_free(&cases);
+    return finish(p, s);
+}
+
+/*
+ * seed math | seed net.http as web | seed ./models/user | seed ../lib/x
+ * seed math { sqrt, PI }
+ */
+static PlumStmt *parse_seed(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s = new_stmt(p, PLUM_STMT_SEED, kw->span);
+    PLUM_ARRAY(char) path = {0};
+
+    if (check(p, PLUM_TOK_DOT) || check(p, PLUM_TOK_DOT_DOT)) {
+        /* A relative path: ./a/b or ../a/b, segments joined by '/'. */
+        while (check(p, PLUM_TOK_DOT) || check(p, PLUM_TOK_DOT_DOT)) {
+            const char *dots = advance(p)->kind == PLUM_TOK_DOT ? "./" : "../";
+            if (!expect(p, PLUM_TOK_SLASH, "'/' in the path")) {
+                break;
+            }
+            for (const char *c = dots; *c; c++) {
+                plum_array_push(&path, *c);
+            }
+        }
+        do {
+            const char *seg = expect_name(p, "a file name in the path");
+            for (const char *c = seg; *c; c++) {
+                plum_array_push(&path, *c);
+            }
+            if (!check(p, PLUM_TOK_SLASH)) {
+                break;
+            }
+            advance(p);
+            plum_array_push(&path, '/');
+        } while (!p->panic);
+    } else {
+        do {
+            const char *seg = expect_name(p, "a module name");
+            if (path.len > 0) {
+                plum_array_push(&path, '.');
+            }
+            for (const char *c = seg; *c; c++) {
+                plum_array_push(&path, *c);
+            }
+        } while (match(p, PLUM_TOK_DOT) && !p->panic);
+    }
+    s->as.seed.path = plum_intern(p->names, path.items ? path.items : "", path.len);
+    plum_array_free(&path);
+
+    if (match(p, PLUM_TOK_AS)) {
+        s->as.seed.alias = expect_name(p, "a name after 'as'");
+    }
+    if (match(p, PLUM_TOK_LBRACE)) {
+        PLUM_ARRAY(const char *) names = {0};
+        while (!check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
+            plum_array_push(&names, expect_name(p, "a name to import"));
+            if (!match(p, PLUM_TOK_COMMA) || p->panic) {
+                break;
+            }
+        }
+        expect(p, PLUM_TOK_RBRACE, "',' or '}' after the names");
+        s->as.seed.names = to_arena(p, names.items, names.len, sizeof(const char *));
+        s->as.seed.name_count = names.len;
+        plum_array_free(&names);
+    }
+    return finish(p, s);
+}
+
+static bool is_assign_op(PlumTokenKind k) {
+    switch (k) {
+    case PLUM_TOK_EQ:
+    case PLUM_TOK_PLUS_EQ:
+    case PLUM_TOK_MINUS_EQ:
+    case PLUM_TOK_STAR_EQ:
+    case PLUM_TOK_SLASH_EQ:
+    case PLUM_TOK_SLASH_SLASH_EQ:
+    case PLUM_TOK_PERCENT_EQ:
+    case PLUM_TOK_STAR_STAR_EQ:
+    case PLUM_TOK_AMP_EQ:
+    case PLUM_TOK_PIPE_EQ:
+    case PLUM_TOK_CARET_EQ:
+    case PLUM_TOK_LESS_LESS_EQ:
+    case PLUM_TOK_GREATER_GREATER_EQ:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* An expression statement, or an assignment if '=' or `op=` follows. */
+static PlumStmt *parse_expr_or_assign(PlumParser *p) {
+    PlumExpr *target = plum_parse_expr(p);
+    if (!is_assign_op(peek(p)->kind)) {
+        PlumStmt *s = new_stmt(p, PLUM_STMT_EXPR, target->span);
+        s->as.expr = target;
+        return s;
+    }
+    const PlumToken *op = advance(p);
+    bool assignable = target->kind == PLUM_EXPR_NAME || target->kind == PLUM_EXPR_INDEX ||
+                      (target->kind == PLUM_EXPR_FIELD && !target->as.field.optional) ||
+                      target->kind == PLUM_EXPR_ERROR;
+    if (!assignable) {
+        error_at(p, target->span,
+                 "can't assign to this; the left of '%s' must be a name, a field or an index",
+                 plum_token_kind_text(op->kind));
+    }
+    PlumStmt *s = new_stmt(p, PLUM_STMT_ASSIGN, target->span);
+    s->as.assign.op = op->kind;
+    s->as.assign.target = target;
+    s->as.assign.value = plum_parse_expr(p);
+    return finish(p, s);
+}
+
+static PlumStmt *parse_decl(PlumParser *p) {
+    const PlumToken *kw = advance(p);
+    PlumStmt *s = new_stmt(p, PLUM_STMT_DECL, kw->span);
+    s->as.decl.constant = kw->kind == PLUM_TOK_ROOT;
+    s->as.decl.name = expect_name(p, "a name");
+    if (match(p, PLUM_TOK_COLON)) {
+        s->as.decl.type = plum_parse_type(p);
+    }
+    if (match(p, PLUM_TOK_EQ)) {
+        s->as.decl.value = plum_parse_expr(p);
+    } else if (!p->panic) {
+        const char *word = plum_token_kind_text(kw->kind);
+        error_at(p, peek(p)->span, "'%s %s' needs a value: %s %s = ...", word, s->as.decl.name,
+                 word, s->as.decl.name);
+    }
+    return finish(p, s);
+}
+
+static PlumStmt *parse_stmt(PlumParser *p) {
+    const PlumToken *tok = peek(p);
+    PlumStmt *s;
+    switch (tok->kind) {
+    case PLUM_TOK_PLANT:
+    case PLUM_TOK_ROOT:
+        s = parse_decl(p);
+        break;
+    case PLUM_TOK_IF:
+        return parse_if_stmt(p);
+    case PLUM_TOK_WHILE: {
+        advance(p);
+        s = new_stmt(p, PLUM_STMT_WHILE, tok->span);
+        s->as.while_.cond = plum_parse_expr(p);
+        s->as.while_.body = parse_block(p);
+        return finish(p, s);
+    }
+    case PLUM_TOK_FOR:
+        return parse_for(p);
+    case PLUM_TOK_BREAK:
+    case PLUM_TOK_CONTINUE:
+        advance(p);
+        s = new_stmt(p, tok->kind == PLUM_TOK_BREAK ? PLUM_STMT_BREAK : PLUM_STMT_CONTINUE,
+                     tok->span);
+        break;
+    case PLUM_TOK_RETURN:
+        advance(p);
+        s = new_stmt(p, PLUM_STMT_RETURN, tok->span);
+        if (!check(p, PLUM_TOK_NEWLINE) && !check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
+            s->as.expr = plum_parse_expr(p);
+        }
+        finish(p, s);
+        break;
+    case PLUM_TOK_THROW:
+        advance(p);
+        s = new_stmt(p, PLUM_STMT_THROW, tok->span);
+        s->as.expr = plum_parse_expr(p);
+        finish(p, s);
+        break;
+    case PLUM_TOK_TRY:
+        if (peek_at(p, 1)->kind == PLUM_TOK_LBRACE) {
+            return parse_try_stmt(p);
+        }
+        s = parse_expr_or_assign(p); /* `try risky()` */
+        break;
+    case PLUM_TOK_BRANCH:
+        return parse_branch(p);
+    case PLUM_TOK_TREE:
+        return parse_tree(p, false);
+    case PLUM_TOK_TRAIT:
+        return parse_tree(p, true);
+    case PLUM_TOK_KIND:
+        return parse_kind(p);
+    case PLUM_TOK_SEED:
+        s = parse_seed(p);
+        break;
+    case PLUM_TOK_LBRACE:
+        error_at(p, tok->span,
+                 "a block can't stand on its own; for an empty map write 'plant m = {:}'");
+        s = new_stmt(p, PLUM_STMT_ERROR, tok->span);
+        break;
+    default:
+        s = parse_expr_or_assign(p);
+        break;
+    }
+    end_statement(p);
+    return s;
+}
+
+PlumProgram plum_parse_program(PlumParser *p) {
+    PLUM_ARRAY(PlumStmt *) stmts = {0};
+    bool other_seen = false;
+    skip_newlines(p);
+    while (!check(p, PLUM_TOK_EOF)) {
+        if (check(p, PLUM_TOK_RBRACE)) {
+            /* The lexer reported the unmatched '}'; skip it. */
+            advance(p);
+            skip_newlines(p);
+            continue;
+        }
+        PlumStmt *s = parse_stmt(p);
+        if (s->kind == PLUM_STMT_SEED && other_seen) {
+            plum_diag_error(p->diags, s->span,
+                            "'seed' must come before other statements; move it to the top");
+        } else if (s->kind != PLUM_STMT_SEED) {
+            other_seen = true;
+        }
+        plum_array_push(&stmts, s);
+        if (p->panic) {
+            synchronize(p);
+        }
+        skip_newlines(p);
+    }
+    PlumProgram program = {to_arena(p, stmts.items, stmts.len, sizeof(PlumStmt *)), stmts.len};
+    plum_array_free(&stmts);
+    return program;
 }
