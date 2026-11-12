@@ -126,12 +126,22 @@ static void error_expected(PlumParser *p, const char *what) {
         return;
     }
     char found[96];
-    if (tok->kind == PLUM_TOK_NEWLINE && peek_at(p, 1)->kind == PLUM_TOK_EOF) {
-        snprintf(found, sizeof found, "end of file"); /* the lexer's closing newline */
+    PlumSpan at = tok->span;
+    if ((tok->kind == PLUM_TOK_NEWLINE && peek_at(p, 1)->kind == PLUM_TOK_EOF) ||
+        tok->kind == PLUM_TOK_EOF) {
+        /* Point just after the last real token, not at the end of the file. */
+        snprintf(found, sizeof found, "end of file");
+        if (p->pos > 0) {
+            const PlumSpan prev = previous(p)->span;
+            at.offset = prev.offset + prev.length;
+            at.line = prev.line;
+            at.column = prev.column + prev.length; /* tokens before EOF end a line */
+            at.length = 0;
+        }
     } else {
         describe(tok, found, sizeof found);
     }
-    error_at(p, tok->span, "expected %s, found %s", what, found);
+    error_at(p, at, "expected %s, found %s", what, found);
 }
 
 static bool expect(PlumParser *p, PlumTokenKind kind, const char *what) {
