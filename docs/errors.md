@@ -9,7 +9,8 @@ each one, with an example that causes it and the fix.
 | E02xx | Syntax (parser) |
 | E03xx | Names |
 | E04xx | Types |
-| E05xx | Control flow (planned, #14) |
+| E05xx | Control flow |
+| W05xx | Control-flow warnings (the program still runs) |
 
 Codes never change meaning. A retired code is marked retired, not reused.
 `make test` checks that every code in the compiler is documented here and
@@ -574,3 +575,49 @@ that can't be converted.
 A `match` pattern that can't match the value: a case of another kind, a
 literal of another type, or a case pattern naming the wrong number of
 values.
+
+## Control flow
+
+### E0501
+
+A function with a result (`-> type`) that can finish without returning
+one. Every path must end in `return` (or `throw`).
+
+```plum
+branch sign(n: int) -> str {
+    if n > 0 { return "positive" }
+    if n < 0 { return "negative" }
+}                     # error: no return when n is 0
+```
+
+Add `return "zero"` at the end, or make the last `if` an `if ... else`.
+
+### E0502
+
+`break` or `continue` outside a loop. A lambda is a new function, so a
+`break` inside one doesn't reach a loop around it.
+
+### E0503
+
+A `match` that doesn't cover every possible value (spec 5.3): a kind case
+left out, a bool match without both `good` and `bad`, or a match on a number
+or string without an `else` arm.
+
+```plum
+kind Light { Red, Yellow, Green }
+match light {
+    Red => stop()
+    Green => go()
+}                     # error: doesn't cover 'Yellow'
+```
+
+## Warnings
+
+### W0501
+
+Code after a `return`, `throw`, `break` or `continue` that can never run.
+
+### W0502
+
+A variable that is declared but never used. Remove it, or start its name
+with `_` to say it is unused on purpose.
