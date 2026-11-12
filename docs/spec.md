@@ -512,3 +512,262 @@ Outside a loop they are compile errors.
 
 A call can stand on its own as a statement. Any other expression standing
 alone (`x + 1`) is a compile error, since its value would be lost.
+
+## 6. Functions
+
+### 6.1 Declaring and calling
+
+```plum
+branch add(a: int, b: int) -> int {
+    return a + b
+}
+
+branch greet(name: str) {           # returns none
+    drop("Hello, {name}")
+}
+
+drop(add(2, 3))
+greet("Ada")
+```
+
+Parameter types are always written. The result type is written after `->`
+and left out for functions that return nothing. A function whose result is
+not `none` must `return` a value on every path; the compiler checks.
+
+A function body that is a single expression can use `=>`:
+
+```plum
+branch square(x: int) -> int => x * x
+```
+
+Functions can be called before their declaration in the same module.
+
+### 6.2 Default and named arguments
+
+```plum
+branch connect(host: str, port: int = 80, secure: bool = bad) { }
+
+connect("example.com")
+connect("example.com", 443, secure: good)
+connect("example.com", secure: good)
+```
+
+Defaults must be constants or literals. Named arguments come after
+positional ones.
+
+### 6.3 Parameters are read-only
+
+Parameters are constants inside the function. Because strings, lists and
+maps are values (section 11), a function cannot change the caller's list;
+it returns a new one, or takes a tree, whose objects are shared.
+
+### 6.4 Function values and closures
+
+Functions are values. A lambda is written `(params) => expression` or
+`(params) => { statements }`:
+
+```plum
+plant double = (x: int) => x * 2
+plant evens = numbers.filter((n) => n % 2 == 0)
+plant sorted = people.sort_by((p) => p.age)
+```
+
+Lambda parameter types can be left out when the context gives them, as in
+`filter` above. A lambda captures the variables it uses; it sees their
+current values (a captured `plant` can be changed by the lambda only if it
+is declared in an enclosing function, not across tasks).
+
+### 6.5 Recursion
+
+Functions may call themselves. Deep recursion past the stack limit (by
+default 10,000 frames) is a runtime error, not a crash.
+
+## 7. Built-in functions
+
+These are always available without `seed`:
+
+| Function | Meaning |
+|---|---|
+| `drop(values...)` | print the values separated by spaces, then a newline |
+| `ask(prompt: str = "") -> str?` | print the prompt, read a line from standard input; `none` at end of input |
+| `len(x) -> int` | length of a string (in characters), list, map or set |
+| `int`, `float`, `str`, `byte` | conversions (section 3.2) |
+| `type_of(x) -> str` | the type's name, for messages and debugging |
+| `assert(cond: bool, message: str = "")` | throw an `AssertError` if `cond` is `bad` |
+| `exit(code: int = 0)` | end the program |
+
+`drop` is an ordinary function, not a statement: it is always called with
+parentheses, `drop("hi")`.
+
+## 8. Trees: classes and objects (Stage 5)
+
+### 8.1 Declaring a tree
+
+A `tree` groups fields and the methods that work on them:
+
+```plum
+tree Account {
+    owner: str
+    balance: float = 0.0
+
+    branch deposit(amount: float) {
+        if amount <= 0 {
+            throw ValueError("deposit must be positive")
+        }
+        self.balance += amount
+    }
+
+    branch to_str() -> str => "{self.owner}: {self.balance:.2}"
+}
+
+plant acct = Account("Ada")          # balance takes its default
+acct.deposit(50)
+drop(acct)                           # Ada: 50.00
+```
+
+Inside a method, `self` is the object; fields and methods are always
+reached through it (`self.balance`), so a field is never confused with a
+local variable.
+
+### 8.2 Construction
+
+Calling the tree's name creates an object. By default the arguments fill
+the fields in declaration order; fields with defaults may be left out or
+named: `Account("Ada", balance: 10.0)`.
+
+A tree may define `init` to construct objects differently. When it does,
+calls to the tree's name call `init`, which must set every field without
+a default:
+
+```plum
+tree Temperature {
+    celsius: float
+
+    branch init(fahrenheit: float) {
+        self.celsius = (fahrenheit - 32.0) * 5.0 / 9.0
+    }
+}
+```
+
+### 8.3 Objects are shared
+
+Tree objects are reference values: assigning or passing one shares the same
+object, and changes through one name are seen through every name. Every
+other value in Plumlang is copied (section 11). Two names refer to the same
+object when `a is b`.
+
+### 8.4 Inheritance
+
+A tree can extend one other tree. It inherits the fields and methods, adds
+its own, and can override methods. `super.method()` calls the parent's
+version.
+
+```plum
+tree Animal {
+    name: str
+    branch speak() -> str => "..."
+}
+
+tree Dog : Animal {
+    branch speak() -> str => "{self.name} says woof"
+}
+
+plant pets: list[Animal] = [Dog("Rex"), Animal("Generic")]
+for pet in pets { drop(pet.speak()) }
+```
+
+A `Dog` can be used wherever an `Animal` is expected. There is no multiple
+inheritance; use traits.
+
+### 8.5 Traits
+
+A `trait` lists methods a tree promises to have. A tree implements traits
+by naming them after `:`, after its parent tree if it has one:
+
+```plum
+trait Shape {
+    branch area() -> float
+    branch name() -> str => "shape"     # a default method
+}
+
+tree Circle : Shape {
+    radius: float
+    branch area() -> float => 3.14159 * self.radius ** 2
+}
+
+branch total_area(shapes: list[Shape]) -> float {
+    plant sum = 0.0
+    for s in shapes { sum += s.area() }
+    return sum
+}
+```
+
+Missing methods are compile errors. The standard traits the language uses
+are `Show` (`to_str`, for interpolation and `drop`), `Equal` (`equals`,
+for `==`), `Order` (`compare`, for `<` and sorting), `Hash` (`hash`, for
+map keys) and `Iterable` (`iter`, for `for`).
+
+### 8.6 Kinds: enumerations
+
+A `kind` is a type with a fixed set of cases. Cases may carry values.
+
+```plum
+kind Direction { North, East, South, West }
+
+kind Shape {
+    Circle(radius: float)
+    Rect(width: float, height: float)
+}
+
+branch area(s: Shape) -> float => match s {
+    Circle(r) => 3.14159 * r ** 2
+    Rect(w, h) => w * h
+}
+
+plant heading = Direction.North
+```
+
+`match` on a kind must cover every case.
+
+## 9. Modules (Stage 5)
+
+### 9.1 Files are modules
+
+Every `.plum` file is a module. Its top-level statements run once, in order,
+the first time it is imported, or when it is the program being run. A
+program needs no `main` function.
+
+### 9.2 seed
+
+`seed` imports a module, by standard-library name or by path relative to the
+importing file:
+
+```plum
+seed math                       # standard library: math.sqrt(2.0)
+seed net.http                   # use as http.server()
+seed net.http as web            # use as web.server()
+seed ./shapes                   # the file shapes.plum next to this one
+seed ./models/user as user      # models/user.plum
+seed math { sqrt, PI }          # bring names in directly: sqrt(PI)
+```
+
+A module's name is the last part of its path. Imports must come before other
+statements. Circular imports are a compile error that shows the cycle.
+
+### 9.3 Packages
+
+A directory with a `plum.toml` is a package; its `entry` file is the
+program. Third-party packages are a post-1.0 feature.
+
+```toml
+[package]
+name = "weather-api"
+version = "0.1.0"
+entry = "main.plum"
+```
+
+### 9.4 Visibility
+
+Every top-level name is visible to modules that import it, except names
+starting with `_`, which are private to their module. Fields and methods
+starting with `_` are private to their tree (and the trees that extend it).
