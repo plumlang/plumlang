@@ -1,0 +1,11 @@
+# command: ast
+a < b < c
+f(x, , y)
+{}
+if ready { 1 }
+spawn 42
+f(name: 1, 2)
+(1, 2)
+0..1..2
+x as int??
+items[1

@@ -1,0 +1,15 @@
+# command: ast
+1 + 2 - 3
+2 * 3 / 4 // 5 % 6
+a | b ^ c & d
+1 << 2 >> 3
+a or b or c
+a and b or c and d
+x ?? y ?? z
+-x * -y
+~mask & 0xFF
+2 ** -1
+a.b.c(d)[e]
+f()()
+list[0][1]
+x in items and not (y in items)
