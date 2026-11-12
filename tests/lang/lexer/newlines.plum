@@ -1,0 +1,18 @@
+# command: tokens
+# Comments and blank lines produce no tokens.
+
+plant total = 1 +
+    2   # continues after the operator
+drop(
+    "a",
+    "b",
+)
+if x {
+
+    y()
+}
+
+
+z = [1,
+     2]
+plant s = "é" + x   # columns count characters, not bytes

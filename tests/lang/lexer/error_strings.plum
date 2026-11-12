@@ -1,0 +1,6 @@
+# command: tokens
+"bad escape \q here"
+"\u{110000} \u{D800} \u{} \u41"
+"a } b"
+"never closed
+plant after = 1

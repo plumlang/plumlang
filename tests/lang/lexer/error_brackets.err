@@ -1,0 +1,4 @@
+tests/lang/lexer/error_brackets.plum:2:5: error: '(' is never closed
+tests/lang/lexer/error_brackets.plum:3:16: error: ')' doesn't match the '[' opened at 3:11
+tests/lang/lexer/error_brackets.plum:4:12: error: ']' has no matching '['
+tests/lang/lexer/error_brackets.plum:5:11: error: '(' is never closed

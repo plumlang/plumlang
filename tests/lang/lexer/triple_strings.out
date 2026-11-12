@@ -1,0 +1,13 @@
+2:1 PLANT
+2:7 IDENT poem
+2:12 EQ
+2:14 STRING_HEAD "Roses are red,\n  Plums are "
+4:18 IDENT colour
+4:24 STRING_TAIL ".\n\nDone.\n"
+7:8 NEWLINE
+8:1 PLANT
+8:7 IDENT inline
+8:14 EQ
+8:16 STRING "no newline"
+8:32 NEWLINE
+9:1 EOF

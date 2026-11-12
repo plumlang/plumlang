@@ -1,0 +1,6 @@
+# command: tokens
+if a && b || !c {
+    x++
+}
+plant y = 1;
+plant s = 'single'

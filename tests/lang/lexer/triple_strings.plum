@@ -1,0 +1,8 @@
+# command: tokens
+plant poem = """
+    Roses are red,
+      Plums are {colour}.
+
+    Done.
+    """
+plant inline = """no newline"""

@@ -1,0 +1,6 @@
+tests/lang/lexer/error_foreign.plum:2:6: error: '&&' is written 'and' in Plumlang
+tests/lang/lexer/error_foreign.plum:2:11: error: '||' is written 'or' in Plumlang
+tests/lang/lexer/error_foreign.plum:2:14: error: '!' is written 'not' in Plumlang
+tests/lang/lexer/error_foreign.plum:3:6: error: Plumlang has no '++'; write '+= 1'
+tests/lang/lexer/error_foreign.plum:5:12: error: Plumlang doesn't use ';'; end the statement with a new line
+tests/lang/lexer/error_foreign.plum:6:11: error: strings use double quotes: "single"
