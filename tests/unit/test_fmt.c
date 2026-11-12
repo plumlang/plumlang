@@ -22,4 +22,15 @@ void plum_test_fmt(void) {
     CHECK_STR(plum_format_float(-(1e300 * 1e300), buf), "-inf");
     CHECK_STR(plum_format_float(NAN, buf), "nan");
     CHECK_STR(plum_format_float(123456789.0, buf), "123456789.0");
+    CHECK_STR(plum_format_float(1e9, buf), "1000000000.0");
+    CHECK_STR(plum_format_float(100.0, buf), "100.0");
+    CHECK_STR(plum_format_float(1e15, buf), "1000000000000000.0");
+    CHECK_STR(plum_format_float(1e16, buf), "1e+16");
+    CHECK_STR(plum_format_float(1e-5, buf), "1e-05");
+    CHECK_STR(plum_format_float(1.5e-7, buf), "1.5e-07");
+    CHECK_STR(plum_format_float(0.0001, buf), "0.0001");
+    CHECK_STR(plum_format_float(-1.25e300, buf), "-1.25e+300");
+    CHECK_STR(plum_format_float(5e-324, buf), "5e-324");
+    CHECK_STR(plum_format_float(1.7976931348623157e308, buf), "1.7976931348623157e+308");
+    CHECK_STR(plum_format_float(1000.0005, buf), "1000.0005");
 }
