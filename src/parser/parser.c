@@ -1020,6 +1020,9 @@ static PlumStmt *parse_tree(PlumParser *p, bool is_trait) {
                 field.span = join(name->span, previous(p)->span);
                 plum_array_push(&fields, field);
                 end_statement(p);
+            } else if ((check(p, PLUM_TOK_PLANT) || check(p, PLUM_TOK_ROOT)) && !is_trait) {
+                error_at(p, peek(p)->span, "fields are written without '%s': 'name: type = value'",
+                         plum_token_kind_text(peek(p)->kind));
             } else {
                 error_expected(p, is_trait ? "a method ('branch ...')"
                                            : "a field ('name: type') or a method ('branch ...')");
