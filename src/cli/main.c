@@ -14,6 +14,7 @@
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
  */
+#include "check/flow.h"
 #include "check/resolve.h"
 #include "check/typecheck.h"
 #include "diag/diag.h"
@@ -214,6 +215,9 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
             plum_resolve(&program, &arena, &names, &diags);
             if (diags.errors == 0) {
                 plum_typecheck(&program, &arena, &names, &diags);
+            }
+            if (diags.errors == 0) {
+                plum_check_flow(&program, &diags);
             }
         }
     }

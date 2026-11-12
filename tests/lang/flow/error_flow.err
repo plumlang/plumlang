@@ -1,0 +1,25 @@
+tests/lang/flow/error_flow.plum:4:5: error[E0501]: 'sign' doesn't return a value on every path; add a 'return' after this
+ 4 |     if n < 0 { return "negative" }
+   |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/lang/flow/error_flow.plum:7:5: error[E0501]: 'loop_then_nothing' doesn't return a value on every path; add a 'return' after this
+ 7 |     for x in xs { return x }
+   |     ^~~~~~~~~~~~~~~~~~~~~~~~
+tests/lang/flow/error_flow.plum:10:5: error[E0501]: 'leaves' doesn't return a value on every path; add a 'return' after this
+10 |     while n > 0 {
+   |     ^~~~~~~~~~~~~
+tests/lang/flow/error_flow.plum:14:1: error[E0502]: 'break' can only be used inside a loop
+14 | break
+   | ^~~~~
+tests/lang/flow/error_flow.plum:18:13: error[E0502]: 'continue' can only be used inside a loop
+18 |             continue
+   |             ^~~~~~~~
+tests/lang/flow/error_flow.plum:25:1: error[E0503]: this match doesn't cover the case 'Yellow' of Light; add it or an 'else' arm
+25 | match l {
+   | ^~~~~~~~~
+tests/lang/flow/error_flow.plum:29:1: error[E0503]: a match on int can't list every value; add an 'else' arm for the rest
+29 | match 5 {
+   | ^~~~~~~~~
+tests/lang/flow/error_flow.plum:32:1: error[E0503]: this match on a bool doesn't cover 'bad'; add it or an 'else' arm
+32 | match good {
+   | ^~~~~~~~~~~~
+8 errors
