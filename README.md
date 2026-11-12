@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="Licence: Plumlang Commercial 1.0" src="https://img.shields.io/badge/licence-Plumlang%20Commercial%201.0-6b3fa0?style=flat-square"></a>
+  <a href="https://github.com/plumlang/plumlang/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/plumlang/plumlang/build.yml?branch=main&style=flat-square&label=build"></a>
   <a href="https://github.com/plumlang/plumlang/issues/36"><img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-orange?style=flat-square"></a>
 </p>
 
