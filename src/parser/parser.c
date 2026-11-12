@@ -104,8 +104,8 @@ static void describe(const PlumToken *tok, char *buf, size_t size) {
     }
 }
 
-PLUM_PRINTF(3, 4)
-static void error_at(PlumParser *p, PlumSpan span, const char *fmt, ...) {
+PLUM_PRINTF(4, 5)
+static void error_at(PlumParser *p, PlumSpan span, const char *code, const char *fmt, ...) {
     if (p->panic) {
         return;
     }
@@ -115,7 +115,7 @@ static void error_at(PlumParser *p, PlumSpan span, const char *fmt, ...) {
     va_start(args, fmt);
     vsnprintf(message, sizeof message, fmt, args);
     va_end(args);
-    plum_diag_error(p->diags, span, "%s", message);
+    plum_diag_error(p->diags, span, code, "%s", message);
 }
 
 /* "expected X, found Y" at the current token. */
@@ -141,7 +141,7 @@ static void error_expected(PlumParser *p, const char *what) {
     } else {
         describe(tok, found, sizeof found);
     }
-    error_at(p, at, "expected %s, found %s", what, found);
+    error_at(p, at, "E0201", "expected %s, found %s", what, found);
 }
 
 static bool expect(PlumParser *p, PlumTokenKind kind, const char *what) {
@@ -250,7 +250,7 @@ PlumType *plum_parse_type(PlumParser *p) {
 
     if (check(p, PLUM_TOK_QUESTION_QUESTION)) {
         /* `T??` lexes as the ?? operator; it is a doubled optional. */
-        error_at(p, peek(p)->span, "a type can be optional only once: write 'T?'");
+        error_at(p, peek(p)->span, "E0208", "a type can be optional only once: write 'T?'");
         advance(p);
     }
     if (match(p, PLUM_TOK_QUESTION)) {
@@ -258,7 +258,7 @@ PlumType *plum_parse_type(PlumParser *p) {
         opt->as.optional = type;
         type = opt;
         if (check(p, PLUM_TOK_QUESTION) || check(p, PLUM_TOK_QUESTION_QUESTION)) {
-            error_at(p, peek(p)->span, "a type can be optional only once: write 'T?'");
+            error_at(p, peek(p)->span, "E0208", "a type can be optional only once: write 'T?'");
         }
     }
     return type;
@@ -404,7 +404,7 @@ static PlumExpr *parse_map(PlumParser *p) {
             skip_newlines(p);
         }
         if (entries.len == 0 && check(p, PLUM_TOK_RBRACE)) {
-            error_at(p, join(open->span, peek(p)->span),
+            error_at(p, join(open->span, peek(p)->span), "E0204",
                      "'{}' is ambiguous here; write '{:}' for an empty map");
         }
     }
@@ -492,7 +492,7 @@ static PlumExpr *parse_if(PlumParser *p) {
     if (match(p, PLUM_TOK_ELSE)) {
         otherwise = check(p, PLUM_TOK_IF) ? parse_if(p) : parse_expr_block(p);
     } else {
-        error_at(p, peek(p)->span, "an if expression needs an 'else' branch");
+        error_at(p, peek(p)->span, "E0205", "an if expression needs an 'else' branch");
     }
     PlumExpr *e = new_expr(p, PLUM_EXPR_IF, join(kw->span, previous(p)->span));
     e->as.if_.cond = cond;
@@ -643,7 +643,7 @@ static PlumExpr *parse_prefix(PlumParser *p) {
         advance(p);
         PlumExpr *inner = parse_prec(p, PREC_POSTFIX);
         if (inner->kind != PLUM_EXPR_CALL && inner->kind != PLUM_EXPR_ERROR) {
-            error_at(p, inner->span, "spawn needs a function call, like 'spawn work()'");
+            error_at(p, inner->span, "E0206", "spawn needs a function call, like 'spawn work()'");
         }
         PlumExpr *e = new_expr(p, PLUM_EXPR_SPAWN, join(tok->span, inner->span));
         e->as.inner = inner;
@@ -664,7 +664,7 @@ static PlumExpr *parse_call(PlumParser *p, PlumExpr *callee) {
             advance(p); /* : */
             named_seen = true;
         } else if (named_seen) {
-            error_at(p, peek(p)->span, "positional arguments must come before named ones");
+            error_at(p, peek(p)->span, "E0207", "positional arguments must come before named ones");
         }
         arg.value = plum_parse_expr(p);
         arg.span = join(arg.span, arg.value->span);
@@ -743,7 +743,7 @@ static PlumExpr *parse_prec(PlumParser *p, int min_prec) {
             e->as.range.inclusive = op->kind == PLUM_TOK_DOT_DOT_EQ;
             left = e;
             if (check(p, PLUM_TOK_DOT_DOT) || check(p, PLUM_TOK_DOT_DOT_EQ)) {
-                error_at(p, peek(p)->span, "ranges can't be chained");
+                error_at(p, peek(p)->span, "E0203", "ranges can't be chained");
             }
             continue;
         }
@@ -761,7 +761,7 @@ static PlumExpr *parse_prec(PlumParser *p, int min_prec) {
         }
 
         if (prec == PREC_COMPARE && is_comparison(peek(p)->kind)) {
-            error_at(p, peek(p)->span,
+            error_at(p, peek(p)->span, "E0202",
                      "comparisons can't be chained; write 'a < b and b < c' instead");
         }
     }
@@ -929,7 +929,7 @@ static PlumStmt *parse_try_stmt(PlumParser *p) {
         s->as.try_.finally = parse_block(p);
     }
     if (catches.len == 0 && s->as.try_.finally == NULL) {
-        error_at(p, kw->span, "a try block needs at least one 'catch' or a 'finally'");
+        error_at(p, kw->span, "E0212", "a try block needs at least one 'catch' or a 'finally'");
     }
     s->as.try_.catches = to_arena(p, catches.items, catches.len, sizeof(PlumCatch));
     s->as.try_.catch_count = catches.len;
@@ -952,7 +952,7 @@ static void parse_params(PlumParser *p, PlumParam **out, size_t *count) {
             param.fallback = plum_parse_expr(p);
             defaults_seen = true;
         } else if (defaults_seen && !p->panic) {
-            error_at(p, name->span, "parameters with defaults must come last");
+            error_at(p, name->span, "E0211", "parameters with defaults must come last");
         }
         param.span = join(name->span, previous(p)->span);
         plum_array_push(&params, param);
@@ -1031,7 +1031,8 @@ static PlumStmt *parse_tree(PlumParser *p, bool is_trait) {
                 plum_array_push(&fields, field);
                 end_statement(p);
             } else if ((check(p, PLUM_TOK_PLANT) || check(p, PLUM_TOK_ROOT)) && !is_trait) {
-                error_at(p, peek(p)->span, "fields are written without '%s': 'name: type = value'",
+                error_at(p, peek(p)->span, "E0213",
+                         "fields are written without '%s': 'name: type = value'",
                          plum_token_kind_text(peek(p)->kind));
             } else {
                 error_expected(p, is_trait ? "a method ('branch ...')"
@@ -1085,7 +1086,7 @@ static PlumStmt *parse_kind(PlumParser *p) {
         expect(p, PLUM_TOK_RBRACE, "',' or '}' after the case");
     }
     if (cases.len == 0 && !p->panic) {
-        error_at(p, kw->span, "a kind needs at least one case");
+        error_at(p, kw->span, "E0214", "a kind needs at least one case");
     }
     s->as.kind.cases = to_arena(p, cases.items, cases.len, sizeof(PlumCase));
     s->as.kind.case_count = cases.len;
@@ -1191,7 +1192,7 @@ static PlumStmt *parse_expr_or_assign(PlumParser *p) {
                       (target->kind == PLUM_EXPR_FIELD && !target->as.field.optional) ||
                       target->kind == PLUM_EXPR_ERROR;
     if (!assignable) {
-        error_at(p, target->span,
+        error_at(p, target->span, "E0209",
                  "can't assign to this; the left of '%s' must be a name, a field or an index",
                  plum_token_kind_text(op->kind));
     }
@@ -1214,8 +1215,8 @@ static PlumStmt *parse_decl(PlumParser *p) {
         s->as.decl.value = plum_parse_expr(p);
     } else if (!p->panic) {
         const char *word = plum_token_kind_text(kw->kind);
-        error_at(p, peek(p)->span, "'%s %s' needs a value: %s %s = ...", word, s->as.decl.name,
-                 word, s->as.decl.name);
+        error_at(p, peek(p)->span, "E0210", "'%s %s' needs a value: %s %s = ...", word,
+                 s->as.decl.name, word, s->as.decl.name);
     }
     return finish(p, s);
 }
@@ -1277,7 +1278,7 @@ static PlumStmt *parse_stmt(PlumParser *p) {
         s = parse_seed(p);
         break;
     case PLUM_TOK_LBRACE:
-        error_at(p, tok->span,
+        error_at(p, tok->span, "E0216",
                  "a block can't stand on its own; for an empty map write 'plant m = {:}'");
         s = new_stmt(p, PLUM_STMT_ERROR, tok->span);
         break;
@@ -1302,7 +1303,7 @@ PlumProgram plum_parse_program(PlumParser *p) {
         }
         PlumStmt *s = parse_stmt(p);
         if (s->kind == PLUM_STMT_SEED && other_seen) {
-            plum_diag_error(p->diags, s->span,
+            plum_diag_error(p->diags, s->span, "E0215",
                             "'seed' must come before other statements; move it to the top");
         } else if (s->kind != PLUM_STMT_SEED) {
             other_seen = true;

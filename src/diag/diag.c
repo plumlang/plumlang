@@ -27,9 +27,9 @@ void plum_diag_free(PlumDiagList *list) {
     list->errors = 0;
 }
 
-PLUM_PRINTF(4, 0)
-static void add(PlumDiagList *list, PlumSeverity severity, PlumSpan span, const char *fmt,
-                va_list args) {
+PLUM_PRINTF(5, 0)
+static void add(PlumDiagList *list, PlumSeverity severity, PlumSpan span, const char *code,
+                const char *fmt, va_list args) {
     va_list copy;
     va_copy(copy, args);
     int n = vsnprintf(NULL, 0, fmt, copy);
@@ -40,24 +40,24 @@ static void add(PlumDiagList *list, PlumSeverity severity, PlumSpan span, const 
     char *message = plum_alloc((size_t)n + 1);
     vsnprintf(message, (size_t)n + 1, fmt, args);
 
-    PlumDiag diag = {severity, span, message};
+    PlumDiag diag = {severity, span, code, message};
     plum_array_push(&list->items, diag);
     if (severity == PLUM_ERROR) {
         list->errors++;
     }
 }
 
-void plum_diag_error(PlumDiagList *list, PlumSpan span, const char *fmt, ...) {
+void plum_diag_error(PlumDiagList *list, PlumSpan span, const char *code, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    add(list, PLUM_ERROR, span, fmt, args);
+    add(list, PLUM_ERROR, span, code, fmt, args);
     va_end(args);
 }
 
-void plum_diag_warning(PlumDiagList *list, PlumSpan span, const char *fmt, ...) {
+void plum_diag_warning(PlumDiagList *list, PlumSpan span, const char *code, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    add(list, PLUM_WARNING, span, fmt, args);
+    add(list, PLUM_WARNING, span, code, fmt, args);
     va_end(args);
 }
 
@@ -220,10 +220,10 @@ void plum_diag_print(const PlumDiagList *list, FILE *out, bool color) {
     for (size_t i = 0; i < shown; i++) {
         const PlumDiag *d = sorted[i];
         bool is_error = d->severity == PLUM_ERROR;
-        fprintf(out, "%s%s:%u:%u:%s %s%s:%s %s%s%s\n", st->bold, list->source->path,
+        fprintf(out, "%s%s:%u:%u:%s %s%s[%s]:%s %s%s%s\n", st->bold, list->source->path,
                 (unsigned)d->span.line, (unsigned)d->span.column, st->reset,
-                is_error ? st->error : st->warning, is_error ? "error" : "warning", st->reset,
-                st->bold, d->message, st->reset);
+                is_error ? st->error : st->warning, is_error ? "error" : "warning", d->code,
+                st->reset, st->bold, d->message, st->reset);
         print_snippet(list->source, d, width, st, out);
     }
     if (n > shown) {

@@ -36,7 +36,8 @@ typedef enum PlumSeverity {
 typedef struct PlumDiag {
     PlumSeverity severity;
     PlumSpan span;
-    char *message; /* owned */
+    const char *code; /* "E0201", documented in docs/errors.md */
+    char *message;    /* owned */
 } PlumDiag;
 
 typedef struct PlumDiagList {
@@ -54,8 +55,14 @@ void plum_diag_free(PlumDiagList *list);
 #define PLUM_PRINTF(fmt, args)
 #endif
 
-void plum_diag_error(PlumDiagList *list, PlumSpan span, const char *fmt, ...) PLUM_PRINTF(3, 4);
-void plum_diag_warning(PlumDiagList *list, PlumSpan span, const char *fmt, ...) PLUM_PRINTF(3, 4);
+/*
+ * Report an error or warning. `code` names it in docs/errors.md: E01xx
+ * for the lexer, E02xx for the parser; warnings use W codes.
+ */
+void plum_diag_error(PlumDiagList *list, PlumSpan span, const char *code, const char *fmt, ...)
+    PLUM_PRINTF(4, 5);
+void plum_diag_warning(PlumDiagList *list, PlumSpan span, const char *code, const char *fmt, ...)
+    PLUM_PRINTF(4, 5);
 
 /*
  * Print the diagnostics in source order: "path:line:column: error:
