@@ -81,6 +81,7 @@ test: all $(UNIT_BIN)
 	@$(UNIT_BIN)
 	@sh tests/smoke.sh $(PLUM)
 	@sh tests/harness/self-test.sh
+	@sh tests/errors-documented.sh
 	@sh tests/golden.sh $(PLUM)
 
 # Rewrite the golden expectations from actual output (review the diff!).

@@ -70,6 +70,8 @@ if(PLUM_SH)
   add_test(NAME smoke COMMAND ${PLUM_SH} ${CMAKE_SOURCE_DIR}/tests/smoke.sh $<TARGET_FILE:plum>)
   add_test(NAME harness COMMAND ${PLUM_SH} tests/harness/self-test.sh
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  add_test(NAME errors-documented COMMAND ${PLUM_SH} tests/errors-documented.sh
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME golden COMMAND ${PLUM_SH} tests/golden.sh $<TARGET_FILE:plum>
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
