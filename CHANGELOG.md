@@ -16,6 +16,9 @@ Format for a new entry:
 
 ## Unreleased
 
+- **CLI**: the `plum` command with `help`, `version` and `run`; `run` reads the source file until the compiler lands.
+- **Build**: Makefile (release, debug, sanitize) and CMake (MSVC, IDEs); warnings are errors.
+- **CI**: builds and tests on Linux (x86_64, arm64), macOS and Windows (MSVC, mingw-w64), under ASan and UBSan, with a clang-format check.
 - **Licensing and governance**: the Plumlang Commercial License 1.0 with its
   preamble, the `LICENSES/` tree, trademarks, contributing guide, security
   policy, issue forms and CI.

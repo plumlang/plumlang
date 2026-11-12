@@ -144,8 +144,7 @@ int main(int argc, char **argv) {
         print_help(stdout);
         return PLUM_EXIT_OK;
     }
-    if (strcmp(cmd, "version") == 0 || strcmp(cmd, "--version") == 0 ||
-        strcmp(cmd, "-v") == 0) {
+    if (strcmp(cmd, "version") == 0 || strcmp(cmd, "--version") == 0 || strcmp(cmd, "-v") == 0) {
         print_version();
         return PLUM_EXIT_OK;
     }
@@ -156,7 +155,8 @@ int main(int argc, char **argv) {
         return cmd_run(argc - 1, argv + 1);
     }
 
-    fprintf(stderr, "plum: error: unknown command '%s'\n  hint: run `plum help` to see the commands\n",
+    fprintf(stderr,
+            "plum: error: unknown command '%s'\n  hint: run `plum help` to see the commands\n",
             cmd);
     return PLUM_EXIT_USAGE;
 }

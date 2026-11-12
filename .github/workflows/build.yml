@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+#
+# Build and test Plumlang on every OS and compiler it supports
+# (PREAMBLE 2.2), under the sanitizers (PREAMBLE 2.4), and check formatting.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  # Every pull request, including ones stacked on another PR's branch.
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unix:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, cc: gcc }
+          - { os: ubuntu-latest, cc: clang }
+          - { os: ubuntu-24.04-arm, cc: gcc }
+          - { os: macos-latest, cc: clang }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: make CC=${{ matrix.cc }}
+      - run: make CC=${{ matrix.cc }} test
+      - run: ./plum version
+
+  sanitize:
+    name: sanitizers / ${{ matrix.cc }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: make CC=${{ matrix.cc }} sanitize test
+
+  windows-msvc:
+    name: windows / msvc
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: cmake -S . -B build
+      - run: cmake --build build --config Release
+      - run: ctest --test-dir build -C Release --output-on-failure
+      - run: build\Release\plum.exe version
+        shell: cmd
+
+  windows-mingw:
+    name: windows / mingw-w64
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          install: make git mingw-w64-ucrt-x86_64-gcc
+      - run: make CC=gcc
+      - run: make CC=gcc test
+      - run: ./plum version
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # Pinned so every contributor formats the same way: pip install clang-format==18.1.8
+      - run: pipx install clang-format==18.1.8
+      - run: make format-check
