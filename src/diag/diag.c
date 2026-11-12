@@ -4,6 +4,7 @@
 #include "util/alloc.h"
 
 #include <stdarg.h>
+#include <stdlib.h>
 
 void plum_diag_init(PlumDiagList *list, const PlumSource *source) {
     list->source = source;
@@ -55,11 +56,28 @@ void plum_diag_warning(PlumDiagList *list, PlumSpan span, const char *fmt, ...) 
     va_end(args);
 }
 
+/* Diagnostics come from several stages; print them in source order. */
+static int by_position(const void *a, const void *b) {
+    const PlumDiag *x = *(const PlumDiag *const *)a;
+    const PlumDiag *y = *(const PlumDiag *const *)b;
+    if (x->span.offset != y->span.offset) {
+        return x->span.offset < y->span.offset ? -1 : 1;
+    }
+    return x < y ? -1 : x > y; /* keep the order they were reported in */
+}
+
 void plum_diag_print(const PlumDiagList *list, FILE *out) {
-    for (size_t i = 0; i < list->items.len; i++) {
-        const PlumDiag *d = &list->items.items[i];
+    size_t n = list->items.len;
+    const PlumDiag **sorted = plum_alloc_zeroed(n, sizeof *sorted);
+    for (size_t i = 0; i < n; i++) {
+        sorted[i] = &list->items.items[i];
+    }
+    qsort(sorted, n, sizeof *sorted, by_position);
+    for (size_t i = 0; i < n; i++) {
+        const PlumDiag *d = sorted[i];
         fprintf(out, "%s:%u:%u: %s: %s\n", list->source->path, (unsigned)d->span.line,
                 (unsigned)d->span.column, d->severity == PLUM_ERROR ? "error" : "warning",
                 d->message);
     }
+    plum_free(sorted);
 }
