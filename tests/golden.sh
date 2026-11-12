@@ -7,8 +7,9 @@
 #   NAME.out   expected standard output; the program must exit 0
 #   NAME.err   expected standard error;  the program must exit 1
 #
-# A `# command: NAME` line among the first two runs `plum NAME` instead of
-# `plum run` (for example `tokens` to test the lexer).
+# A `# command: NAME` line among the first three runs `plum NAME` instead
+# of `plum run` (for example `tokens` to test the lexer). An `# exit: N`
+# line expects exit code N instead (say 0 for a .err file of warnings).
 #
 # A test whose first line is `# pending: <reason>` is expected to fail
 # until the feature lands: it is reported as pending and does not fail
@@ -81,7 +82,11 @@ for test in $(find "$DIR" -name '*.plum' | sort); do
         is_pending=1
     fi
 
-    subcommand=$(head -n 2 "$test" | sed -n 's/^# command: *\([a-z]*\).*/\1/p' | head -n 1)
+    subcommand=$(head -n 3 "$test" | sed -n 's/^# command: *\([a-z]*\).*/\1/p' | head -n 1)
+    exit_line=$(head -n 3 "$test" | sed -n 's/^# exit: *\([0-9]*\).*/\1/p' | head -n 1)
+    if [ -n "$exit_line" ]; then
+        want_exit=$exit_line
+    fi
     run_plum "${subcommand:-run}" "$test" >"$tmp/out" 2>"$tmp/err"
     got_exit=$?
     tr -d '\r' <"$tmp/$stream" >"$tmp/actual"
