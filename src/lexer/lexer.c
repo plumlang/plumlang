@@ -252,9 +252,46 @@ static bool continues_line(PlumTokenKind kind) {
     }
 }
 
+/* Keywords that can only begin a statement. */
+static bool starts_statement(const char *s, size_t n) {
+    static const char *const words[] = {"plant", "root",     "branch", "tree",  "trait",
+                                        "kind",  "seed",     "for",    "while", "return",
+                                        "break", "continue", "throw"};
+    for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
+        size_t len = strlen(words[i]);
+        if (n > len && memcmp(s, words[i], len) == 0 && !is_alnum(s[len])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Inside an unclosed ( or [, a line that begins a new statement means the
+ * bracket was never closed. Report it at the bracket and close it, so the
+ * error points at the real mistake instead of a later line.
+ */
+static void close_forgotten_brackets(Lexer *lx) {
+    size_t next = lx->pos + 1;
+    while (next < lx->length && (lx->text[next] == ' ' || lx->text[next] == '\t')) {
+        next++;
+    }
+    if (!starts_statement(lx->text + next, lx->length - next)) {
+        return;
+    }
+    while (lx->open.len > 0 && (open_top(lx) == '(' || open_top(lx) == '[')) {
+        Open *o = &plum_array_last(&lx->open);
+        plum_diag_error(lx->diags, o->span, "'%c' is never closed", o->kind);
+        lx->open.len--;
+    }
+}
+
 static void newline(Lexer *lx) {
     PlumSpan at = here(lx);
     at.length = 1;
+    if (open_top(lx) == '(' || open_top(lx) == '[') {
+        close_forgotten_brackets(lx);
+    }
     char top = open_top(lx);
     bool inside = top == '(' || top == '[' || top == 'I';
     if (!inside && !continues_line(last_kind(lx))) {
@@ -286,14 +323,16 @@ static int digit_value(char c) {
  */
 static void read_digits(Lexer *lx, int radix, const char *radix_name) {
     bool prev_digit = false;
+    bool reported = false;
     for (;;) {
         char c = peek(lx);
         if (c == '_') {
             PlumSpan at = here(lx);
             at.length = 1;
             advance(lx);
-            if (!prev_digit || digit_value(peek(lx)) >= radix) {
+            if ((!prev_digit || digit_value(peek(lx)) >= radix) && !reported) {
                 plum_diag_error(lx->diags, at, "'_' must be between two digits");
+                reported = true;
             }
             prev_digit = false;
             continue;
@@ -393,9 +432,13 @@ static void lex_number(Lexer *lx) {
     }
 
     if (radix == 10 && lx->buf.items[0] == '0' && lx->buf.items[1] != '\0') {
+        const char *digits = lx->buf.items;
+        while (digits[0] == '0' && digits[1] != '\0') {
+            digits++;
+        }
         plum_diag_error(lx->diags, span,
-                        "a number can't start with 0; for an octal number write 0o%s",
-                        lx->buf.items + 1);
+                        "a number can't start with 0; write %s, or 0o%s for an octal number",
+                        digits, digits);
         emit(lx, PLUM_TOK_ERROR, span);
         return;
     }
@@ -784,8 +827,16 @@ static void close_bracket(Lexer *lx, char close, PlumTokenKind tok) {
         }
         if (i > 0 && lx->open.items[i - 1].kind == want) {
             Open *inner = &lx->open.items[lx->open.len - 1];
-            plum_diag_error(lx->diags, inner->span, "'%c' is never closed", inner->kind);
+            plum_diag_error(lx->diags, at, "'%c' doesn't match the '%c' opened at %u:%u", close,
+                            inner->kind, (unsigned)inner->span.line, (unsigned)inner->span.column);
             lx->open.len = i - 1;
+        } else if (open_top(lx) == '(' || open_top(lx) == '[' || open_top(lx) == '{') {
+            /* Nothing further out matches either: most likely the closer is
+             * a typo for the innermost bracket's, so treat it as closing it. */
+            Open *inner = &plum_array_last(&lx->open);
+            plum_diag_error(lx->diags, at, "'%c' doesn't match the '%c' opened at %u:%u", close,
+                            inner->kind, (unsigned)inner->span.line, (unsigned)inner->span.column);
+            lx->open.len--;
         } else {
             plum_diag_error(lx->diags, at, "'%c' has no matching '%c'", close, want);
         }
@@ -899,9 +950,25 @@ static void unexpected(Lexer *lx) {
         plum_diag_error(lx->diags, span,
                         "Plumlang doesn't use ';'; end the statement with a new line");
         break;
-    case '\'':
-        plum_diag_error(lx->diags, span, "strings use double quotes: \"like this\"");
-        break;
+    case '\'': {
+        /* Take everything up to the closing ' on this line as the string,
+         * so parsing can carry on, and show how to write it. */
+        size_t text_from = lx->pos;
+        while (!at_end(lx) && peek(lx) != '\'' && peek(lx) != '\n') {
+            advance(lx);
+        }
+        size_t text_len = lx->pos - text_from;
+        if (peek(lx) == '\'') {
+            advance(lx);
+        }
+        span = span_from(lx, start);
+        plum_diag_error(lx->diags, span, "strings use double quotes: \"%.*s\"", (int)text_len,
+                        lx->text + text_from);
+        PlumToken *tok = emit(lx, PLUM_TOK_STRING, span);
+        tok->as.str.chars = plum_arena_strndup(lx->arena, lx->text + text_from, text_len);
+        tok->as.str.len = text_len;
+        return;
+    }
     case '!':
         plum_diag_error(lx->diags, span, "'!' is written 'not' in Plumlang");
         break;
