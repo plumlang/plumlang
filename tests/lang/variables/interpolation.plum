@@ -1,0 +1,7 @@
+# pending: needs the compiler and VM (#16)
+plant name = "Ada"
+plant n = 3
+drop("Hello, {name}!")
+drop("{n} + {n} = {n + n}")
+drop("braces: \{literal\}")
+drop("{1.5}")

@@ -1,0 +1,42 @@
+# pending: needs the compiler and VM (#16)
+# From the prototype's test_logic.plum, with and/or/not.
+drop("--- EDGE TEST 1: AND FALSE CASE ---")
+if good and bad {
+    drop("FAIL: AND")
+} else {
+    drop("PASS: AND false")
+}
+
+drop("--- EDGE TEST 2: OR FALSE CASE ---")
+if bad or bad {
+    drop("FAIL: OR")
+} else {
+    drop("PASS: OR false")
+}
+
+drop("--- EDGE TEST 3: DOUBLE NOT ---")
+if not not good {
+    drop("PASS: double NOT")
+}
+
+drop("--- EDGE TEST 4: PARENTHESES ---")
+if (good or bad) and good {
+    drop("PASS: parentheses")
+}
+
+drop("--- EDGE TEST 5: PRECEDENCE ---")
+if good or bad and bad {
+    drop("PASS: AND before OR")
+}
+
+drop("--- EDGE TEST 6: NOT WITH COMPARISON ---")
+if not (5 == 3) {
+    drop("PASS: NOT comparison")
+}
+
+drop("--- EDGE TEST 7: COMBINED COMPARISONS ---")
+if 5 > 3 and 2 < 4 {
+    drop("PASS: comparisons with AND")
+}
+
+drop("--- EDGE TESTS FINISHED ---")

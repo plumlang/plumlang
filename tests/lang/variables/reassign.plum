@@ -1,0 +1,8 @@
+# pending: needs the compiler and VM (#16)
+plant score = 0
+score = score + 10
+score = score * 2
+drop(score)
+plant label = "a"
+label = label + "b"
+drop(label)

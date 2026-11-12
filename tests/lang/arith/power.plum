@@ -1,0 +1,7 @@
+# pending: needs the compiler and VM (#16)
+# ** groups right to left and binds tighter than unary minus.
+drop(2 ** 10)
+drop(2 ** 3 ** 2)
+drop(-2 ** 2)
+drop((-2) ** 2)
+drop(2.0 ** 0.5 > 1.41)

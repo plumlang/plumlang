@@ -1,0 +1,7 @@
+# pending: needs the compiler and VM (#16)
+plant x = 1
+if good {
+    plant x = 2
+    drop(x)
+}
+drop(x)

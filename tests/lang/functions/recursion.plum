@@ -1,0 +1,10 @@
+# pending: needs the compiler and VM (#16)
+branch fib(n: int) -> int {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+branch fact(n: int) -> int => if n <= 1 { 1 } else { n * fact(n - 1) }
+drop(fib(15))
+drop(fact(20))

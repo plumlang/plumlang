@@ -1,0 +1,15 @@
+--- EDGE TEST 1: AND FALSE CASE ---
+PASS: AND false
+--- EDGE TEST 2: OR FALSE CASE ---
+PASS: OR false
+--- EDGE TEST 3: DOUBLE NOT ---
+PASS: double NOT
+--- EDGE TEST 4: PARENTHESES ---
+PASS: parentheses
+--- EDGE TEST 5: PRECEDENCE ---
+PASS: AND before OR
+--- EDGE TEST 6: NOT WITH COMPARISON ---
+PASS: NOT comparison
+--- EDGE TEST 7: COMBINED COMPARISONS ---
+PASS: comparisons with AND
+--- EDGE TESTS FINISHED ---

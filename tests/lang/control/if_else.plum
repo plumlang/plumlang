@@ -1,0 +1,100 @@
+# pending: needs the compiler and VM (#16)
+# From the prototype's v0.8.plum.
+if 10 > 5 {
+    drop("TEST 1: PASS")
+}
+if 10 < 5 {
+    drop("TEST 2: FAIL")
+}
+if 10 == 10 {
+    drop("TEST 3: PASS")
+} else {
+    drop("TEST 3: FAIL")
+}
+if 10 != 10 {
+    drop("TEST 4: FAIL")
+} else {
+    drop("TEST 4: PASS")
+}
+if 20 > 10 {
+    drop("TEST 5: FIRST")
+} else if 20 > 5 {
+    drop("TEST 5: SECOND")
+} else {
+    drop("TEST 5: THIRD")
+}
+if 10 > 20 {
+    drop("TEST 6: FIRST")
+} else if 10 > 5 {
+    drop("TEST 6: SECOND")
+} else {
+    drop("TEST 6: THIRD")
+}
+if 5 > 20 {
+    drop("TEST 7: FIRST")
+} else if 5 > 10 {
+    drop("TEST 7: SECOND")
+} else {
+    drop("TEST 7: ELSE")
+}
+
+plant score = 75
+if score >= 90 {
+    drop("TEST 8: A")
+} else if score >= 80 {
+    drop("TEST 8: B")
+} else if score >= 70 {
+    drop("TEST 8: C")
+} else {
+    drop("TEST 8: F")
+}
+
+plant age = 21
+if age > 18 {
+    drop("TEST 9: ADULT")
+} else {
+    drop("TEST 9: MINOR")
+}
+
+plant ready = good
+if ready {
+    drop("TEST 10: READY")
+} else {
+    drop("TEST 10: NOT READY")
+}
+
+plant name = "Plum"
+if name == "Plum" {
+    drop("TEST 11: MATCH")
+} else {
+    drop("TEST 11: NO MATCH")
+}
+
+if 10 > 5 {
+    drop("TEST 12: FIRST")
+    drop("TEST 12: SECOND")
+    drop("TEST 12: THIRD")
+}
+
+if 10 > 5 {
+    if 20 > 10 {
+        drop("TEST 13: INNER PASS")
+    } else {
+        drop("TEST 13: INNER FAIL")
+    }
+} else {
+    drop("TEST 13: OUTER FAIL")
+}
+
+plant x = 15
+if x > 20 {
+    drop("TEST 14: OUTER FIRST")
+} else if x > 10 {
+    if x > 14 {
+        drop("TEST 14: NESTED PASS")
+    } else {
+        drop("TEST 14: NESTED FAIL")
+    }
+} else {
+    drop("TEST 14: OUTER ELSE")
+}

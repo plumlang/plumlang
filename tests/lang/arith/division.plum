@@ -1,0 +1,10 @@
+# pending: needs the compiler and VM (#16)
+# / always gives a float; // floors; % takes the sign of the divisor.
+drop(10 / 10)
+drop(20 / 5)
+drop(7 / 2)
+drop(7 // 2)
+drop(-7 // 2)
+drop(7 % 3)
+drop(-7 % 2)
+drop(7.5 // 2)

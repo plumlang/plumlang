@@ -1,0 +1,5 @@
+# pending: needs the compiler and VM (#16)
+# A whole-line comment.
+drop("one")   # a comment after code
+# drop("not run")
+drop("# inside a string is not a comment")
