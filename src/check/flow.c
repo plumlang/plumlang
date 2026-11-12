@@ -341,8 +341,16 @@ static void walk_block(Flow *f, const PlumStmt *block) {
     for (size_t i = 0; i < block->as.block.count; i++) {
         const PlumStmt *s = block->as.block.stmts[i];
         walk_stmt(f, s);
-        if (!warned && i + 1 < block->as.block.count && ends(f, s, true)) {
-            plum_diag_warning(f->diags, block->as.block.stmts[i + 1]->span, "W0501",
+        const PlumStmt *next = i + 1 < block->as.block.count ? block->as.block.stmts[i + 1] : NULL;
+        /* A break outside a loop is already an error; declarations don't
+         * run in order, so they are never "unreachable". */
+        bool stray =
+            (s->kind == PLUM_STMT_BREAK || s->kind == PLUM_STMT_CONTINUE) && f->loop_depth == 0;
+        bool declaration =
+            next != NULL && (next->kind == PLUM_STMT_BRANCH || next->kind == PLUM_STMT_TREE ||
+                             next->kind == PLUM_STMT_TRAIT || next->kind == PLUM_STMT_KIND);
+        if (!warned && next != NULL && !stray && !declaration && ends(f, s, true)) {
+            plum_diag_warning(f->diags, next->span, "W0501",
                               "this code never runs: the line before always leaves this block");
             warned = true;
         }
