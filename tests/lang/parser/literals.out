@@ -1,15 +1,15 @@
 (list)
 (list 1 2 3)
 (list (list 1 2) (list 3))
-(map ("a" 1))
-(map ("name" "Ada") ("age" 36))
+(plant a (map ("a" 1)))
+(plant person (map ("name" "Ada") ("age" 36)))
 "plain"
 (interp a b)
 (interp (format x ">10") "|")
 (interp "outer " (interp "inner " deep) " done")
 (lambda () 42)
 (lambda (a b) (+ a b))
-(if a 1 (if b 2 3))
+(plant n (if a 1 (if b 2 3)))
 none
 (. self balance)
 (call (. super speak))

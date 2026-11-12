@@ -13,9 +13,9 @@ f(1, x + 1, secure: good)
 items[1..3]
 (x: int, y) => x * y
 numbers.filter((n) => n % 2 == 0)
-if count == 1 { "item" } else { "items" }
+plant label = if count == 1 { "item" } else { "items" }
 try int(text) ?? 8080
 spawn download(url)
-{"a": 1, "b": [2, 3]}
-{:}
+plant m = {"a": 1, "b": [2, 3]}
+plant empty: map[str, int] = {:}
 x is Circle and y as float > 1.0
