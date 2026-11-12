@@ -124,7 +124,7 @@ These words are reserved and cannot be used as identifiers:
 | `is` | type test |
 | `as` | conversion, import alias |
 | `self`, `super` | the current object, its parent tree |
-| `throw`, `try`, `catch` | errors |
+| `throw`, `try`, `catch`, `finally` | errors |
 | `spawn` | start a task |
 | `weak` | a non-owning reference |
 
@@ -239,7 +239,7 @@ There is no truthiness: `if count {` is a type error; write `if count > 0 {`.
 | Value | Text |
 |---|---|
 | `int` | decimal digits: `42`, `-7` |
-| `float` | the shortest text that reads back as the same number, always with a `.` or an exponent: `1.0`, `0.1`, `19.99`, `1e+20`, `inf`, `-inf`, `nan` |
+| `float` | the shortest text that reads back as the same number, always with a `.` or an exponent. Exponents from −4 to 15 are written out (`1.0`, `0.0025`, `1000000000.0`), others in scientific notation (`1e+20`, `1e-05`); also `inf`, `-inf`, `nan` |
 | `bool` | `good` or `bad` |
 | `str` | the text itself, without quotes |
 | `none` | `none` |
