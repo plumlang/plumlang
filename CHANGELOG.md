@@ -16,6 +16,7 @@ Format for a new entry:
 
 ## Unreleased
 
+- **Spec**: `docs/spec.md`, the language specification v0.1 draft.
 - **CLI**: the `plum` command with `help`, `version` and `run`; `run` reads the source file until the compiler lands.
 - **Build**: Makefile (release, debug, sanitize) and CMake (MSVC, IDEs); warnings are errors.
 - **Core utilities**: checked allocation, an arena allocator, growable arrays, a string-keyed hash map and string interning, with unit tests run by `make test`.
