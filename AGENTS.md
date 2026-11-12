@@ -73,15 +73,39 @@ make test            # golden-file tests
 make sanitize test   # under ASan + UBSan
 ```
 
+## Development commands go through rtk
+
+Agents run development commands through [rtk](https://github.com/rtk-ai/rtk)
+(Rust Token Killer), a CLI proxy that trims command output so agent context
+isn't wasted:
+
+```bash
+rtk make             # build
+rtk make test        # tests: only the failures come back in full
+rtk git status       # git, gh, grep, ls, cat (rtk read) the same way
+rtk proxy <cmd>      # the raw, unfiltered output when you need every line
+```
+
+Where the rtk hook is installed, plain commands are rewritten to `rtk`
+automatically. If filtered output hides something you need (a full diff, a
+complete error log, `git status` of untracked files), rerun it with
+`rtk proxy`. People working by hand don't need rtk.
+
 ## Workflow
 
 - One folder per repository. Work on a branch named after the issue
   (`area/issue-N`), open a pull request, and squash-merge. `main` is
   protected.
 - One pull request per issue, single author.
+- **Commit as you go.** Each logical step is its own small commit as soon
+  as it builds and its tests pass: the lexer's number literals, then its
+  strings, then their tests. Don't wait to make one large commit at the
+  end. The pull request is squash-merged, so small commits cost nothing
+  on `main`.
+- **Commits have a single author.** Every commit is authored by the person
+  who owns the pull request, signed off (`git commit -s`), and carries no
+  `Co-Authored-By` or other AI attribution trailers.
 - Pull requests say what changed, what was tested, and on which platforms.
-- Commits are signed off (`git commit -s`) and carry no AI attribution
-  trailers.
 - User-visible changes get a line under `## Unreleased` in `CHANGELOG.md`.
 
 ## Do not

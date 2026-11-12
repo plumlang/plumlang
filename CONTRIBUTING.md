@@ -72,8 +72,9 @@ cmake -B build && cmake --build build --config Release
 2. Fork the repository and branch from `main`. Name the branch after the
    issue, for example `vm/issue-15`; CI then links the pull request to the
    issue.
-3. Make the change, with tests. One pull request does one thing, closes one
-   issue, and has a single author.
+3. Make the change, with tests, and commit as you go: one small, signed-off
+   commit per logical step, each one building and passing the tests. One
+   pull request does one thing, closes one issue, and has a single author.
 4. Run the checks below.
 5. Open a pull request: what changed and why, what you tested, and on which
    platforms. Link the issue ("Closes #15").
