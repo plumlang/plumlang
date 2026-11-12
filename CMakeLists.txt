@@ -16,9 +16,18 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(PLUM_SANITIZE "Build with AddressSanitizer and UBSan (GCC/Clang)" OFF)
 
-file(GLOB_RECURSE PLUM_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.c)
-add_executable(plum ${PLUM_SOURCES})
-target_include_directories(plum PRIVATE ${CMAKE_SOURCE_DIR}/include)
+# Everything but the command-line front end is a static library, which the
+# plum binary and the unit tests both link.
+file(GLOB_RECURSE PLUM_LIB_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.c)
+list(FILTER PLUM_LIB_SOURCES EXCLUDE REGEX "/src/cli/")
+file(GLOB_RECURSE PLUM_CLI_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/cli/*.c)
+file(GLOB_RECURSE PLUM_UNIT_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/unit/*.c)
+
+add_library(plumcore STATIC ${PLUM_LIB_SOURCES})
+add_executable(plum ${PLUM_CLI_SOURCES})
+add_executable(plum_unit_tests ${PLUM_UNIT_SOURCES})
+target_link_libraries(plum PRIVATE plumcore)
+target_link_libraries(plum_unit_tests PRIVATE plumcore)
 
 find_package(Git QUIET)
 set(PLUM_COMMIT "unknown")
@@ -36,22 +45,26 @@ if(GIT_FOUND)
 endif()
 target_compile_definitions(plum PRIVATE PLUM_COMMIT="${PLUM_COMMIT}")
 
-if(MSVC)
-  target_compile_options(plum PRIVATE /W4 /WX /utf-8)
-  # fopen, strerror: the portable C11 functions are what we want.
-  target_compile_definitions(plum PRIVATE _CRT_SECURE_NO_WARNINGS)
-else()
-  target_compile_options(plum PRIVATE
-    -Wall -Wextra -Wpedantic -Werror -Wshadow -Wstrict-prototypes
-    -Wmissing-prototypes -Wvla -Wformat=2 -Wundef)
-  if(PLUM_SANITIZE)
-    target_compile_options(plum PRIVATE
-      -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
-    target_link_options(plum PRIVATE -fsanitize=address,undefined)
+foreach(target plumcore plum plum_unit_tests)
+  target_include_directories(${target} PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4 /WX /utf-8)
+    # fopen, strerror: the portable C11 functions are what we want.
+    target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
+  else()
+    target_compile_options(${target} PRIVATE
+      -Wall -Wextra -Wpedantic -Werror -Wshadow -Wstrict-prototypes
+      -Wmissing-prototypes -Wvla -Wformat=2 -Wundef)
+    if(PLUM_SANITIZE)
+      target_compile_options(${target} PRIVATE
+        -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+      target_link_options(${target} PRIVATE -fsanitize=address,undefined)
+    endif()
   endif()
-endif()
+endforeach()
 
 enable_testing()
+add_test(NAME unit COMMAND plum_unit_tests)
 find_program(PLUM_SH sh)
 if(PLUM_SH)
   add_test(NAME smoke COMMAND ${PLUM_SH} ${CMAKE_SOURCE_DIR}/tests/smoke.sh $<TARGET_FILE:plum>)
