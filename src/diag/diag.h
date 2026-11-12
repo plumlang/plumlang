@@ -49,7 +49,11 @@ typedef struct PlumDiagList {
 void plum_diag_init(PlumDiagList *list, const PlumSource *source);
 void plum_diag_free(PlumDiagList *list);
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__MINGW32__)
+/* MinGW's 'printf' format means Microsoft's rules, without %zu; the UCRT
+ * runtime does handle %zu, so check against GNU's rules instead. */
+#define PLUM_PRINTF(fmt, args) __attribute__((format(gnu_printf, fmt, args)))
+#elif defined(__GNUC__) || defined(__clang__)
 #define PLUM_PRINTF(fmt, args) __attribute__((format(printf, fmt, args)))
 #else
 #define PLUM_PRINTF(fmt, args)
