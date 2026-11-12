@@ -5,7 +5,7 @@
 #   make                  release build -> ./plum
 #   make debug            debug build (-O0 -g)
 #   make sanitize         debug build under AddressSanitizer + UBSan
-#   make test             run the tests against the selected build
+#   make test             unit tests, then the smoke tests, on the selected build
 #   make sanitize test    the tests, under the sanitizers
 #   make format           format the C sources with clang-format
 #   make format-check     fail if anything is not formatted
@@ -18,7 +18,7 @@ CC      ?= cc
 STD     := -std=c11
 WARN    := -Wall -Wextra -Wpedantic -Werror -Wshadow -Wstrict-prototypes \
            -Wmissing-prototypes -Wvla -Wformat=2 -Wundef
-INCLUDE := -Iinclude
+INCLUDE := -Iinclude -Isrc
 
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DEFS    := -DPLUM_COMMIT=\"$(COMMIT)\"
@@ -45,10 +45,18 @@ CFLAGS  += $(STD) $(WARN) $(OPT) $(INCLUDE) $(DEFS) -MMD -MP
 LDFLAGS += $(LDSAN)
 
 BUILD   := build/$(MODE)
-SRCS    := $(shell find src -name '*.c' | sort)
-OBJS    := $(SRCS:%.c=$(BUILD)/%.o)
-BIN     := $(BUILD)/plum
-PLUM    := ./plum
+# Everything but the command-line front end is the library the unit tests
+# link against.
+LIB_SRCS  := $(shell find src -name '*.c' ! -path 'src/cli/*' | sort)
+CLI_SRCS  := $(shell find src/cli -name '*.c' | sort)
+UNIT_SRCS := $(shell find tests/unit -name '*.c' | sort)
+LIB_OBJS  := $(LIB_SRCS:%.c=$(BUILD)/%.o)
+CLI_OBJS  := $(CLI_SRCS:%.c=$(BUILD)/%.o)
+UNIT_OBJS := $(UNIT_SRCS:%.c=$(BUILD)/%.o)
+OBJS      := $(LIB_OBJS) $(CLI_OBJS) $(UNIT_OBJS)
+BIN       := $(BUILD)/plum
+UNIT_BIN  := $(BUILD)/unit-tests
+PLUM      := ./plum
 
 .PHONY: all release debug sanitize test format format-check clean
 
@@ -58,17 +66,21 @@ all release debug sanitize: $(BIN)
 	@cp $(BIN) $(PLUM)
 	@echo "built $(PLUM) ($(MODE))"
 
-$(BIN): $(OBJS)
-	$(CC) $(OBJS) $(LDFLAGS) -o $@
+$(BIN): $(LIB_OBJS) $(CLI_OBJS)
+	$(CC) $^ $(LDFLAGS) -o $@
+
+$(UNIT_BIN): $(LIB_OBJS) $(UNIT_OBJS)
+	$(CC) $^ $(LDFLAGS) -o $@
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-test: all
+test: all $(UNIT_BIN)
+	@$(UNIT_BIN)
 	@sh tests/smoke.sh $(PLUM)
 
-C_FILES := $(shell find src include -name '*.c' -o -name '*.h' | sort)
+C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)
 
 format:
 	clang-format -i $(C_FILES)
