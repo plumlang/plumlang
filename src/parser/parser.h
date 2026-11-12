@@ -33,10 +33,7 @@ void plum_parser_init(PlumParser *p, const PlumTokenList *tokens, PlumArena *are
 PlumExpr *plum_parse_expr(PlumParser *p);
 PlumType *plum_parse_type(PlumParser *p);
 
-/*
- * Parse a file of expressions, one per line, into a NULL-terminated array
- * in the arena. Used by `plum ast` until statements are parsed (#10).
- */
-PlumExpr **plum_parse_expr_lines(PlumParser *p, size_t *count);
+/* Parse a whole file. The program lives in the arena. */
+PlumProgram plum_parse_program(PlumParser *p);
 
 #endif /* PLUM_PARSER_PARSER_H */

@@ -1,0 +1,29 @@
+(seed math)
+(seed net.http as web)
+(seed ./models/user as user)
+(seed ../lib/shapes)
+(seed math {sqrt PI})
+(branch add ((a int) (b int)) -> int
+  (block
+    (return (+ a b))))
+(branch connect ((host str) (port int = 80) (secure bool = bad))
+  (block))
+(branch square ((x int)) -> int => (* x x))
+(tree Account : Show
+  (field owner str)
+  (field balance float = 0.0)
+  (branch deposit ((amount float))
+    (block
+      (if (<= amount 0)
+        (block
+          (throw (call ValueError "deposit must be positive"))))
+      (+= (. self balance) amount)))
+  (branch to_str () -> str => (interp (. self owner) ": " (format (. self balance) ".2"))))
+(tree Node
+  (field children list[Node] = (list))
+  (field parent weak Node? = none))
+(trait Shape
+  (branch area () -> float)
+  (branch name () -> str => "shape"))
+(kind Direction (North) (East) (South) (West))
+(kind Figure (Circle ((radius float))) (Rect ((width float) (height float))))

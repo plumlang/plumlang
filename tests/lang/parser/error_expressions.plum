@@ -1,8 +1,8 @@
 # command: ast
 a < b < c
 f(x, , y)
-{}
-if ready { 1 }
+plant m = {}
+plant v = if ready { 1 }
 spawn 42
 f(name: 1, 2)
 (1, 2)

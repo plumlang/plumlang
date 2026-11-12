@@ -1,0 +1,24 @@
+(plant score 0)
+(plant ratio: float 1)
+(root MAX: int 100)
+(= score (+ score 10))
+(+= score 1)
+(= (index items 0) 5)
+(-= (. acct balance) 2.5)
+(if-plant n nickname
+  (block
+    (call drop (interp "Called " n)))
+  (block
+    (call drop "anonymous")))
+(for i, name (call (. names enumerate))
+  (block
+    (call drop (interp i ": " name))))
+(for _ (.. 0 3)
+  (block
+    (call tick)))
+(while (> n 0)
+  (block
+    (-= n 3)))
+(branch done ()
+  (block
+    (return)))

@@ -205,12 +205,8 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
     } else {
         PlumParser parser;
         plum_parser_init(&parser, &tokens, &arena, &names, &diags);
-        size_t count = 0;
-        PlumExpr **exprs = plum_parse_expr_lines(&parser, &count);
-        for (size_t i = 0; i < count; i++) {
-            plum_print_expr(stdout, exprs[i]);
-            putchar('\n');
-        }
+        PlumProgram program = plum_parse_program(&parser);
+        plum_print_program(stdout, &program);
     }
     fflush(stdout);
     plum_diag_print(&diags, stderr);

@@ -1,0 +1,29 @@
+(try
+  (block
+    (plant text (call load "config.txt")))
+  (catch e: NotFound
+    (block
+      (call drop (interp "Missing: " (. e path)))))
+  (catch e
+    (block
+      (call drop (. e message))))
+  (finally
+    (block
+      (call close))))
+(match command
+  (arm "start" => (call start))
+  (arm "stop" "halt" => (call stop))
+  (arm (.. 0 10) => (block
+      (call drop "small")
+      (call log)))
+  (arm else => (call drop (interp "Unknown: " command))))
+(plant area (match s
+  (arm (call Circle r) => (* 3.14159 (** r 2)))
+  (arm (call Rect w h) => (* w h))
+  (arm _ => 0.0)))
+(plant ch (call (index Channel int)))
+(spawn (call (lambda () (block
+  (for i (.. 0 3)
+    (block
+      (call (. ch send) i)))
+  (call (. ch close))))))
