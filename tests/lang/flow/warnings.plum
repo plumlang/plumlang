@@ -1,0 +1,17 @@
+# command: check
+# exit: 0
+branch f() -> int {
+    return 1
+    drop("never")
+}
+for i in 0..3 {
+    break
+    drop(i)
+}
+plant unused = 5
+plant _kept = 6
+branch g() {
+    plant temp = 1
+}
+f()
+g()

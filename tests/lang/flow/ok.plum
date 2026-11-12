@@ -1,0 +1,46 @@
+# command: check
+# Every function returns on every path: no output, exit 0.
+branch sign(n: int) -> str {
+    if n > 0 {
+        return "positive"
+    } else if n < 0 {
+        return "negative"
+    } else {
+        return "zero"
+    }
+}
+branch first_even(xs: list[int]) -> int {
+    for x in xs {
+        if x % 2 == 0 { return x }
+    }
+    throw ValueError("no even number")
+}
+branch forever() -> int {
+    while good {
+        return 1
+    }
+}
+branch parse(s: str) -> int {
+    try {
+        return int(s)
+    } catch e {
+        return 0
+    }
+}
+kind Light { Red, Yellow, Green }
+branch action(l: Light) -> str {
+    match l {
+        Red => { return "stop" }
+        Yellow => { return "slow" }
+        Green => { return "go" }
+    }
+}
+branch quit_now() -> int {
+    exit(1)
+}
+for i in 0..3 {
+    if i == 1 { continue }
+    plant callback = () => i
+    drop(callback())
+}
+drop(sign(1), first_even([1, 2]), forever(), parse("4"), action(Light.Red), quit_now())

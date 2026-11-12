@@ -1,0 +1,13 @@
+tests/lang/flow/warnings.plum:5:5: warning[W0501]: this code never runs: the line before always leaves this block
+ 5 |     drop("never")
+   |     ^~~~~~~~~~~~~
+tests/lang/flow/warnings.plum:9:5: warning[W0501]: this code never runs: the line before always leaves this block
+ 9 |     drop(i)
+   |     ^~~~~~~
+tests/lang/flow/warnings.plum:11:1: warning[W0502]: 'unused' is never used; remove it, or start its name with '_' to keep it
+11 | plant unused = 5
+   | ^~~~~~~~~~~~~~~~
+tests/lang/flow/warnings.plum:14:5: warning[W0502]: 'temp' is never used; remove it, or start its name with '_' to keep it
+14 |     plant temp = 1
+   |     ^~~~~~~~~~~~~~
+4 warnings
