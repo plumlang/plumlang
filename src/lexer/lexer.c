@@ -627,8 +627,10 @@ static void skip_indent(Lexer *lx, size_t indent) {
  * STRING or STRING_HEAD when `first`, else STRING_MID or STRING_TAIL. On
  * `{`, an interpolation is opened and lexing goes back to normal tokens.
  */
-static void lex_string_part(Lexer *lx, bool first, bool triple, size_t indent, PlumSpan quote) {
-    PlumSpan start = here(lx);
+static void lex_string_part(Lexer *lx, bool first, bool triple, size_t indent, PlumSpan quote,
+                            PlumSpan start) {
+    /* `start` is the '"' or '}' this part begins with; tokens span from it. */
+    start.length = 0;
     lx->buf.len = 0;
     bool line_start = false;
 
@@ -727,9 +729,10 @@ static void lex_string(Lexer *lx) {
     for (int i = 0; i < (triple ? 3 : 1); i++) {
         advance(lx);
     }
+    PlumSpan start = quote;
     quote = span_from(lx, quote);
     size_t indent = triple ? triple_indent(lx, lx->pos) : 0;
-    lex_string_part(lx, true, triple, indent, quote);
+    lex_string_part(lx, true, triple, indent, quote, start);
 }
 
 /* A `:` at the top of an interpolation starts a format: "{x:.2}". */
@@ -952,8 +955,9 @@ void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, P
             lex_string(&lx);
         } else if (c == '}' && top == 'I') {
             Open interp = plum_array_pop(&lx.open);
+            PlumSpan brace = here(&lx);
             advance(&lx);
-            lex_string_part(&lx, false, interp.triple, interp.indent, interp.span);
+            lex_string_part(&lx, false, interp.triple, interp.indent, interp.span, brace);
         } else if (c == ':' && top == 'I') {
             lex_format(&lx);
         } else if (c == '(') {

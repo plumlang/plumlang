@@ -7,11 +7,17 @@
  *   plum version             version and build information
  *   plum run <file> [args]   run a program
  *   plum <file.plum> [args]  shorthand for `plum run`
+ *   plum tokens <file>       print the tokens of a file (for debugging)
  *
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
  */
+#include "diag/diag.h"
+#include "lexer/lexer.h"
 #include "plum/version.h"
+#include "util/arena.h"
+#include "util/fmt.h"
+#include "util/intern.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -32,6 +38,7 @@ static void print_help(FILE *out) {
           "  plum run <file> [args...]   Run a Plumlang program\n"
           "  plum <file.plum> [args...]  Same as `plum run`\n"
           "  plum version                Show the version and build\n"
+          "  plum tokens <file>          Print the tokens of a file (debugging)\n"
           "  plum help                   Show this help\n"
           "\n"
           "Docs and source: https://github.com/plumlang/plumlang\n",
@@ -126,6 +133,76 @@ static int cmd_run(int argc, char **argv) {
     return PLUM_EXIT_FAILED;
 }
 
+static void print_token(const PlumToken *tok) {
+    printf("%u:%u %s", (unsigned)tok->span.line, (unsigned)tok->span.column,
+           plum_token_kind_name(tok->kind));
+    switch (tok->kind) {
+    case PLUM_TOK_INT:
+        printf(" %lld", (long long)tok->as.i);
+        break;
+    case PLUM_TOK_FLOAT: {
+        char buf[PLUM_FLOAT_BUF];
+        printf(" %s", plum_format_float(tok->as.f, buf));
+        break;
+    }
+    case PLUM_TOK_IDENT:
+        printf(" %s", tok->as.name);
+        break;
+    case PLUM_TOK_STRING:
+    case PLUM_TOK_STRING_HEAD:
+    case PLUM_TOK_STRING_MID:
+    case PLUM_TOK_STRING_TAIL:
+    case PLUM_TOK_FORMAT:
+        putchar(' ');
+        plum_write_quoted(stdout, tok->as.str.chars, tok->as.str.len);
+        break;
+    default:
+        break;
+    }
+    putchar('\n');
+}
+
+static int cmd_tokens(int argc, char **argv) {
+    if (argc != 1) {
+        fputs("plum: error: `plum tokens` needs one file\n"
+              "  hint: plum tokens hello.plum\n",
+              stderr);
+        return PLUM_EXIT_USAGE;
+    }
+    const char *path = argv[0];
+    size_t len = 0;
+    int err = 0;
+    char *text = read_file(path, &len, &err);
+    if (text == NULL) {
+        fprintf(stderr, "plum: error: cannot read '%s': %s\n", path, strerror(err));
+        return PLUM_EXIT_NOINPUT;
+    }
+
+    PlumSource source = {path, text, len};
+    PlumArena arena;
+    PlumInterner names;
+    PlumDiagList diags;
+    PlumTokenList tokens = {0};
+    plum_arena_init(&arena);
+    plum_interner_init(&names);
+    plum_diag_init(&diags, &source);
+
+    plum_lex(&source, &arena, &names, &diags, &tokens);
+    for (size_t i = 0; i < tokens.len; i++) {
+        print_token(&tokens.items[i]);
+    }
+    fflush(stdout);
+    plum_diag_print(&diags, stderr);
+    int status = diags.errors > 0 ? PLUM_EXIT_FAILED : PLUM_EXIT_OK;
+
+    plum_array_free(&tokens);
+    plum_diag_free(&diags);
+    plum_interner_free(&names);
+    plum_arena_free(&arena);
+    free(text);
+    return status;
+}
+
 static int ends_with(const char *s, const char *suffix) {
     size_t n = strlen(s);
     size_t m = strlen(suffix);
@@ -147,6 +224,9 @@ int main(int argc, char **argv) {
     if (strcmp(cmd, "version") == 0 || strcmp(cmd, "--version") == 0 || strcmp(cmd, "-v") == 0) {
         print_version();
         return PLUM_EXIT_OK;
+    }
+    if (strcmp(cmd, "tokens") == 0) {
+        return cmd_tokens(argc - 2, argv + 2);
     }
     if (strcmp(cmd, "run") == 0) {
         return cmd_run(argc - 2, argv + 2);
