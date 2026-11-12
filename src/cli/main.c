@@ -8,12 +8,14 @@
  *   plum run <file> [args]   run a program
  *   plum <file.plum> [args]  shorthand for `plum run`
  *   plum tokens <file>       print the tokens of a file (for debugging)
+ *   plum ast <file>          print the syntax tree of a file (for debugging)
  *
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
  */
 #include "diag/diag.h"
 #include "lexer/lexer.h"
+#include "parser/parser.h"
 #include "plum/version.h"
 #include "util/arena.h"
 #include "util/fmt.h"
@@ -39,6 +41,7 @@ static void print_help(FILE *out) {
           "  plum <file.plum> [args...]  Same as `plum run`\n"
           "  plum version                Show the version and build\n"
           "  plum tokens <file>          Print the tokens of a file (debugging)\n"
+          "  plum ast <file>             Print the syntax tree of a file (debugging)\n"
           "  plum help                   Show this help\n"
           "\n"
           "Docs and source: https://github.com/plumlang/plumlang\n",
@@ -162,11 +165,18 @@ static void print_token(const PlumToken *tok) {
     putchar('\n');
 }
 
-static int cmd_tokens(int argc, char **argv) {
+typedef enum FrontStage {
+    STAGE_TOKENS,
+    STAGE_AST,
+} FrontStage;
+
+/* plum tokens / plum ast: run the front end on one file and print it. */
+static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) {
     if (argc != 1) {
-        fputs("plum: error: `plum tokens` needs one file\n"
-              "  hint: plum tokens hello.plum\n",
-              stderr);
+        fprintf(stderr,
+                "plum: error: `plum %s` needs one file\n"
+                "  hint: plum %s hello.plum\n",
+                name, name);
         return PLUM_EXIT_USAGE;
     }
     const char *path = argv[0];
@@ -188,8 +198,19 @@ static int cmd_tokens(int argc, char **argv) {
     plum_diag_init(&diags, &source);
 
     plum_lex(&source, &arena, &names, &diags, &tokens);
-    for (size_t i = 0; i < tokens.len; i++) {
-        print_token(&tokens.items[i]);
+    if (stage == STAGE_TOKENS) {
+        for (size_t i = 0; i < tokens.len; i++) {
+            print_token(&tokens.items[i]);
+        }
+    } else {
+        PlumParser parser;
+        plum_parser_init(&parser, &tokens, &arena, &names, &diags);
+        size_t count = 0;
+        PlumExpr **exprs = plum_parse_expr_lines(&parser, &count);
+        for (size_t i = 0; i < count; i++) {
+            plum_print_expr(stdout, exprs[i]);
+            putchar('\n');
+        }
     }
     fflush(stdout);
     plum_diag_print(&diags, stderr);
@@ -226,7 +247,10 @@ int main(int argc, char **argv) {
         return PLUM_EXIT_OK;
     }
     if (strcmp(cmd, "tokens") == 0) {
-        return cmd_tokens(argc - 2, argv + 2);
+        return cmd_front("tokens", STAGE_TOKENS, argc - 2, argv + 2);
+    }
+    if (strcmp(cmd, "ast") == 0) {
+        return cmd_front("ast", STAGE_AST, argc - 2, argv + 2);
     }
     if (strcmp(cmd, "run") == 0) {
         return cmd_run(argc - 2, argv + 2);

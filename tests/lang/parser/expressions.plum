@@ -1,0 +1,21 @@
+# command: ast
+# Spec 4.8: one line per precedence rule.
+1 + 2 * 3
+-2 ** 2
+2 ** 3 ** 2
+flags & MASK == 0
+0..n + 1
+a ?? b or c
+not a == b and c
+nickname?.upper()
+"Hi {name}, {price:.2}!"
+f(1, x + 1, secure: good)
+items[1..3]
+(x: int, y) => x * y
+numbers.filter((n) => n % 2 == 0)
+if count == 1 { "item" } else { "items" }
+try int(text) ?? 8080
+spawn download(url)
+{"a": 1, "b": [2, 3]}
+{:}
+x is Circle and y as float > 1.0

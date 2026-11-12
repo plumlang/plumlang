@@ -1,0 +1,10 @@
+tests/lang/parser/error_expressions.plum:2:7: error: comparisons can't be chained; write 'a < b and b < c' instead
+tests/lang/parser/error_expressions.plum:3:6: error: expected an expression, found ','
+tests/lang/parser/error_expressions.plum:4:1: error: '{}' is ambiguous here; write '{:}' for an empty map
+tests/lang/parser/error_expressions.plum:5:15: error: an if expression needs an 'else' branch
+tests/lang/parser/error_expressions.plum:6:7: error: spawn needs a function call, like 'spawn work()'
+tests/lang/parser/error_expressions.plum:7:12: error: positional arguments must come before named ones
+tests/lang/parser/error_expressions.plum:8:3: error: expected ')', found ','
+tests/lang/parser/error_expressions.plum:9:5: error: ranges can't be chained
+tests/lang/parser/error_expressions.plum:10:9: error: a type can be optional only once: write 'T?'
+tests/lang/parser/error_expressions.plum:11:6: error: '[' is never closed

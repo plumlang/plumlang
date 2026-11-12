@@ -1,0 +1,19 @@
+# command: ast
+[]
+[1, 2, 3,]
+[[1, 2], [3]]
+{"a": 1,}
+{
+    "name": "Ada",
+    "age": 36
+}
+"plain"
+"{a}{b}"
+"{x:>10}|"
+"outer {"inner {deep}"} done"
+() => 42
+(a, b) => a + b
+if a { 1 } else if b { 2 } else { 3 }
+none
+self.balance
+super.speak()
