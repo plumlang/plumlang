@@ -771,3 +771,235 @@ entry = "main.plum"
 Every top-level name is visible to modules that import it, except names
 starting with `_`, which are private to their module. Fields and methods
 starting with `_` are private to their tree (and the trees that extend it).
+
+## 10. Errors (Stage 5)
+
+### 10.1 Two kinds of mistakes
+
+**Compile errors** (wrong types, unknown names, syntax) stop the program
+before it starts, with the file, line, column, what is wrong and a hint.
+
+**Runtime errors** happen while the program runs: a file that cannot be
+opened, a list index out of range, integer overflow. A runtime error that
+is not caught ends the program with a message and a stack trace, and exit
+code 1.
+
+### 10.2 throw, try, catch
+
+Errors are trees that extend the built-in `Error` tree, which has a
+`message: str`.
+
+```plum
+tree NotFound : Error {
+    path: str
+}
+
+branch load(path: str) -> str {
+    if not fs.exists(path) {
+        throw NotFound("no such file", path)
+    }
+    return fs.read(path)
+}
+
+try {
+    plant text = load("config.txt")
+    drop(text)
+} catch e: NotFound {
+    drop("Missing: {e.path}")
+} catch e {
+    drop("Something else went wrong: {e.message}")
+}
+```
+
+`catch e: Type` catches that error tree and the trees that extend it; a
+plain `catch e` catches every error. A `try` may end with `finally { }`,
+which runs however the `try` ends.
+
+`try` is also an expression that turns an error into `none`:
+
+```plum
+plant port = try int(text) ?? 8080
+```
+
+The built-in error trees include `ValueError`, `ParseError`, `IndexError`,
+`KeyError`, `OverflowError`, `ZeroDivisionError`, `IOError`, `NetError`
+and `AssertError`.
+
+## 11. Values and memory
+
+### 11.1 Value types and reference types
+
+Numbers, booleans, `none`, strings, lists, maps, sets and kinds are
+**values**: assigning or passing one gives the receiver its own copy, so
+changing one never changes the other.
+
+```plum
+plant a = [1, 2, 3]
+plant b = a
+b.push(4)
+drop(a)        # [1, 2, 3]
+drop(b)        # [1, 2, 3, 4]
+```
+
+Copies are cheap: the data is shared until one side changes it, and only
+then copied (copy-on-write).
+
+Tree objects are **references**: assigning or passing one shares the
+object (section 8.3).
+
+### 11.2 Memory is reclaimed automatically and at once
+
+Every value is freed as soon as nothing refers to it anymore, by reference
+counting. There is no garbage collector, so there are no pauses, and
+memory use follows the program. Files and sockets close when their last
+reference goes away, as well as when `close()` is called.
+
+### 11.3 Cycles and weak references
+
+Two tree objects that refer to each other keep each other alive. Break the
+cycle by making the back-reference `weak`; a weak reference does not keep
+its object alive and reads as `none` once the object is gone, so its type is
+optional:
+
+```plum
+tree Node {
+    children: list[Node] = []
+    parent: weak Node? = none
+}
+```
+
+In debug builds (`plum run --check-leaks`), objects still alive in a cycle
+when the program ends are reported with the line that created them.
+
+### 11.4 What the runtime guarantees
+
+No Plumlang program can read or write memory it does not own: every index
+is checked, there are no raw pointers, and objects are never used after
+they are freed. A program can run out of memory, which ends it with a
+runtime error.
+
+## 12. Tasks and concurrency (Stage 5)
+
+### 12.1 spawn
+
+`spawn` runs a function call as a **task**, a lightweight thread of work.
+The program keeps going without waiting for it.
+
+```plum
+plant job = spawn download("https://example.com/a.txt")
+drop("downloading...")
+plant text = job.wait()          # wait for the result (or its error)
+```
+
+`spawn` returns a `Task[T]`, where `T` is the call's result type.
+`task.wait()` returns the result, or throws the task's error.
+
+### 12.2 No async/await
+
+Calls that wait for the outside world (network, files, timers, `ask`)
+pause only the task that made them; other tasks keep running. Code is
+written the same way whether or not it runs in a task: there is no
+`async`, no `await`, and no separate "async" version of any library.
+
+### 12.3 Sharing between tasks
+
+Tasks do not share variables. A task gets its own copy of the values it is
+given, and tree objects cannot be passed to a task (a compile error) unless
+the tree is marked `shared`, which allows only fields that are themselves
+values and makes each method call atomic. Tasks communicate through
+channels:
+
+```plum
+plant ch = Channel[int]()
+
+spawn (() => {
+    for i in 0..3 { ch.send(i) }
+    ch.close()
+})()
+
+for n in ch { drop(n) }          # 0 1 2
+```
+
+So there are no data races by construction. All tasks run on one operating
+system thread in 1.0; using several cores is planned after 1.0.
+
+## 13. The standard library
+
+Modules are imported with `seed`. The 1.0 library is planned as:
+
+| Module | Contents |
+|---|---|
+| `math` | constants and functions on numbers, random numbers |
+| `string` | the methods of `str` (always available on strings) |
+| `list`, `map`, `set` | the methods of collections (always available) |
+| `io` | standard input and output, formatting |
+| `fs` | files and directories |
+| `os` | arguments, environment, processes, exit |
+| `time` | clocks, dates, durations, `sleep` |
+| `json` | parse and produce JSON, mapped to maps, lists and trees |
+| `net` | TCP and UDP sockets, DNS |
+| `net.http` | an HTTP server and client |
+| `test` | assertions and a test runner (`plum test`) |
+
+Each module is documented in `docs/stdlib/` as it lands. A web server, for
+a taste:
+
+```plum
+seed net.http
+
+plant app = http.server()
+
+app.get("/hello/:name", (req) => http.text("Hello, {req.params["name"]}!"))
+
+app.listen(8080)
+```
+
+Each request runs in its own task (section 12).
+
+## 14. Running programs
+
+```
+plum run program.plum [args...]     # run a program
+plum program.plum [args...]         # the same
+plum check program.plum             # check for errors without running
+plum test                           # run tests (Stage 5)
+plum fmt                            # format source files (Stage 6)
+plum                                # interactive prompt (Stage 6)
+```
+
+Exit codes: 0 success, 1 the program failed (compile or runtime error, or
+`exit(1)`), 2 the command was used wrongly, 3 a source file could not be
+read.
+
+## 15. Changes from the Python prototype
+
+The Python prototype (plum-lang v0.1 to v0.10) introduced the garden
+keywords; Plumlang keeps them and changes the rest where the prototype was
+hard to read or unsafe:
+
+| Prototype | Plumlang | Why |
+|---|---|---|
+| `plant int x = 5` | `plant x = 5`, `plant x: int = 5` | Inference; the type follows the name everywhere |
+| `branch int add(int a, int b)` | `branch add(a: int, b: int) -> int` | The same `name: type` order as variables |
+| `drop x` and `drop(x)` | `drop(x)` only | One way; `drop` is an ordinary function |
+| `&&` `\|\|` `!` | `and` `or` `not` | Reads as English, and frees `!` |
+| `++` `--` | `x += 1` | One way to add one; no prefix/postfix puzzles |
+| C-style `for (init; cond; step)` | `for i in 0..n`, `while` | Fewer ways to write a loop, no off-by-one setup |
+| `if (cond)` | `if cond` | Parentheses optional, like any expression |
+| Every number a float (`25.0`) | `int` and `float` are separate | `drop(25)` prints `25` |
+| `10 / 2` gives `5.0` | `/` gives a float, `//` an int | Kept, and made explicit |
+| Mixed `#`, `//`, `--` comments | `#` only | One comment syntax |
+| Type errors while running | Type errors before running | Caught early, with a location |
+| Python exceptions leak out | Plumlang errors with a stack trace | Messages about your program, not the interpreter |
+
+## 16. Open questions
+
+To be settled before the parser (#10) depends on them:
+
+1. Should `trait` have a garden-themed name, like the other declaration
+   keywords? The current choice is `trait`, the term most programmers
+   already know.
+2. `true`/`false` as alternative spellings of `good`/`bad` (section 2.5):
+   keep both, or allow only one?
+3. Generic trees and functions (`tree Stack[T]`) are left out of 1.0 except
+   for the built-in collections. Are they needed for 1.0?
