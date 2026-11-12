@@ -379,11 +379,11 @@ From lowest to highest; operators on one row group left to right, except
 | 3 | `and` |
 | 4 | `not` |
 | 5 | `==` `!=` `<` `<=` `>` `>=` `is` `in` |
-| 6 | `\|` |
-| 7 | `^` |
-| 8 | `&` |
-| 9 | `<<` `>>` |
-| 10 | `..` `..=` |
+| 6 | `..` `..=` |
+| 7 | `\|` |
+| 8 | `^` |
+| 9 | `&` |
+| 10 | `<<` `>>` |
 | 11 | `+` `-` |
 | 12 | `*` `/` `//` `%` |
 | 13 | unary `-` `~` |
@@ -391,9 +391,9 @@ From lowest to highest; operators on one row group left to right, except
 | 15 | `as` |
 | 16 | call `f()`, index `a[i]`, field `a.b`, `a?.b` |
 
-So `-2 ** 2 == -4`, `1 + 2 * 3 == 7`, and `a & b == c` means
-`a & (b == c)` (a type error unless `a` is a `bool`… which `&` rejects), so
-write `(a & b) == c`. The compiler suggests the parentheses.
+So `-2 ** 2 == -4`, `1 + 2 * 3 == 7`, and `0..n + 1` is `0..(n + 1)`.
+Bitwise operators bind tighter than comparisons, as in Rust, Go and Swift:
+`flags & MASK == 0` means `(flags & MASK) == 0`, avoiding the C trap.
 
 ### 4.9 Membership and type tests
 
