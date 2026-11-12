@@ -209,7 +209,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
         plum_print_program(stdout, &program);
     }
     fflush(stdout);
-    plum_diag_print(&diags, stderr);
+    plum_diag_print(&diags, stderr, plum_diag_use_color(stderr));
     int status = diags.errors > 0 ? PLUM_EXIT_FAILED : PLUM_EXIT_OK;
 
     plum_array_free(&tokens);

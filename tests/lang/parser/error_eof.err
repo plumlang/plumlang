@@ -1,1 +1,4 @@
-tests/lang/parser/error_eof.plum:3:1: error: expected an expression, found end of file
+tests/lang/parser/error_eof.plum:2:4: error: expected an expression, found end of file
+2 | 1 +
+  |    ^
+1 error

@@ -9,6 +9,7 @@
 
 #include "util/array.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -56,7 +57,15 @@ void plum_diag_free(PlumDiagList *list);
 void plum_diag_error(PlumDiagList *list, PlumSpan span, const char *fmt, ...) PLUM_PRINTF(3, 4);
 void plum_diag_warning(PlumDiagList *list, PlumSpan span, const char *fmt, ...) PLUM_PRINTF(3, 4);
 
-/* Print every diagnostic as "path:line:column: error: message". */
-void plum_diag_print(const PlumDiagList *list, FILE *out);
+/*
+ * Print the diagnostics in source order: "path:line:column: error:
+ * message", the source line with the span underlined, and a count at the
+ * end. With `color`, ANSI colours are used.
+ */
+void plum_diag_print(const PlumDiagList *list, FILE *out, bool color);
+
+/* Whether to colour output to `out`: a terminal, unless NO_COLOR is set;
+ * FORCE_COLOR colours anyway. */
+bool plum_diag_use_color(FILE *out);
 
 #endif /* PLUM_DIAG_DIAG_H */
