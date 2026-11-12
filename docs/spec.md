@@ -232,6 +232,20 @@ Every other conversion is written:
 
 There is no truthiness: `if count {` is a type error; write `if count > 0 {`.
 
+### 3.2.1 How values print
+
+`str()`, `drop` and interpolation turn values into text the same way:
+
+| Value | Text |
+|---|---|
+| `int` | decimal digits: `42`, `-7` |
+| `float` | the shortest text that reads back as the same number, always with a `.` or an exponent: `1.0`, `0.1`, `19.99`, `1e+20`, `inf`, `-inf`, `nan` |
+| `bool` | `good` or `bad` |
+| `str` | the text itself, without quotes |
+| `none` | `none` |
+| list, map, set | `[1, 2]`, `{"a": 1}`, `set([1, 2])`, with strings inside quoted |
+| tree | its `to_str()` (trait `Show`), else `<TreeName>` |
+
 ### 3.3 Optional types
 
 `T?` is either a `T` or `none`. Only optional types can hold `none`, so a
