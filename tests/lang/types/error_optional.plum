@@ -1,0 +1,10 @@
+# command: check
+plant nickname: str? = none
+drop(nickname.upper())
+plant total: str = nickname
+drop(len(nickname))
+if plant x = "always here" { }
+plant given = 5 ?? 1
+plant nothing = none
+plant empty = []
+plant blank = {:}

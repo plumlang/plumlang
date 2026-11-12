@@ -1,0 +1,25 @@
+tests/lang/types/error_optional.plum:3:6: error[E0408]: 'nickname' may be none; write '?.upper' to skip it when it is none, or check it first with 'if plant'
+ 3 | drop(nickname.upper())
+   |      ^~~~~~~~
+tests/lang/types/error_optional.plum:4:20: error[E0408]: expected str, found str?, which may be none; use '??' to give a default or 'if plant' to check it first
+ 4 | plant total: str = nickname
+   |                    ^~~~~~~~
+tests/lang/types/error_optional.plum:5:10: error[E0408]: len() needs a str, list, map or set, found str?
+ 5 | drop(len(nickname))
+   |          ^~~~~~~~
+tests/lang/types/error_optional.plum:6:14: error[E0408]: 'if plant' unwraps a value that may be none, but this is always str; use 'plant' instead
+ 6 | if plant x = "always here" { }
+   |              ^~~~~~~~~~~~~
+tests/lang/types/error_optional.plum:7:15: error[E0408]: '??' gives a default for a value that may be none, but this is always int
+ 7 | plant given = 5 ?? 1
+   |               ^
+tests/lang/types/error_optional.plum:8:17: error[E0409]: can't tell the type of 'nothing' from none; write it, like 'plant nothing: str? = none'
+ 8 | plant nothing = none
+   |                 ^~~~
+tests/lang/types/error_optional.plum:9:15: error[E0409]: can't tell what this empty list holds; give the type, like 'plant xs: list[int] = []'
+ 9 | plant empty = []
+   |               ^~
+tests/lang/types/error_optional.plum:10:15: error[E0409]: can't tell what this empty map holds; give the type, like 'plant m: map[str, int] = {:}'
+10 | plant blank = {:}
+   |               ^~~
+8 errors

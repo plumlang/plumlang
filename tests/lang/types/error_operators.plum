@@ -1,0 +1,14 @@
+# command: check
+plant a: int = "hello"
+plant f: int = 2.5
+plant s = "total: " + 5
+plant n = 5
+n /= 2
+if n { drop("yes") }
+while "x" { }
+plant both = good and 1
+drop(1 < "a")
+drop(5 == "5")
+drop(3 & 1.5)
+drop(-"x")
+drop(not 1)

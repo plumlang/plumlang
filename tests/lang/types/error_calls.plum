@@ -1,0 +1,17 @@
+# command: check
+branch add(a: int, b: int) -> int => a + b
+drop(add(1))
+drop(add(1, 2, 3))
+drop(add(1, "two"))
+drop(add(a: 1, c: 2))
+drop(add(1, a: 2))
+plant x = 5
+x()
+branch nothing() { return 5 }
+branch something() -> int { return }
+branch wrong() -> str => 42
+drop(bool(1))
+drop(int([1]))
+drop("a" as int)
+5 + 5
+x == 6

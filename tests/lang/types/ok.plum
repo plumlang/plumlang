@@ -1,0 +1,52 @@
+# command: check
+# Everything here is well typed: no output, exit 0.
+plant ratio: float = 1            # int becomes float
+plant mixed = 2 * 1.5             # float
+plant half = 7 / 2                # / always gives a float
+plant whole = 7 // 2              # int
+plant names: list[str] = []
+plant ages: map[str, int] = {:}
+plant nickname: str? = none
+drop(nickname ?? "no nickname")
+if plant n = nickname { drop(n) }
+plant shout = nickname?.upper()
+plant label = if whole == 1 { "item" } else { "items" }
+plant maybe = if whole > 2 { "big" } else { none }   # str?
+plant b: byte = 200
+plant xs = [1, 2.5]                # list[float]
+for i, name in ages { drop("{i}: {name}") }
+for ch in "abc" { drop(ch) }
+branch area(r: float) -> float => 3.14 * r * r
+drop(area(2))                      # int argument where float is expected
+branch connect(host: str, port: int = 80, secure: bool = bad) -> str => "{host}:{port}"
+drop(connect("example.com", secure: good))
+tree Animal {
+    name: str
+    branch speak() -> str => "{self.name} makes a sound"
+}
+tree Dog : Animal {
+    branch speak() -> str => "{self.name} says woof"
+}
+plant pets: list[Animal] = [Dog("Rex"), Animal("Generic")]
+for pet in pets { drop(pet.speak()) }
+tree NotFound : Error {
+    path: str
+}
+try {
+    throw NotFound("missing", "a.txt")
+} catch e: NotFound {
+    drop(e.path, e.message)
+}
+kind Shape {
+    Circle(radius: float)
+    Square(side: float)
+}
+branch size(s: Shape) -> float => match s {
+    Circle(r) => r * r
+    Square(side) => side
+}
+drop(size(Shape.Circle(1.0)))
+plant job = spawn area(1.0)
+plant result: float = job.wait()
+plant double = (x: int) => x * 2
+drop(double(4))

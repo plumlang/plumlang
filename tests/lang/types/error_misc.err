@@ -1,0 +1,37 @@
+tests/lang/types/error_misc.plum:3:9: error[E0410]: an index into list[int] must be an int, not str
+ 3 | drop(xs["a"])
+   |         ^~~
+tests/lang/types/error_misc.plum:5:8: error[E0410]: the keys of map[str, int] are str, not int
+ 5 | drop(m[1])
+   |        ^
+tests/lang/types/error_misc.plum:6:6: error[E0410]: int can't be indexed with [ ]
+ 6 | drop(5[0])
+   |      ^~~~
+tests/lang/types/error_misc.plum:7:10: error[E0412]: can't loop over int; loop over a range, a list, a set, a map or a str
+ 7 | for x in 42 { }
+   |          ^~
+tests/lang/types/error_misc.plum:8:1: error[E0412]: two loop names need a map; for a position and a value write 'for i, x in items.enumerate()'
+ 8 | for i, x in xs { }
+   | ^~~~~~~~~~~~~~~~~~
+tests/lang/types/error_misc.plum:9:19: error[E0402]: a list holds one type of value: this is str, but the list holds int
+ 9 | plant mixed = [1, "a"]
+   |                   ^~~
+tests/lang/types/error_misc.plum:10:10: error[E0414]: 'list' needs one type, like list[int]
+10 | plant l: list = []
+   |          ^~~~
+tests/lang/types/error_misc.plum:11:10: error[E0414]: 'int' takes no type arguments
+11 | plant p: int[str] = 1
+   |          ^~~~~~~~
+tests/lang/types/error_misc.plum:14:6: error[E0415]: 'T' has no field or method 'y'
+14 | drop(t.y)
+   |      ^~~
+tests/lang/types/error_misc.plum:15:7: error[E0413]: only errors can be thrown, like ValueError("..."); this is str
+15 | throw "not an error"
+   |       ^~~~~~~~~~~~~~
+tests/lang/types/error_misc.plum:17:11: error[E0415]: the kind 'K' has no case 'C'
+17 | plant k = K.C
+   |           ^~~
+tests/lang/types/error_misc.plum:19:5: error[E0417]: this pattern is K, but the match is on int
+19 |     K.A => drop("no")
+   |     ^~~
+12 errors
