@@ -11,10 +11,8 @@ static const struct {
     const char *name;
     void (*run)(void);
 } suites[] = {
-    {"alloc", plum_test_alloc},
-    {"arena", plum_test_arena},
-    {"array", plum_test_array},
-    {"map", plum_test_map},
+    {"alloc", plum_test_alloc}, {"arena", plum_test_arena},   {"array", plum_test_array},
+    {"map", plum_test_map},     {"intern", plum_test_intern},
 };
 
 int main(void) {
