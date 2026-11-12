@@ -13,6 +13,7 @@ static const struct {
 } suites[] = {
     {"alloc", plum_test_alloc},
     {"arena", plum_test_arena},
+    {"array", plum_test_array},
 };
 
 int main(void) {
