@@ -1,0 +1,43 @@
+# command: ast
+seed math
+seed net.http as web
+seed ./models/user as user
+seed ../lib/shapes
+seed math { sqrt, PI }
+
+branch add(a: int, b: int) -> int {
+    return a + b
+}
+branch connect(host: str, port: int = 80, secure: bool = bad) { }
+branch square(x: int) -> int => x * x
+
+tree Account : Show {
+    owner: str
+    balance: float = 0.0
+
+    branch deposit(amount: float) {
+        if amount <= 0 {
+            throw ValueError("deposit must be positive")
+        }
+        self.balance += amount
+    }
+
+    branch to_str() -> str => "{self.owner}: {self.balance:.2}"
+}
+
+tree Node {
+    children: list[Node] = []
+    parent: weak Node? = none
+}
+
+trait Shape {
+    branch area() -> float
+    branch name() -> str => "shape"
+}
+
+kind Direction { North, East, South, West }
+
+kind Figure {
+    Circle(radius: float)
+    Rect(width: float, height: float)
+}

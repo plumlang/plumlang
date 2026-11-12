@@ -1,0 +1,21 @@
+# command: ast
+plant score = 0
+plant ratio: float = 1
+root MAX: int = 100
+score = score + 10
+score += 1
+items[0] = 5
+acct.balance -= 2.5
+if plant n = nickname {
+    drop("Called {n}")
+} else {
+    drop("anonymous")
+}
+for i, name in names.enumerate() {
+    drop("{i}: {name}")
+}
+for _ in 0..3 { tick() }
+while n > 0 { n -= 3 }
+branch done() {
+    return
+}

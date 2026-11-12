@@ -1,0 +1,10 @@
+tests/lang/parser/error_statements.plum:3:8: error: 'plant x' needs a value: plant x = ...
+tests/lang/parser/error_statements.plum:4:1: error: can't assign to this; the left of '=' must be a name, a field or an index
+tests/lang/parser/error_statements.plum:5:1: error: can't assign to this; the left of '+=' must be a name, a field or an index
+tests/lang/parser/error_statements.plum:6:1: error: can't assign to this; the left of '=' must be a name, a field or an index
+tests/lang/parser/error_statements.plum:8:16: error: expected ':' and the parameter's type, found ','
+tests/lang/parser/error_statements.plum:9:28: error: parameters with defaults must come last
+tests/lang/parser/error_statements.plum:10:1: error: a try block needs at least one 'catch' or a 'finally'
+tests/lang/parser/error_statements.plum:14:5: error: fields are written without 'plant': 'name: type = value'
+tests/lang/parser/error_statements.plum:16:1: error: a kind needs at least one case
+tests/lang/parser/error_statements.plum:17:1: error: 'seed' must come before other statements; move it to the top
