@@ -17,6 +17,7 @@
 typedef struct PlumExpr PlumExpr;
 typedef struct PlumStmt PlumStmt;
 typedef struct PlumSymbol PlumSymbol; /* filled in by the resolver (src/check/) */
+typedef struct PlumTy PlumTy;         /* filled in by the type checker */
 typedef struct PlumType PlumType;
 
 /* ------------------------------------------------------------------ */
@@ -121,6 +122,7 @@ struct PlumExpr {
     PlumExprKind kind;
     PlumSpan span;
     PlumSymbol *symbol; /* NAME: what it refers to, after resolution */
+    PlumTy *ty;         /* its type, after type checking */
     union {
         int64_t i;
         double f;

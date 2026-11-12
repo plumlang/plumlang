@@ -8,7 +8,7 @@ each one, with an example that causes it and the fix.
 | E01xx | Reading the source text (lexer) |
 | E02xx | Syntax (parser) |
 | E03xx | Names |
-| E04xx | Types (planned, #13) |
+| E04xx | Types |
 | E05xx | Control flow (planned, #14) |
 
 Codes never change meaning. A retired code is marked retired, not reused.
@@ -439,3 +439,138 @@ match light {
 
 A `tree`, `trait` or `kind` declared inside a function. Declare it at the
 top of the file.
+
+## Types
+
+### E0401
+
+A value that is computed and then thrown away. A line on its own must do
+something: call a function, assign, declare.
+
+```plum
+total + 1             # error: the sum goes nowhere
+total += 1            # fix
+x == 5                # error: did you mean '='?
+```
+
+### E0402
+
+A value of the wrong type. The only automatic conversion is int to float;
+everything else is written: `int(x)`, `float(x)`, `str(x)`.
+
+```plum
+plant count: int = "5"      # error
+plant count: int = int("5") # fix
+plant n = 5
+n /= 2                      # error: '/=' makes a float; use '//='
+```
+
+### E0403
+
+An operator used on values it doesn't work on: adding text and a number,
+comparing values that are never equal, bitwise operators on floats.
+
+```plum
+drop("total: " + 5)         # error
+drop("total: {5}")          # fix: interpolation
+```
+
+### E0404
+
+A condition that isn't a bool. Plumlang has no "truthiness": write the
+comparison you mean.
+
+```plum
+if count { }                # error
+if count > 0 { }            # fix
+```
+
+### E0405
+
+A call of something that isn't a function: a number, a trait, a kind.
+
+### E0406
+
+The wrong number of arguments, or a required argument left out.
+
+```plum
+branch add(a: int, b: int) -> int => a + b
+add(1)                      # error: missing 'b'
+```
+
+### E0407
+
+A named argument the function doesn't have, or an argument given twice.
+
+### E0408
+
+A value that may be `none` used as if it were always there. Give a default
+with `??`, call through it with `?.`, or check it with `if plant`.
+
+```plum
+plant nickname: str? = ask("Nickname? ")
+drop(nickname.upper())              # error
+drop(nickname?.upper() ?? "none")   # fix
+if plant n = nickname { drop(n) }   # fix
+```
+
+### E0409
+
+A type the checker can't work out: `none`, `[]` or `{:}` with nothing to
+say what they hold. Write the type.
+
+```plum
+plant names = []                    # error
+plant names: list[str] = []         # fix
+```
+
+### E0410
+
+Indexing with the wrong type of index, or indexing something that can't be
+indexed.
+
+### E0411
+
+A `return` that doesn't fit its function: a value from a function with no
+`->` result, or no value from one that has it.
+
+### E0412
+
+A `for` loop over something that isn't a range, list, set, map, string or
+channel; or two loop names over something other than a map.
+
+```plum
+for i, x in items { }               # error
+for i, x in items.enumerate() { }   # fix
+```
+
+### E0413
+
+Throwing or catching something that isn't an error. Errors are trees that
+extend `Error` (or one of the built-in error trees).
+
+```plum
+throw "failed"                      # error
+throw ValueError("failed")          # fix
+```
+
+### E0414
+
+A type with the wrong number of type arguments: `list` needs one
+(`list[int]`), `map` two (`map[str, int]`), `int` none.
+
+### E0415
+
+A field, method or kind case that doesn't exist.
+
+### E0416
+
+A conversion that isn't allowed: `bool(x)` (write the comparison), `as`
+between non-numbers (use `int(...)`, `str(...)`), or converting a value
+that can't be converted.
+
+### E0417
+
+A `match` pattern that can't match the value: a case of another kind, a
+literal of another type, or a case pattern naming the wrong number of
+values.

@@ -45,6 +45,7 @@ struct PlumSymbol {
     bool defined;       /* module variables: its declaration has been reached */
     bool captured;      /* a local used by a nested function or lambda */
     bool used;          /* referred to at least once */
+    PlumTy *ty;         /* its type, filled in by the type checker */
 };
 
 /*

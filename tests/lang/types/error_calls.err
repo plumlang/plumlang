@@ -1,0 +1,49 @@
+tests/lang/types/error_calls.plum:3:6: error[E0406]: 'add' is missing the argument 'b'
+ 3 | drop(add(1))
+   |      ^~~~~~
+tests/lang/types/error_calls.plum:4:16: error[E0406]: 'add' takes 2 arguments, but 3 were given
+ 4 | drop(add(1, 2, 3))
+   |                ^
+tests/lang/types/error_calls.plum:5:13: error[E0402]: 'b' expects int, found str
+ 5 | drop(add(1, "two"))
+   |             ^~~~~
+tests/lang/types/error_calls.plum:6:6: error[E0406]: 'add' is missing the argument 'b'
+ 6 | drop(add(a: 1, c: 2))
+   |      ^~~~~~~~~~~~~~~
+tests/lang/types/error_calls.plum:6:16: error[E0407]: 'add' has no parameter named 'c'
+ 6 | drop(add(a: 1, c: 2))
+   |                ^~~~
+tests/lang/types/error_calls.plum:7:6: error[E0406]: 'add' is missing the argument 'b'
+ 7 | drop(add(1, a: 2))
+   |      ^~~~~~~~~~~~
+tests/lang/types/error_calls.plum:7:13: error[E0407]: 'a' is given twice
+ 7 | drop(add(1, a: 2))
+   |             ^~~~
+tests/lang/types/error_calls.plum:9:1: error[E0405]: this is int, not a function
+ 9 | x()
+   | ^
+tests/lang/types/error_calls.plum:10:27: error[E0411]: this function returns nothing; to return a value, add '-> type' to its signature
+10 | branch nothing() { return 5 }
+   |                           ^
+tests/lang/types/error_calls.plum:11:29: error[E0411]: this function must return int
+11 | branch something() -> int { return }
+   |                             ^~~~~~
+tests/lang/types/error_calls.plum:12:26: error[E0402]: expected str, found int
+12 | branch wrong() -> str => 42
+   |                          ^~
+tests/lang/types/error_calls.plum:13:6: error[E0416]: bool(...) is not allowed; write the comparison you mean, like 'x != 0' or 'len(s) > 0'
+13 | drop(bool(1))
+   |      ^~~~~~~
+tests/lang/types/error_calls.plum:14:10: error[E0416]: int() can't convert list[int]
+14 | drop(int([1]))
+   |          ^~~
+tests/lang/types/error_calls.plum:15:6: error[E0416]: 'as' converts between numbers; for str to int use int(...)
+15 | drop("a" as int)
+   |      ^~~~~~~~~~
+tests/lang/types/error_calls.plum:16:1: error[E0401]: this value is not used; store it with 'plant name = ...' or pass it to a function like drop(...)
+16 | 5 + 5
+   | ^~~~~
+tests/lang/types/error_calls.plum:17:1: error[E0401]: this comparison's result is not used; to assign, write '=' instead of '=='
+17 | x == 6
+   | ^~~~~~
+16 errors

@@ -1,0 +1,20 @@
+# command: check
+plant xs = [1, 2]
+drop(xs["a"])
+plant m: map[str, int] = {"a": 1}
+drop(m[1])
+drop(5[0])
+for x in 42 { }
+for i, x in xs { }
+plant mixed = [1, "a"]
+plant l: list = []
+plant p: int[str] = 1
+tree T { x: int }
+plant t = T(1)
+drop(t.y)
+throw "not an error"
+kind K { A, B }
+plant k = K.C
+match 5 {
+    K.A => drop("no")
+}

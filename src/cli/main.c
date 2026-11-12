@@ -15,6 +15,7 @@
  * 3 the source file could not be read.
  */
 #include "check/resolve.h"
+#include "check/typecheck.h"
 #include "diag/diag.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -211,6 +212,9 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
             /* Names are only resolved in a program that parsed, so a
              * syntax error doesn't also show up as unknown names. */
             plum_resolve(&program, &arena, &names, &diags);
+            if (diags.errors == 0) {
+                plum_typecheck(&program, &arena, &names, &diags);
+            }
         }
     }
     fflush(stdout);
