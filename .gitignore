@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+build/
+/plum
+/plum.exe
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.dSYM/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+
+# Test output
+tests/**/*.actual
+
+# Editors
+.vscode/settings.json
+.idea/
+*.swp
+
+# Local environment
+.env.local
