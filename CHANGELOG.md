@@ -19,6 +19,7 @@ Format for a new entry:
 - **CLI**: the `plum` command with `help`, `version` and `run`; `run` reads the source file until the compiler lands.
 - **Build**: Makefile (release, debug, sanitize) and CMake (MSVC, IDEs); warnings are errors.
 - **Core utilities**: checked allocation, an arena allocator, growable arrays, a string-keyed hash map and string interning, with unit tests run by `make test`.
+- **Tests**: golden-file tests (`tests/lang/`) with pending markers and `make golden-update`; the Python prototype's programs ported to the spec's syntax.
 - **CI**: builds and tests on Linux (x86_64, arm64), macOS and Windows (MSVC, mingw-w64), under ASan and UBSan, with a clang-format check.
 - **Licensing and governance**: the Plumlang Commercial License 1.0 with its
   preamble, the `LICENSES/` tree, trademarks, contributing guide, security
