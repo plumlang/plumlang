@@ -326,10 +326,6 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
         return;
     }
     case PLUM_TOK_IN:
-        if (ty_is(r->ty, PLUM_TY_STR)) {
-            unsupported(c, e->span, "'in' on strings", 20);
-            return;
-        }
         compile_as(c, l, ty_is(r->ty, PLUM_TY_MAP) ? r->ty->as.map.key : r->ty->as.elem);
         compile_expr(c, r);
         op(c, PLUM_OP_CONTAINS, line);
@@ -454,10 +450,6 @@ static void compile_index(Compiler *c, const PlumExpr *e) {
         op(c, PLUM_OP_INDEX_MAP, e->span.line);
         return;
     }
-    if (!ty_is(obj->ty, PLUM_TY_LIST)) {
-        unsupported(c, e->span, "indexing strings", 20);
-        return;
-    }
     compile_expr(c, obj);
     if (idx->kind == PLUM_EXPR_RANGE) {
         compile_expr(c, idx->as.range.low);
@@ -466,7 +458,7 @@ static void compile_index(Compiler *c, const PlumExpr *e) {
         return;
     }
     compile_expr(c, idx);
-    op(c, PLUM_OP_INDEX_LIST, e->span.line);
+    op(c, ty_is(obj->ty, PLUM_TY_STR) ? PLUM_OP_INDEX_STR : PLUM_OP_INDEX_LIST, e->span.line);
 }
 
 /* A variable a method can change in place, or NULL. */
@@ -708,8 +700,8 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
                      strcmp(it->as.call.callee->as.field.name, "enumerate") == 0;
     const PlumExpr *source = enumerate ? it->as.call.callee->as.field.object : it;
     if (!ty_is(source->ty, PLUM_TY_LIST) && !ty_is(source->ty, PLUM_TY_MAP) &&
-        !ty_is(source->ty, PLUM_TY_SET)) {
-        unsupported(c, it->span, "loops over strings", 20);
+        !ty_is(source->ty, PLUM_TY_SET) && !ty_is(source->ty, PLUM_TY_STR)) {
+        unsupported(c, it->span, "loops over this", 20);
         return;
     }
     bool two = enumerate || s->as.for_.second != NULL; /* i, x or key, value */

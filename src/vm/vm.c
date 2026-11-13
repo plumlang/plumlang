@@ -351,8 +351,7 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         } else if (plum_is_obj(args[0], PLUM_OBJ_MAP)) {
             result = plum_int((int64_t)plum_as_table(args[0])->count);
         } else {
-            PlumString *s = plum_as_string(args[0]);
-            result = plum_int((int64_t)plum_utf8_length(s->chars, s->len));
+            result = plum_int((int64_t)plum_string_length(plum_as_string(args[0])));
         }
         break;
     case PLUM_BUILTIN_STR: {
@@ -814,6 +813,26 @@ static bool execute(VM *vm) {
             push(vm, plum_obj(&table->obj));
             break;
         }
+        case PLUM_OP_INDEX_STR: {
+            int64_t i = pop(vm).as.i;
+            PlumValue v = pop(vm);
+            PlumString *s = plum_as_string(v);
+            size_t n = plum_string_length(s);
+            if (i < 0 || (uint64_t)i >= n) {
+                plum_release(v);
+                if (n == 0) {
+                    FAIL("index %lld is out of range: the string is empty", (long long)i);
+                }
+                FAIL("index %lld is out of range: the string has %zu character%s (0 to %zu)",
+                     (long long)i, n, n == 1 ? "" : "s", n - 1);
+            }
+            size_t from = plum_string_offset(s, (size_t)i);
+            size_t to = plum_string_offset(s, (size_t)i + 1);
+            PlumString *ch = plum_string_new(s->chars + from, to - from);
+            plum_release(v);
+            push(vm, plum_obj(&ch->obj));
+            break;
+        }
         case PLUM_OP_INDEX_MAP: {
             PlumValue key = pop(vm);
             PlumValue m = pop(vm);
@@ -866,16 +885,26 @@ static bool execute(VM *vm) {
             int64_t hi = pop(vm).as.i;
             int64_t lo = pop(vm).as.i;
             PlumValue v = pop(vm);
-            PlumList *list = plum_as_list(v);
+            bool text = plum_is_obj(v, PLUM_OBJ_STRING);
+            size_t size = text ? plum_string_length(plum_as_string(v)) : plum_as_list(v)->len;
             int64_t end = inclusive ? hi + (hi < INT64_MAX) : hi;
-            if (lo < 0 || lo > end || (uint64_t)end > list->len || (inclusive && hi == INT64_MAX)) {
+            if (lo < 0 || lo > end || (uint64_t)end > size || (inclusive && hi == INT64_MAX)) {
                 plum_release(v);
-                FAIL("slice %lld..%s%lld is out of range for a list of %zu item%s", (long long)lo,
-                     inclusive ? "=" : "", (long long)hi, list->len, list->len == 1 ? "" : "s");
+                FAIL("slice %lld..%s%lld is out of range for a %s of %zu %s%s", (long long)lo,
+                     inclusive ? "=" : "", (long long)hi, text ? "string" : "list", size,
+                     text ? "character" : "item", size == 1 ? "" : "s");
             }
-            PlumList *out = slice_list(list, (size_t)lo, (size_t)end);
+            PlumValue out;
+            if (text) {
+                PlumString *s = plum_as_string(v);
+                size_t from = plum_string_offset(s, (size_t)lo);
+                size_t to = plum_string_offset(s, (size_t)end);
+                out = plum_obj(&plum_string_new(s->chars + from, to - from)->obj);
+            } else {
+                out = plum_obj(&slice_list(plum_as_list(v), (size_t)lo, (size_t)end)->obj);
+            }
             plum_release(v);
-            push(vm, plum_obj(&out->obj));
+            push(vm, out);
             break;
         }
         case PLUM_OP_CONTAINS: {
@@ -884,6 +913,12 @@ static bool execute(VM *vm) {
             bool found = false;
             if (plum_is_obj(coll, PLUM_OBJ_MAP)) {
                 found = plum_table_find(plum_as_table(coll), item) != NULL; /* a key */
+            } else if (plum_is_obj(coll, PLUM_OBJ_STRING)) {
+                const PlumString *hay = plum_as_string(coll), *needle = plum_as_string(item);
+                found = needle->len == 0;
+                for (size_t i = 0; !found && i + needle->len <= hay->len; i++) {
+                    found = memcmp(hay->chars + i, needle->chars, needle->len) == 0;
+                }
             } else {
                 PlumList *list = plum_as_list(coll);
                 for (size_t i = 0; i < list->len && !found; i++) {
@@ -950,6 +985,22 @@ static bool execute(VM *vm) {
             uint16_t at = READ_U16();
             uint16_t var = READ_U16();
             uint16_t d = READ_U16();
+            if (plum_is_obj(SLOT(at), PLUM_OBJ_STRING)) {
+                const PlumString *s = plum_as_string(SLOT(at));
+                size_t from = (size_t)SLOT(at + 1).as.i; /* a byte offset */
+                if (from >= s->len) {
+                    ip += d;
+                    break;
+                }
+                size_t to = from + 1;
+                while (to < s->len && ((unsigned char)s->chars[to] & 0xC0) == 0x80) {
+                    to++;
+                }
+                SLOT(at + 1).as.i = (int64_t)to;
+                plum_release(SLOT(var));
+                SLOT(var) = plum_obj(&plum_string_new(s->chars + from, to - from)->obj);
+                break;
+            }
             if (plum_is_obj(SLOT(at), PLUM_OBJ_MAP)) {
                 /* maps give keys (and values with two names); sets give items */
                 int64_t pos = SLOT(at + 1).as.i;
