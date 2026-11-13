@@ -225,7 +225,6 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
     }
     case PLUM_OBJ_CELL:
         return put_plain(b, plum_as_cell(v)->value, quote_strings, hook); /* never seen */
-        return true;
     case PLUM_OBJ_OBJECT: {
         /* to_str() (trait Show) if its tree has one, else the tree's name */
         PlumString *text = NULL;
