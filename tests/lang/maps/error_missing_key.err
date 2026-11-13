@@ -1,0 +1,2 @@
+tests/lang/maps/error_missing_key.plum:2: runtime error: the key "bob" is not in the map; use .get(key) for a value that may be missing
+  in <main>, line 2

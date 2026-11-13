@@ -1,0 +1,19 @@
+tests/lang/maps/error_types.plum:3:15: error[E0402]: expected int, found str
+3 | ages["bob"] = "old"
+  |               ^~~~~
+tests/lang/maps/error_types.plum:4:11: error[E0410]: the keys of map[str, int] are str, not int
+4 | drop(ages[1])
+  |           ^
+tests/lang/maps/error_types.plum:5:19: error[E0402]: map keys must be int, str, bool, byte or a kind, not float
+5 | plant bad_keys = {1.5: "x"}
+  |                   ^~~
+tests/lang/maps/error_types.plum:6:1: error[E0415]: map[str, int] has no method 'push'
+6 | ages.push(3)
+  | ^~~~~~~~~
+tests/lang/maps/error_types.plum:8:7: error[E0402]: 'value' expects int, found str
+8 | s.add("x")
+  |       ^~~
+tests/lang/maps/error_types.plum:9:16: error[E0408]: expected int, found int?, which may be none; use '??' to give a default or 'if plant' to check it first
+9 | plant n: int = ages.get("ada")
+  |                ^~~~~~~~~~~~~~~
+6 errors

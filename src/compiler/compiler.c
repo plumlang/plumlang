@@ -326,11 +326,11 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
         return;
     }
     case PLUM_TOK_IN:
-        if (!ty_is(r->ty, PLUM_TY_LIST)) {
-            unsupported(c, e->span, "'in' on maps, sets and strings", 20);
+        if (ty_is(r->ty, PLUM_TY_STR)) {
+            unsupported(c, e->span, "'in' on strings", 20);
             return;
         }
-        compile_as(c, l, r->ty->as.elem);
+        compile_as(c, l, ty_is(r->ty, PLUM_TY_MAP) ? r->ty->as.map.key : r->ty->as.elem);
         compile_expr(c, r);
         op(c, PLUM_OP_CONTAINS, line);
         return;
@@ -431,10 +431,31 @@ static void compile_list(Compiler *c, const PlumExpr *e) {
     op1(c, PLUM_OP_BUILD_LIST, (uint16_t)e->as.list.count, e->span.line);
 }
 
+static void compile_map(Compiler *c, const PlumExpr *e) {
+    const PlumTy *k = ty_is(e->ty, PLUM_TY_MAP) ? e->ty->as.map.key : NULL;
+    const PlumTy *v = ty_is(e->ty, PLUM_TY_MAP) ? e->ty->as.map.value : NULL;
+    if (e->as.map.count > 0xFFFF) {
+        plum_diag_error(c->diags, e->span, "E0602",
+                        "a map literal can hold at most 65535 entries; build it in a loop");
+        return;
+    }
+    for (size_t i = 0; i < e->as.map.count; i++) {
+        compile_as(c, e->as.map.entries[i].key, k);
+        compile_as(c, e->as.map.entries[i].value, v);
+    }
+    op1(c, PLUM_OP_BUILD_MAP, (uint16_t)e->as.map.count, e->span.line);
+}
+
 static void compile_index(Compiler *c, const PlumExpr *e) {
     const PlumExpr *obj = e->as.index.object, *idx = e->as.index.index;
+    if (ty_is(obj->ty, PLUM_TY_MAP)) {
+        compile_expr(c, obj);
+        compile_as(c, idx, obj->ty->as.map.key);
+        op(c, PLUM_OP_INDEX_MAP, e->span.line);
+        return;
+    }
     if (!ty_is(obj->ty, PLUM_TY_LIST)) {
-        unsupported(c, e->span, "indexing maps and strings", 20);
+        unsupported(c, e->span, "indexing strings", 20);
         return;
     }
     compile_expr(c, obj);
@@ -465,7 +486,11 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
     const PlumExpr *callee = e->as.call.callee;
     const PlumExpr *obj = callee->as.field.object;
     const PlumTy *fty = callee->ty;
-    int m = plum_method_find(PLUM_RECEIVER_LIST, callee->as.field.name);
+    const PlumTy *rty = obj->ty;
+    PlumMethodReceiver receiver = ty_is(rty, PLUM_TY_MAP)   ? PLUM_RECEIVER_MAP
+                                  : ty_is(rty, PLUM_TY_SET) ? PLUM_RECEIVER_SET
+                                                            : PLUM_RECEIVER_LIST;
+    int m = plum_method_find(receiver, callee->as.field.name);
     if (m < 0 || !ty_is(fty, PLUM_TY_FUNC) || callee->as.field.optional) {
         unsupported(c, e->span, "this method", 24);
         return;
@@ -508,7 +533,8 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
         return;
     }
     if (callee->kind == PLUM_EXPR_FIELD) {
-        if (ty_is(callee->as.field.object->ty, PLUM_TY_LIST)) {
+        const PlumTy *rty = callee->as.field.object->ty;
+        if (ty_is(rty, PLUM_TY_LIST) || ty_is(rty, PLUM_TY_MAP) || ty_is(rty, PLUM_TY_SET)) {
             compile_method(c, e);
         } else {
             unsupported(c, e->span, "methods", 22);
@@ -600,8 +626,10 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         compile_index(c, e);
         return;
     case PLUM_EXPR_MAP:
+        compile_map(c, e);
+        return;
     case PLUM_EXPR_RANGE:
-        unsupported(c, e->span, "maps and ranges as values", 20);
+        unsupported(c, e->span, "ranges as values", 20);
         return;
     case PLUM_EXPR_LAMBDA:
         unsupported(c, e->span, "lambdas", 19);
@@ -679,17 +707,19 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
     bool enumerate = it->kind == PLUM_EXPR_CALL && it->as.call.callee->kind == PLUM_EXPR_FIELD &&
                      strcmp(it->as.call.callee->as.field.name, "enumerate") == 0;
     const PlumExpr *source = enumerate ? it->as.call.callee->as.field.object : it;
-    if (!ty_is(source->ty, PLUM_TY_LIST)) {
-        unsupported(c, it->span, "loops over strings, maps and sets", 20);
+    if (!ty_is(source->ty, PLUM_TY_LIST) && !ty_is(source->ty, PLUM_TY_MAP) &&
+        !ty_is(source->ty, PLUM_TY_SET)) {
+        unsupported(c, it->span, "loops over strings", 20);
         return;
     }
+    bool two = enumerate || s->as.for_.second != NULL; /* i, x or key, value */
     uint32_t line = s->span.line;
     int saved = c->fs->next_slot;
     uint16_t list = new_local(c, NULL, s->span);
     new_local(c, NULL, s->span); /* list + 1: the position */
     uint16_t var = new_local(c, s->symbol, s->span);
-    if (enumerate) {
-        new_local(c, s->symbol2, s->span); /* var + 1: the item */
+    if (two) {
+        new_local(c, s->symbol2, s->span); /* var + 1: the item, or the value */
     }
     compile_expr(c, source);
     op1(c, PLUM_OP_SET_LOCAL, list, line);
@@ -698,7 +728,7 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
 
     Loop loop;
     begin_loop(c, &loop, false); /* continue goes back to FOR_EACH */
-    op2(c, enumerate ? PLUM_OP_FOR_EACH2 : PLUM_OP_FOR_EACH, list, var, line);
+    op2(c, two ? PLUM_OP_FOR_EACH2 : PLUM_OP_FOR_EACH, list, var, line);
     plum_chunk_write_u16(chunk(c), 0xFFFF, line);
     size_t exit_at = chunk(c)->code.len - 2;
     compile_block(c, s->as.for_.body);
@@ -766,15 +796,20 @@ static void compile_index_assign(Compiler *c, const PlumStmt *s) {
     const PlumExpr *target = s->as.assign.target;
     const PlumExpr *obj = target->as.index.object;
     PlumSymbol *place = place_of(c, obj);
-    if (!ty_is(obj->ty, PLUM_TY_LIST) || place == NULL ||
+    bool is_map = ty_is(obj->ty, PLUM_TY_MAP);
+    if ((!ty_is(obj->ty, PLUM_TY_LIST) && !is_map) || place == NULL ||
         target->as.index.index->kind == PLUM_EXPR_RANGE) {
-        unsupported(c, target->span, "assigning into maps, nested lists and slices", 20);
+        unsupported(c, target->span, "assigning into nested collections and slices", 20);
         return;
     }
     uint32_t line = s->span.line;
     int saved = c->fs->next_slot;
     uint16_t idx = new_local(c, NULL, s->span);
-    compile_expr(c, target->as.index.index);
+    if (is_map) {
+        compile_as(c, target->as.index.index, obj->ty->as.map.key);
+    } else {
+        compile_expr(c, target->as.index.index);
+    }
     op1(c, PLUM_OP_SET_LOCAL, idx, line);
     op1(c, PLUM_OP_GET_LOCAL, idx, line);
     if (s->as.assign.op == PLUM_TOK_EQ) {
@@ -782,7 +817,7 @@ static void compile_index_assign(Compiler *c, const PlumStmt *s) {
     } else {
         load_symbol(c, place, obj->span);
         op1(c, PLUM_OP_GET_LOCAL, idx, line);
-        op(c, PLUM_OP_INDEX_LIST, line);
+        op(c, is_map ? PLUM_OP_INDEX_MAP : PLUM_OP_INDEX_LIST, line);
         arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
                    line);
     }

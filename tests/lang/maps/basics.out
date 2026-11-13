@@ -1,0 +1,10 @@
+{"ada": 37, "bob": 25, "cy": 40} 3 25 good bad
+-1 ["ada", "bob", "cy"] [37, 25, 40]
+ada is 37
+bob is 25
+cy is 40
+ada
+bob
+cy
+{:} 0 map {"ada": 37, "bob": 25, "cy": 40}
+{3: "c", 1: "a", 2: "b"} a good good

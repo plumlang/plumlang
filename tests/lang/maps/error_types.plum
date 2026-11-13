@@ -1,0 +1,9 @@
+# command: check
+plant ages = {"ada": 36}
+ages["bob"] = "old"
+drop(ages[1])
+plant bad_keys = {1.5: "x"}
+ages.push(3)
+plant s = set([1, 2])
+s.add("x")
+plant n: int = ages.get("ada")

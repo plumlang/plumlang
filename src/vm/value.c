@@ -4,6 +4,7 @@
 #include "compiler/chunk.h"
 #include "util/alloc.h"
 #include "util/fmt.h"
+#include "vm/table.h"
 #include "vm/text.h"
 
 #include <string.h>
@@ -93,6 +94,9 @@ static void free_object(PlumObj *obj) {
         plum_free(list);
         return;
     }
+    case PLUM_OBJ_MAP:
+        plum_table_free((PlumTable *)obj);
+        return;
     }
 }
 
@@ -140,6 +144,9 @@ bool plum_values_equal(PlumValue a, PlumValue b) {
                 }
             }
             return true;
+        }
+        if (a.as.obj->type == PLUM_OBJ_MAP && b.as.obj->type == PLUM_OBJ_MAP) {
+            return plum_tables_equal(plum_as_table(a), plum_as_table(b));
         }
         return false;
     }

@@ -2,6 +2,7 @@
 #include "vm/methods.h"
 
 #include "util/alloc.h"
+#include "vm/table.h"
 #include "vm/vm.h"
 
 #include <stdio.h>
@@ -78,9 +79,66 @@ static PlumList *copy_list(const PlumList *list) {
     return copy;
 }
 
+/* Methods of maps and sets. */
+static bool run_table_method(PlumMethod m, PlumValue *receiver, const PlumValue *args,
+                             PlumValue *result) {
+    PlumTable *t = methods[m].mutates ? plum_table_unique(receiver) : plum_as_table(*receiver);
+    switch (m) {
+    case PLUM_METHOD_MAP_GET: {
+        const PlumValue *v = plum_table_find(t, args[0]);
+        *result = v != NULL ? plum_retain(*v) : plum_none();
+        return true;
+    }
+    case PLUM_METHOD_MAP_REMOVE:
+    case PLUM_METHOD_SET_REMOVE: {
+        PlumValue removed;
+        bool found = plum_table_remove(t, args[0], &removed);
+        if (m == PLUM_METHOD_SET_REMOVE) {
+            *result = plum_bool(found);
+            if (found) {
+                plum_release(removed);
+            }
+        } else {
+            *result = found ? removed : plum_none();
+        }
+        return true;
+    }
+    case PLUM_METHOD_MAP_KEYS:
+    case PLUM_METHOD_MAP_VALUES: {
+        PlumList *out = plum_list_new(t->count);
+        int64_t pos = 0;
+        const PlumTableEntry *e;
+        while ((e = plum_table_next(t, &pos)) != NULL) {
+            plum_list_push(out, plum_retain(m == PLUM_METHOD_MAP_KEYS ? e->key : e->value));
+        }
+        *result = plum_obj(&out->obj);
+        return true;
+    }
+    case PLUM_METHOD_MAP_CLEAR:
+    case PLUM_METHOD_SET_CLEAR:
+        plum_table_clear(t);
+        return true;
+    case PLUM_METHOD_SET_ADD:
+        plum_table_put(t, plum_retain(args[0]), plum_none());
+        return true;
+    case PLUM_METHOD_SET_CONTAINS:
+        *result = plum_bool(plum_table_find(t, args[0]) != NULL);
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool plum_run_method(PlumMethod m, PlumValue *receiver, const PlumValue *args, int argc,
                      PlumValue *result, char *error, size_t error_size) {
     *result = plum_none();
+    if (methods[m].receiver != PLUM_RECEIVER_LIST) {
+        if (run_table_method(m, receiver, args, result)) {
+            return true;
+        }
+        snprintf(error, error_size, "internal error: unknown method %d", (int)m);
+        return false;
+    }
     PlumList *list = methods[m].mutates ? plum_list_unique(receiver) : plum_as_list(*receiver);
 
     switch (m) {
@@ -177,7 +235,7 @@ bool plum_run_method(PlumMethod m, PlumValue *receiver, const PlumValue *args, i
         *result = plum_obj(&s->obj);
         return true;
     }
-    case PLUM_METHOD_COUNT:
+    default:
         break;
     }
     snprintf(error, error_size, "internal error: unknown method %d", (int)m);

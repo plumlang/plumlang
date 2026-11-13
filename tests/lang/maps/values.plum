@@ -1,0 +1,17 @@
+# Maps are values: a copy changes on its own.
+plant a = {"x": 1}
+plant b = a
+b["y"] = 2
+b.remove("x")
+drop(a, b)
+for k in a {
+    a[k + "!"] = 0      # the loop goes over the map as it was
+}
+drop(a)
+plant counts: map[str, int] = {:}
+for word in ["plum", "tree", "plum", "seed", "plum"] {
+    counts[word] = (counts.get(word) ?? 0) + 1
+}
+drop(counts, counts.remove("tree"), counts.remove("none"), counts)
+counts.clear()
+drop(counts)
