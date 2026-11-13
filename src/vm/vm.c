@@ -453,12 +453,19 @@ static void unwind_to(VM *vm, size_t to) {
     }
 }
 
+/* Read a 16-bit operand and move past it. */
+static inline uint16_t read_u16(const uint8_t **ip) {
+    uint16_t v = plum_chunk_read_u16(*ip);
+    *ip += 2;
+    return v;
+}
+
 static bool execute(VM *vm) {
     Frame *frame = &vm->frames[vm->frame_count - 1];
     const uint8_t *ip = frame->ip;
     PlumChunk *chunk = frame->fn->chunk;
 
-#define READ_U16() (ip += 2, plum_chunk_read_u16(ip - 2))
+#define READ_U16() read_u16(&ip)
 #define SLOT(n)    (vm->stack[frame->base + (n)])
 #define SAVE_IP()  (frame->ip = ip)
 #define FAIL(...)                       \
