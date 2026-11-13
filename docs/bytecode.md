@@ -125,21 +125,23 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 61 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
 | 62 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
 | 63 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
-| 64 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
-| 65 | `EQ` | 0 | a == b, for any two values |
-| 66 | `NE` | 0 | a != b, for any two values |
-| 67 | `NOT` | 0 | not a |
-| 68 | `IS_NONE` | 0 | a == none |
-| 69 | `JUMP` | 1 | jump forward [a] bytes |
-| 70 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 71 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 72 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 73 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 74 | `LOOP` | 1 | jump back [a] bytes |
-| 75 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 76 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 77 | `CALL` | 1 | call the function under [a] arguments |
-| 78 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 79 | `RETURN` | 0 | return the top value |
-| 80 | `RETURN_NONE` | 0 | return none |
+| 64 | `SET_PATH_LOCAL` | 2 | local [a], [b] keys down: set the item, copying shared levels |
+| 65 | `SET_PATH_GLOBAL` | 2 | global [a], [b] keys down: set the item, copying shared levels |
+| 66 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
+| 67 | `EQ` | 0 | a == b, for any two values |
+| 68 | `NE` | 0 | a != b, for any two values |
+| 69 | `NOT` | 0 | not a |
+| 70 | `IS_NONE` | 0 | a == none |
+| 71 | `JUMP` | 1 | jump forward [a] bytes |
+| 72 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 73 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 74 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 75 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 76 | `LOOP` | 1 | jump back [a] bytes |
+| 77 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 78 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
+| 79 | `CALL` | 1 | call the function under [a] arguments |
+| 80 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 81 | `RETURN` | 0 | return the top value |
+| 82 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

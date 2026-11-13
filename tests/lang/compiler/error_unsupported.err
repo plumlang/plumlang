@@ -1,22 +1,16 @@
-tests/lang/compiler/error_unsupported.plum:3:1: warning[W0502]: 'r' is never used; remove it, or start its name with '_' to keep it
-3 | plant r = 0..5
-  | ^~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:3:11: error[E0601]: ranges as values: not supported by the compiler yet (it arrives with #20)
-3 | plant r = 0..5
-  |           ^~~~
-tests/lang/compiler/error_unsupported.plum:4:1: warning[W0502]: 'double' is never used; remove it, or start its name with '_' to keep it
-4 | plant double = (x: int) => x * 2
+tests/lang/compiler/error_unsupported.plum:3:1: warning[W0502]: 'double' is never used; remove it, or start its name with '_' to keep it
+3 | plant double = (x: int) => x * 2
   | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:4:16: error[E0601]: lambdas: not supported by the compiler yet (it arrives with #19)
-4 | plant double = (x: int) => x * 2
+tests/lang/compiler/error_unsupported.plum:3:16: error[E0601]: lambdas: not supported by the compiler yet (it arrives with #19)
+3 | plant double = (x: int) => x * 2
   |                ^~~~~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:8:1: warning[W0502]: 'p' is never used; remove it, or start its name with '_' to keep it
-8 | plant p = Point(1)
+tests/lang/compiler/error_unsupported.plum:7:1: warning[W0502]: 'p' is never used; remove it, or start its name with '_' to keep it
+7 | plant p = Point(1)
   | ^~~~~~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:8:11: error[E0601]: creating tree objects: not supported by the compiler yet (it arrives with #22)
-8 | plant p = Point(1)
+tests/lang/compiler/error_unsupported.plum:7:11: error[E0601]: creating tree objects: not supported by the compiler yet (it arrives with #22)
+7 | plant p = Point(1)
   |           ^~~~~~~~
-tests/lang/compiler/error_unsupported.plum:9:1: error[E0601]: throw and try: not supported by the compiler yet (it arrives with #21)
-9 | throw ValueError("no")
+tests/lang/compiler/error_unsupported.plum:8:1: error[E0601]: throw and try: not supported by the compiler yet (it arrives with #21)
+8 | throw ValueError("no")
   | ^~~~~~~~~~~~~~~~~~~~~~
-4 errors and 3 warnings
+3 errors and 2 warnings

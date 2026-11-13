@@ -488,6 +488,35 @@ static PlumList *concat_lists(const PlumList *a, const PlumList *b) {
     return out;
 }
 
+/*
+ * Walk `depth` keys down from `*place` (grid[i][j], m["k"][0]), making each
+ * level unique on the way so a change copies only what is shared. Returns
+ * the item's slot, or NULL after reporting a bad index or missing key.
+ */
+static PlumValue *walk_path(VM *vm, PlumValue *place, const PlumValue *keys, int depth) {
+    for (int d = 0; d < depth; d++) {
+        if (plum_is_obj(*place, PLUM_OBJ_MAP)) {
+            PlumValue *next = plum_table_find(plum_table_unique(place), keys[d]);
+            if (next == NULL) {
+                char error[16];
+                PlumString *k = plum_value_text(keys[d], NULL, error, sizeof error);
+                const char *q = plum_is_obj(keys[d], PLUM_OBJ_STRING) ? "\"" : "";
+                runtime_error(vm, "the key %s%s%s is not in the map", q, k->chars, q);
+                plum_release(plum_obj(&k->obj));
+                return NULL;
+            }
+            place = next;
+        } else {
+            PlumList *list = plum_list_unique(place);
+            if (!check_index(vm, keys[d].as.i, list->len)) {
+                return NULL;
+            }
+            place = &list->items[keys[d].as.i];
+        }
+    }
+    return place;
+}
+
 /* ------------------------------------------------------------------ */
 /* The run loop                                                        */
 /* ------------------------------------------------------------------ */
@@ -978,6 +1007,59 @@ static bool execute(VM *vm) {
             }
             plum_release(list->items[i]);
             list->items[i] = value;
+            break;
+        }
+        case PLUM_OP_SET_PATH_LOCAL:
+        case PLUM_OP_SET_PATH_GLOBAL: {
+            uint16_t slot = READ_U16();
+            uint16_t depth = READ_U16();
+            PlumValue value = pop(vm);
+            PlumValue *keys = &vm->stack[vm->top - depth];
+            PlumValue *root = op == PLUM_OP_SET_PATH_LOCAL ? &SLOT(slot) : &vm->globals[slot];
+            SAVE_IP();
+            /* down to the container of the item, then set it */
+            PlumValue *container = walk_path(vm, root, keys, depth - 1);
+            if (container == NULL) {
+                plum_release(value);
+                return false;
+            }
+            PlumValue key = keys[depth - 1];
+            if (plum_is_obj(*container, PLUM_OBJ_MAP)) {
+                plum_table_put(plum_table_unique(container), plum_retain(key), value);
+            } else {
+                PlumList *list = plum_list_unique(container);
+                if (!check_index(vm, key.as.i, list->len)) {
+                    plum_release(value);
+                    return false;
+                }
+                plum_release(list->items[key.as.i]);
+                list->items[key.as.i] = value;
+            }
+            unwind_to(vm, vm->top - depth);
+            break;
+        }
+        case PLUM_OP_METHOD_PATH_LOCAL:
+        case PLUM_OP_METHOD_PATH_GLOBAL: {
+            uint16_t slot = READ_U16();
+            uint16_t m = READ_U16();
+            uint16_t packed = READ_U16();
+            int depth = packed >> 8, argc = packed & 0xFF;
+            PlumValue *keys = &vm->stack[vm->top - (size_t)argc - (size_t)depth];
+            PlumValue *root = op == PLUM_OP_METHOD_PATH_LOCAL ? &SLOT(slot) : &vm->globals[slot];
+            SAVE_IP();
+            PlumValue *receiver = walk_path(vm, root, keys, depth);
+            if (receiver == NULL) {
+                return false;
+            }
+            PlumValue result;
+            char error[256];
+            bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - (size_t)argc],
+                                      argc, &result, error, sizeof error);
+            unwind_to(vm, vm->top - (size_t)argc - (size_t)depth);
+            if (!ok) {
+                FAIL("%s", error);
+            }
+            push(vm, result);
             break;
         }
         case PLUM_OP_FOR_EACH:

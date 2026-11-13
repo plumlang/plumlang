@@ -1,0 +1,2 @@
+plant groups: map[str, list[int]] = {"a": [1]}
+groups["zed"].push(2)

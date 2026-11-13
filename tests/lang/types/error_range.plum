@@ -1,0 +1,4 @@
+# command: check
+plant r = 0..5
+branch f(x: int) -> bool => x in 1..=3
+drop(f(2))

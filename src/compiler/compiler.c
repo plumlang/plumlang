@@ -326,6 +326,24 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
         return;
     }
     case PLUM_TOK_IN:
+        if (r->kind == PLUM_EXPR_RANGE) {
+            /* x in a..b: a <= x and x < b (or <= b), with x computed once */
+            int saved = c->fs->next_slot;
+            uint16_t x = new_local(c, NULL, e->span);
+            compile_expr(c, l);
+            op1(c, PLUM_OP_SET_LOCAL, x, line);
+            op1(c, PLUM_OP_GET_LOCAL, x, line);
+            compile_expr(c, r->as.range.low);
+            op(c, PLUM_OP_GE_INT, line);
+            size_t skip = emit_jump(c, PLUM_OP_JUMP_IF_FALSE_KEEP, line);
+            op(c, PLUM_OP_POP, line);
+            op1(c, PLUM_OP_GET_LOCAL, x, line);
+            compile_expr(c, r->as.range.high);
+            op(c, r->as.range.inclusive ? PLUM_OP_LE_INT : PLUM_OP_LT_INT, line);
+            patch_jump(c, skip, e->span);
+            c->fs->next_slot = saved;
+            return;
+        }
         compile_as(c, l, ty_is(r->ty, PLUM_TY_MAP) ? r->ty->as.map.key : r->ty->as.elem);
         compile_expr(c, r);
         op(c, PLUM_OP_CONTAINS, line);
@@ -473,6 +491,45 @@ static PlumSymbol *place_of(Compiler *c, const PlumExpr *obj) {
     return sym;
 }
 
+#define MAX_PATH 32
+
+/*
+ * grid[i][j]: a variable and the keys down from it, outermost first, when
+ * every level is a list or map index (not a slice). NULL otherwise.
+ */
+static PlumSymbol *path_of(Compiler *c, const PlumExpr *e, const PlumExpr **keys, int *depth) {
+    const PlumExpr *chain[MAX_PATH];
+    int n = 0;
+    while (e->kind == PLUM_EXPR_INDEX) {
+        const PlumExpr *obj = e->as.index.object;
+        if (n == MAX_PATH || e->as.index.index->kind == PLUM_EXPR_RANGE ||
+            (!ty_is(obj->ty, PLUM_TY_LIST) && !ty_is(obj->ty, PLUM_TY_MAP))) {
+            return NULL;
+        }
+        chain[n++] = e;
+        e = obj;
+    }
+    PlumSymbol *base = place_of(c, e);
+    if (base == NULL) {
+        return NULL;
+    }
+    for (int i = 0; i < n; i++) {
+        keys[i] = chain[n - 1 - i]; /* the INDEX nodes, outermost first */
+    }
+    *depth = n;
+    return base;
+}
+
+/* Push one path key, as a map key or a list position. */
+static void compile_key(Compiler *c, const PlumExpr *index_node) {
+    const PlumExpr *obj = index_node->as.index.object;
+    if (ty_is(obj->ty, PLUM_TY_MAP)) {
+        compile_as(c, index_node->as.index.index, obj->ty->as.map.key);
+    } else {
+        compile_expr(c, index_node->as.index.index);
+    }
+}
+
 /* xs.method(args): in place on a variable, or on a temporary value. */
 static void compile_method(Compiler *c, const PlumExpr *e) {
     const PlumExpr *callee = e->as.call.callee;
@@ -490,6 +547,22 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
     uint32_t line = e->span.line;
     uint16_t argc = (uint16_t)fty->as.func.param_count;
     PlumSymbol *place = plum_method_mutates((PlumMethod)m) ? place_of(c, obj) : NULL;
+    if (place == NULL && plum_method_mutates((PlumMethod)m) && obj->kind == PLUM_EXPR_INDEX) {
+        /* m["k"].push(x): change the item inside the variable in place */
+        const PlumExpr *keys[MAX_PATH];
+        int depth = 0;
+        PlumSymbol *base = path_of(c, obj, keys, &depth);
+        if (base != NULL && argc < 256) {
+            for (int i = 0; i < depth; i++) {
+                compile_key(c, keys[i]);
+            }
+            compile_args(c, e, fty, NULL);
+            op2(c, base->global ? PLUM_OP_METHOD_PATH_GLOBAL : PLUM_OP_METHOD_PATH_LOCAL,
+                (uint16_t)base->slot, (uint16_t)m, line);
+            plum_chunk_write_u16(chunk(c), (uint16_t)((depth << 8) | argc), line);
+            return;
+        }
+    }
     if (place == NULL) {
         compile_expr(c, obj);
     }
@@ -621,8 +694,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         compile_map(c, e);
         return;
     case PLUM_EXPR_RANGE:
-        unsupported(c, e->span, "ranges as values", 20);
-        return;
+        return; /* not a value: the checker allows it only where it is used */
     case PLUM_EXPR_LAMBDA:
         unsupported(c, e->span, "lambdas", 19);
         return;
@@ -781,6 +853,53 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
 static PlumTokenKind compound_operator(PlumTokenKind tok);
 
 /*
+ * grid[i][j] = v and grid[i][j] op= v: each key is computed once into a
+ * hidden slot; SET_PATH takes the keys and the new value.
+ */
+static void compile_path_assign(Compiler *c, const PlumStmt *s) {
+    const PlumExpr *target = s->as.assign.target;
+    const PlumExpr *keys[MAX_PATH];
+    int depth = 0;
+    PlumSymbol *base = path_of(c, target, keys, &depth);
+    if (base == NULL) {
+        unsupported(c, target->span, "assigning into this", 22);
+        return;
+    }
+    uint32_t line = s->span.line;
+    int saved = c->fs->next_slot;
+    uint16_t first = 0;
+    for (int i = 0; i < depth; i++) {
+        uint16_t slot = new_local(c, NULL, s->span);
+        if (i == 0) {
+            first = slot;
+        }
+        compile_key(c, keys[i]);
+        op1(c, PLUM_OP_SET_LOCAL, slot, line);
+    }
+    for (int i = 0; i < depth; i++) {
+        op1(c, PLUM_OP_GET_LOCAL, (uint16_t)(first + i), line);
+    }
+    if (s->as.assign.op == PLUM_TOK_EQ) {
+        compile_as(c, s->as.assign.value, target->ty);
+    } else {
+        /* the old value: down the same keys */
+        load_symbol(c, base, s->span);
+        for (int i = 0; i < depth; i++) {
+            op1(c, PLUM_OP_GET_LOCAL, (uint16_t)(first + i), line);
+            op(c,
+               ty_is(keys[i]->as.index.object->ty, PLUM_TY_MAP) ? PLUM_OP_INDEX_MAP
+                                                                : PLUM_OP_INDEX_LIST,
+               line);
+        }
+        arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
+                   line);
+    }
+    op2(c, base->global ? PLUM_OP_SET_PATH_GLOBAL : PLUM_OP_SET_PATH_LOCAL, (uint16_t)base->slot,
+        (uint16_t)depth, line);
+    c->fs->next_slot = saved;
+}
+
+/*
  * xs[i] = v and xs[i] op= v on a list variable. The index is computed once
  * into a hidden slot; SET_INDEX takes the index and the new value.
  */
@@ -789,9 +908,13 @@ static void compile_index_assign(Compiler *c, const PlumStmt *s) {
     const PlumExpr *obj = target->as.index.object;
     PlumSymbol *place = place_of(c, obj);
     bool is_map = ty_is(obj->ty, PLUM_TY_MAP);
+    if (place == NULL && target->as.index.index->kind != PLUM_EXPR_RANGE) {
+        compile_path_assign(c, s);
+        return;
+    }
     if ((!ty_is(obj->ty, PLUM_TY_LIST) && !is_map) || place == NULL ||
         target->as.index.index->kind == PLUM_EXPR_RANGE) {
-        unsupported(c, target->span, "assigning into nested collections and slices", 20);
+        unsupported(c, target->span, "assigning to a slice", 20);
         return;
     }
     uint32_t line = s->span.line;
