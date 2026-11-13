@@ -24,10 +24,10 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "plum/version.h"
+#include "stdlib/native.h"
 #include "util/arena.h"
 #include "util/fmt.h"
 #include "util/intern.h"
-#include "stdlib/native.h"
 #include "vm/vm.h"
 
 #include <errno.h>
@@ -300,8 +300,7 @@ static void print_module(const PlumNativeModule *m, bool markdown) {
     for (size_t i = 0; i < m->constant_count; i++) {
         const PlumNativeConstant *k = &m->constants[i];
         char sig[96];
-        snprintf(sig, sizeof sig, "%s: %s", k->name,
-                 k->kind == PLUM_NATIVE_INT ? "int" : "float");
+        snprintf(sig, sizeof sig, "%s: %s", k->name, k->kind == PLUM_NATIVE_INT ? "int" : "float");
         printf("  %-48s %s\n", sig, k->doc);
     }
 }
@@ -316,8 +315,9 @@ static int cmd_stdlib(int argc, char **argv) {
     if (argc > 0) {
         const PlumNativeModule *m = plum_native_module(argv[0]);
         if (m == NULL) {
-            fprintf(stderr, "plum: error: there is no standard module '%s'\n"
-                            "  hint: plum stdlib lists them\n",
+            fprintf(stderr,
+                    "plum: error: there is no standard module '%s'\n"
+                    "  hint: plum stdlib lists them\n",
                     argv[0]);
             return PLUM_EXIT_USAGE;
         }
