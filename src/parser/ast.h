@@ -251,9 +251,11 @@ typedef struct PlumBranch {
     const char *name;
     PlumParam *params;
     size_t param_count;
-    PlumType *result; /* NULL: returns none */
-    PlumStmt *body;   /* a block; NULL for a trait method without a default */
-    PlumExpr *arrow;  /* `=> expr` bodies; body is NULL then */
+    PlumType *result;  /* NULL: returns none */
+    PlumStmt *body;    /* a block; NULL for a trait method without a default */
+    PlumExpr *arrow;   /* `=> expr` bodies; body is NULL then */
+    PlumSymbol *self;  /* a method's `self`, after resolution */
+    struct PlumTy *ty; /* a method's type, after checking */
 } PlumBranch;
 
 struct PlumStmt {
