@@ -1,0 +1,57 @@
+== <main> (0 parameters, 0 slots) ==
+0000    3  CONST 0  ; 3
+0003    |  INT_TO_FLOAT
+0004    |  SET_GLOBAL 0
+0007    4  GET_GLOBAL 0
+0010    |  CONST 1  ; 2
+0013    |  INT_TO_FLOAT
+0014    |  MUL_FLOAT
+0015    |  CONST 2  ; 1
+0018    |  INT_TO_FLOAT
+0019    |  ADD_FLOAT
+0020    |  SET_GLOBAL 1
+0023    5  CONST 3  ; 7
+0026    |  CONST 1  ; 2
+0029    |  FLOORDIV_INT
+0030    |  SET_GLOBAL 2
+0033    6  CONST 3  ; 7
+0036    |  INT_TO_FLOAT
+0037    |  CONST 1  ; 2
+0040    |  INT_TO_FLOAT
+0041    |  DIV_FLOAT
+0042    |  SET_GLOBAL 3
+0045    7  CONST 1  ; 2
+0048    |  CONST 4  ; 10
+0051    |  POW_INT
+0052    |  CONST 5  ; 1000
+0055    |  GT_INT
+0056    |  JUMP_IF_FALSE_KEEP 10  ; -> 0069
+0059    |  POP
+0060    |  CONST 2  ; 1
+0063    |  INT_TO_FLOAT
+0064    |  CONST 6  ; 2.5
+0067    |  GE_FLOAT
+0068    |  NOT
+0069    |  SET_GLOBAL 4
+0072    8  CONST 7  ; "Hi "
+0075    |  CONST 8  ; "there"
+0078    |  CONCAT
+0079    |  SET_GLOBAL 5
+0082    9  GET_GLOBAL 1
+0085    |  TO_STRING 9  ; ".1"
+0088    |  CONST 10  ; " "
+0091    |  GET_GLOBAL 2
+0094    |  TO_STRING -
+0097    |  CONST 11  ; "/"
+0100    |  GET_GLOBAL 3
+0103    |  TO_STRING -
+0106    |  CONST 10  ; " "
+0109    |  GET_GLOBAL 4
+0112    |  TO_STRING -
+0115    |  CONST 10  ; " "
+0118    |  GET_GLOBAL 5
+0121    |  TO_STRING -
+0124    |  BUILD_STRING 9
+0127    |  CALL_BUILTIN drop 1
+0132    |  POP
+0133    |  RETURN_NONE

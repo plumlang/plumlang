@@ -1,0 +1,9 @@
+# command: dis
+# Correct programs (plum check accepts them) using Stage 5 features.
+plant xs: list[int] = [1, 2]
+plant double = (x: int) => x * 2
+tree Point {
+    x: int
+}
+plant p = Point(1)
+throw ValueError("no")

@@ -1,0 +1,23 @@
+== <main> (0 parameters, 1 slot) ==
+0000    3  NONE
+0001    |  SET_GLOBAL 0
+0004    4  GET_GLOBAL 0
+0007    |  JUMP_IF_NOT_NONE_KEEP 4  ; -> 0014
+0010    |  POP
+0011    |  CONST 0  ; "no nickname"
+0014    |  CALL_BUILTIN drop 1
+0019    |  POP
+0020    5  GET_GLOBAL 0
+0023    |  SET_LOCAL 0
+0026    |  GET_LOCAL 0
+0029    |  IS_NONE
+0030    |  NOT
+0031    |  JUMP_IF_FALSE 12  ; -> 0046
+0034    6  GET_LOCAL 0
+0037    |  CALL_BUILTIN drop 1
+0042    |  POP
+0043    5  JUMP 9  ; -> 0055
+0046    8  CONST 1  ; "none"
+0049    |  CALL_BUILTIN drop 1
+0054    |  POP
+0055    5  RETURN_NONE

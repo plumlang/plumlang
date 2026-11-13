@@ -1,0 +1,41 @@
+== <main> (0 parameters, 2 slots) ==
+0000    3  CONST 0  ; 0
+0003    |  SET_LOCAL 0
+0006    |  CONST 1  ; 3
+0009    |  SET_LOCAL 1
+0012    |  FOR_RANGE 0 1 42  ; local 0 <= local 1, else -> 0061
+0019    4  GET_LOCAL 0
+0022    |  CONST 2  ; 1
+0025    |  EQ
+0026    |  JUMP_IF_FALSE 3  ; -> 0032
+0029    |  JUMP 22  ; -> 0054
+0032    5  GET_LOCAL 0
+0035    |  CONST 1  ; 3
+0038    |  EQ
+0039    |  JUMP_IF_FALSE 3  ; -> 0045
+0042    |  JUMP 16  ; -> 0061
+0045    6  GET_LOCAL 0
+0048    |  CALL_BUILTIN drop 1
+0053    |  POP
+0054    3  FOR_NEXT 0 1 49  ; -> 0012
+0061    8  CONST 0  ; 0
+0064    |  SET_LOCAL 0
+0067    |  CONST 3  ; 2
+0070    |  SET_LOCAL 1
+0073    |  FOR_RANGE 0 0 16  ; local 0 < local 1, else -> 0096
+0080    |  CONST 4  ; "x"
+0083    |  CALL_BUILTIN drop 1
+0088    |  POP
+0089    |  FOR_NEXT 0 0 23  ; -> 0073
+0096    9  CONST 1  ; 3
+0099    |  SET_GLOBAL 0
+0102   10  GET_GLOBAL 0
+0105    |  CONST 0  ; 0
+0108    |  GT_INT
+0109    |  JUMP_IF_FALSE 13  ; -> 0125
+0112    |  GET_GLOBAL 0
+0115    |  CONST 2  ; 1
+0118    |  SUB_INT
+0119    |  SET_GLOBAL 0
+0122    |  LOOP 23  ; -> 0102
+0125    |  RETURN_NONE

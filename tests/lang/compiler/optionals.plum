@@ -1,0 +1,9 @@
+# command: dis
+# Optionals: ?? and if plant.
+plant nickname: str? = none
+drop(nickname ?? "no nickname")
+if plant n = nickname {
+    drop(n)
+} else {
+    drop("none")
+}
