@@ -5,8 +5,8 @@
  * has a type; it chooses typed instructions from those types and inserts
  * the int-to-float conversion wherever the checker allowed one.
  *
- * Features that arrive in Stage 5 (lists, maps, trees, closures, match,
- * errors) are reported as not supported yet (E0601).
+ * Features still to come in Stage 5 (methods, kinds, match, modules,
+ * tasks) are reported as not supported yet (E0601).
  */
 #ifndef PLUM_COMPILER_COMPILER_H
 #define PLUM_COMPILER_COMPILER_H
@@ -19,8 +19,11 @@
 typedef struct PlumCompiled {
     PlumFunction *main; /* the top level; NULL if there were errors */
     int global_count;   /* module variables and functions */
+    /* The built-in error trees, for the errors the VM itself raises. */
+    PlumTreeInfo *errors[PLUM_ERROR_COUNT];
 } PlumCompiled;
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags);
+void plum_compiled_free(PlumCompiled *compiled);
 
 #endif /* PLUM_COMPILER_COMPILER_H */

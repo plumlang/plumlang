@@ -228,6 +228,7 @@ typedef struct PlumCatch {
     PlumStmt *body;
     PlumSpan span;
     PlumSymbol *symbol; /* after resolution */
+    PlumSymbol *error;  /* after resolution: the built-in Error, the type of a plain catch */
 } PlumCatch;
 
 typedef struct PlumField {

@@ -1,0 +1,2 @@
+tests/lang/errors/error_finally_uncaught.plum:4: NetError: connection reset
+  in <main>, line 4

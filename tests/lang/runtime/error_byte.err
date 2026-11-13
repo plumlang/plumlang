@@ -1,2 +1,2 @@
-tests/lang/runtime/error_byte.plum:1: runtime error: byte(300) is out of range; a byte is 0 to 255
+tests/lang/runtime/error_byte.plum:1: ValueError: byte(300) is out of range; a byte is 0 to 255
   in <main>, line 1

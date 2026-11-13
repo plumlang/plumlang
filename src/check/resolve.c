@@ -733,6 +733,7 @@ static void resolve_stmt(Resolver *r, PlumStmt *s) {
         for (size_t i = 0; i < s->as.try_.catch_count; i++) {
             PlumCatch *c = &s->as.try_.catches[i];
             resolve_type(r, c->type);
+            c->error = lookup(r, "Error");
             Scope scope;
             push(r, &scope, SCOPE_BLOCK);
             c->symbol = new_symbol(r, PLUM_SYM_BINDING, c->name, c->span, s);

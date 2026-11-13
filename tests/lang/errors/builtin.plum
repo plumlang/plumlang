@@ -1,0 +1,21 @@
+# The errors the language itself raises are catchable by their tree.
+branch show(e: Error) {
+    drop("{type_of(e)}: {e.message}")
+}
+
+try { drop(9223372036854775807 + 1) } catch e: OverflowError { show(e) }
+try { drop(1 // 0) } catch e: ZeroDivisionError { show(e) }
+try { drop(5 % 0) } catch e: ZeroDivisionError { show(e) }
+try { drop([1, 2][2]) } catch e: IndexError { show(e) }
+try { drop("abc"[-1]) } catch e: IndexError { show(e) }
+try { drop([0][1..3]) } catch e: IndexError { show(e) }
+try { drop({"a": 1}["b"]) } catch e: KeyError { show(e) }
+try { drop(int("1.5")) } catch e: ParseError { show(e) }
+try { drop(float("pi")) } catch e: ParseError { show(e) }
+try { drop(byte(256)) } catch e: ValueError { show(e) }
+try { drop(2 ** -1) } catch e: ValueError { show(e) }
+try { assert(1 > 2, "math broke") } catch e: AssertError { show(e) }
+
+branch forever(n: int) -> int => forever(n + 1) + 1
+try { drop(forever(0)) } catch e { show(e) }
+drop("still running")

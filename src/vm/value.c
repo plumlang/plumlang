@@ -121,6 +121,15 @@ PlumObject *plum_object_new(PlumTreeInfo *tree) {
     return o;
 }
 
+const char *plum_error_name(PlumErrorKind kind) {
+    static const char *const names[] = {
+#define PLUM_ERROR_NAME(id, name) name,
+        PLUM_ERRORS(PLUM_ERROR_NAME)
+#undef PLUM_ERROR_NAME
+    };
+    return (unsigned)kind < PLUM_ERROR_COUNT ? names[kind] : "Error";
+}
+
 bool plum_tree_is(const PlumTreeInfo *tree, const PlumTreeInfo *ancestor) {
     for (; tree != NULL; tree = tree->parent) {
         if (tree == ancestor) {

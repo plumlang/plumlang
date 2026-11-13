@@ -1,0 +1,14 @@
+OverflowError: integer overflow: 9223372036854775807 + 1 doesn't fit in an int
+ZeroDivisionError: division by zero: 1 // 0
+ZeroDivisionError: division by zero: 5 % 0
+IndexError: index 2 is out of range: the list has 2 items (0 to 1)
+IndexError: index -1 is out of range: the string has 3 characters (0 to 2)
+IndexError: slice 1..3 is out of range for a list of 1 item
+KeyError: the key "b" is not in the map; use .get(key) for a value that may be missing
+ParseError: int("1.5"): not a whole number
+ParseError: float("pi"): not a number
+ValueError: byte(256) is out of range; a byte is 0 to 255
+ValueError: 2 ** -1: an int power needs an exponent of 0 or more; use a float for fractions
+AssertError: assertion failed: math broke
+Error: too much recursion: more than 10000 calls deep
+still running

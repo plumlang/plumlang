@@ -38,6 +38,7 @@ Format for a new entry:
 - **Closures**: lambdas and nested functions capture variables and share them; each loop iteration captures its own value.
 - **Higher-order list methods**: `map`, `filter`, `reduce`, `any`, `all`, `find`, `sorted_by`.
 - **Trees**: objects built by position, by name or from field defaults; fields read and set (objects are shared); `?.` on fields; `x is Tree` through inheritance; the built-in error trees with a `message`.
+- **Errors**: `throw`, `try`/`catch`/`finally` and `try expr`; the language's own runtime errors (overflow, bad index, missing key, …) are catchable error trees; an uncaught error prints its tree's name, message and where it was thrown.
 - **Tests**: golden-file tests (`tests/lang/`) with pending markers and `make golden-update`; the Python prototype's programs ported to the spec's syntax.
 - **CI**: builds and tests on Linux (x86_64, arm64), macOS and Windows (MSVC, mingw-w64), under ASan and UBSan, with a clang-format check.
 - **Licensing and governance**: the Plumlang Commercial License 1.0 with its

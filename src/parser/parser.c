@@ -913,7 +913,7 @@ static PlumStmt *parse_try_stmt(PlumParser *p) {
             break;
         }
         const PlumToken *c = advance(p);
-        PlumCatch handler = {NULL, NULL, NULL, c->span, NULL};
+        PlumCatch handler = {NULL, NULL, NULL, c->span, NULL, NULL};
         handler.name = expect_name(p, "a name for the error, like 'catch e'");
         if (match(p, PLUM_TOK_COLON)) {
             handler.type = plum_parse_type(p);

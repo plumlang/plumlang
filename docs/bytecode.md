@@ -155,8 +155,11 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 91 | `LOOP` | 1 | jump back [a] bytes |
 | 92 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
 | 93 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 94 | `CALL` | 1 | call the function under [a] arguments |
-| 95 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 96 | `RETURN` | 0 | return the top value |
-| 97 | `RETURN_NONE` | 0 | return none |
+| 94 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
+| 95 | `END_TRY` | 1 | the last [a] tries are over |
+| 96 | `THROW` | 0 | throw the error on top |
+| 97 | `CALL` | 1 | call the function under [a] arguments |
+| 98 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 99 | `RETURN` | 0 | return the top value |
+| 100 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

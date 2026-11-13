@@ -1,2 +1,2 @@
-tests/lang/runtime/error_assert.plum:3: runtime error: assertion failed: total must be over 5
+tests/lang/runtime/error_assert.plum:3: AssertError: assertion failed: total must be over 5
   in <main>, line 3

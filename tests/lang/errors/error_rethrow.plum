@@ -1,0 +1,10 @@
+# Rethrowing an error keeps where it was first thrown.
+branch parse(text: str) -> int => int(text)
+
+try {
+    drop(parse("12"))
+    drop(parse("twelve"))
+} catch e: ParseError {
+    drop("log:", e.message)
+    throw e
+}

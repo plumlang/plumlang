@@ -1,2 +1,2 @@
-tests/lang/lists/error_index.plum:2: runtime error: index 3 is out of range: the list has 3 items (0 to 2)
+tests/lang/lists/error_index.plum:2: IndexError: index 3 is out of range: the list has 3 items (0 to 2)
   in <main>, line 2

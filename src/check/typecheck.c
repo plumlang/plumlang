@@ -1850,8 +1850,12 @@ static void check_return(Checker *c, PlumStmt *s) {
     expect_type(c, value, want);
 }
 
-static void check_catch_type(Checker *c, const PlumType *type, PlumSymbol *binding) {
-    PlumTy *t = type != NULL ? from_syntax(c, type) : c->t.unknown;
+static void check_catch_type(Checker *c, const PlumCatch *cat) {
+    const PlumType *type = cat->type;
+    PlumSymbol *binding = cat->symbol;
+    PlumTy *t = type != NULL         ? from_syntax(c, type)
+                : cat->error != NULL ? plum_ty_named(&c->t, PLUM_TY_TREE, cat->error)
+                                     : c->t.unknown;
     if (!plum_ty_is_loose(t) && !is_error_tree(t)) {
         char a[TYBUF];
         plum_diag_error(c->diags, type->span, "E0413",
@@ -1933,7 +1937,7 @@ static void check_stmt(Checker *c, PlumStmt *s) {
         check_stmt(c, s->as.try_.body);
         for (size_t i = 0; i < s->as.try_.catch_count; i++) {
             PlumCatch *cat = &s->as.try_.catches[i];
-            check_catch_type(c, cat->type, cat->symbol);
+            check_catch_type(c, cat);
             check_stmt(c, cat->body);
         }
         if (s->as.try_.finally != NULL) {

@@ -806,7 +806,14 @@ before it starts, with the file, line, column, what is wrong and a hint.
 **Runtime errors** happen while the program runs: a file that cannot be
 opened, a list index out of range, integer overflow. A runtime error that
 is not caught ends the program with a message and a stack trace, and exit
-code 1.
+code 1. The message names the error's tree, so you know what to catch:
+
+```text
+bank.plum:8: Overdrawn: not enough money
+  in withdraw, line 8
+  in pay, line 13
+  in <main>, line 16
+```
 
 ### 10.2 throw, try, catch
 
@@ -836,8 +843,18 @@ try {
 ```
 
 `catch e: Type` catches that error tree and the trees that extend it; a
-plain `catch e` catches every error. A `try` may end with `finally { }`,
-which runs however the `try` ends.
+plain `catch e` catches every error, and `e` is an `Error`. Catches are
+tried in order, and an error none of them takes goes on to the next `try`
+out. An error thrown inside a `catch` also goes to the next `try` out.
+
+A `try` may end with `finally { }`, which runs however the `try` ends:
+normally, through a catch, with an error no catch took (which then carries
+on), or by `return`, `break` or `continue`. An error thrown inside `finally`
+replaces the one in flight. `exit()` ends the program at once, without
+running `finally` blocks.
+
+Rethrowing a caught error with `throw e` keeps the place it was first
+thrown, so the stack trace still points at the real problem.
 
 `try` is also an expression that turns an error into `none`:
 
@@ -847,7 +864,18 @@ plant port = try int(text) ?? 8080
 
 The built-in error trees include `ValueError`, `ParseError`, `IndexError`,
 `KeyError`, `OverflowError`, `ZeroDivisionError`, `IOError`, `NetError`
-and `AssertError`.
+and `AssertError`. The errors the language itself raises are these:
+
+| Error | Raised by |
+|---|---|
+| `OverflowError` | int arithmetic that doesn't fit in 64 bits; `int(f)` of a float too large |
+| `ZeroDivisionError` | `//` or `%` by an int zero |
+| `IndexError` | a list or string index or slice out of range; `pop()` on an empty list; `insert`/`remove_at` out of range |
+| `KeyError` | `m[k]` for a key not in the map |
+| `ParseError` | `int(text)` or `float(text)` of text that isn't a number |
+| `ValueError` | `byte(n)` out of 0 to 255; an int power with a negative exponent; a shift count out of 0 to 63; a format that doesn't fit the value |
+| `AssertError` | `assert(condition)` when the condition is `bad` |
+| `Error` | too much recursion |
 
 ## 11. Values and memory
 

@@ -1,0 +1,17 @@
+# An error nothing catches ends the program with its type and where it was thrown.
+tree Overdrawn : Error {
+    short_by: float
+}
+
+branch withdraw(balance: float, amount: float) -> float {
+    if amount > balance {
+        throw Overdrawn("not enough money", amount - balance)
+    }
+    return balance - amount
+}
+
+branch pay(amount: float) -> float => withdraw(10.0, amount)
+
+drop(pay(4.0))
+drop(pay(15.0))
+drop("never")

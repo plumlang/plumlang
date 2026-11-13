@@ -1,7 +1,4 @@
 tests/lang/compiler/error_unsupported.plum:8:6: error[E0601]: methods: not supported by the compiler yet (it arrives with #22)
 8 | drop(p.get())
   |      ^~~~~~~
-tests/lang/compiler/error_unsupported.plum:9:1: error[E0601]: throw and try: not supported by the compiler yet (it arrives with #21)
-9 | throw ValueError("no")
-  | ^~~~~~~~~~~~~~~~~~~~~~
-2 errors
+1 error

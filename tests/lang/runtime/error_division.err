@@ -1,4 +1,4 @@
-tests/lang/runtime/error_division.plum:1: runtime error: division by zero: 3 // 0
+tests/lang/runtime/error_division.plum:1: ZeroDivisionError: division by zero: 3 // 0
   in ratio, line 1
   in report, line 3
   in <main>, line 5
