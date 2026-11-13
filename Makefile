@@ -59,7 +59,7 @@ BIN       := $(BUILD)/plum
 UNIT_BIN  := $(BUILD)/unit-tests
 PLUM      := ./plum
 
-.PHONY: all release debug sanitize test golden-update format format-check clean
+.PHONY: all release debug sanitize test golden-update bytecode-doc format format-check clean
 
 # Always refresh ./plum, so it is the binary of the mode asked for even when
 # another mode's copy is newer.
@@ -82,7 +82,19 @@ test: all $(UNIT_BIN)
 	@sh tests/smoke.sh $(PLUM)
 	@sh tests/harness/self-test.sh
 	@sh tests/errors-documented.sh
+	@sh tests/bytecode-documented.sh
 	@sh tests/golden.sh $(PLUM)
+
+# Regenerate the instruction table in docs/bytecode.md from opcodes.h.
+bytecode-doc:
+	@mkdir -p build
+	@sh tools/bytecode-table.sh > build/opcodes.md
+	@awk 'BEGIN { while ((getline line < "build/opcodes.md") > 0) table = table line "\n" } \
+	      /<!-- opcodes:end -->/ { printf "%s", table; skip = 0 } \
+	      !skip { print } \
+	      /<!-- opcodes:begin -->/ { skip = 1 }' docs/bytecode.md > build/bytecode.md
+	@mv build/bytecode.md docs/bytecode.md
+	@echo "docs/bytecode.md updated"
 
 # Rewrite the golden expectations from actual output (review the diff!).
 golden-update: all

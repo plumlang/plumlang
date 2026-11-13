@@ -72,6 +72,8 @@ if(PLUM_SH)
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME errors-documented COMMAND ${PLUM_SH} tests/errors-documented.sh
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  add_test(NAME bytecode-documented COMMAND ${PLUM_SH} tests/bytecode-documented.sh
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME golden COMMAND ${PLUM_SH} tests/golden.sh $<TARGET_FILE:plum>
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
