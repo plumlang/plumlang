@@ -326,6 +326,24 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
         return;
     }
     case PLUM_TOK_IN:
+        if (r->kind == PLUM_EXPR_RANGE) {
+            /* x in a..b: a <= x and x < b (or <= b), with x computed once */
+            int saved = c->fs->next_slot;
+            uint16_t x = new_local(c, NULL, e->span);
+            compile_expr(c, l);
+            op1(c, PLUM_OP_SET_LOCAL, x, line);
+            op1(c, PLUM_OP_GET_LOCAL, x, line);
+            compile_expr(c, r->as.range.low);
+            op(c, PLUM_OP_GE_INT, line);
+            size_t skip = emit_jump(c, PLUM_OP_JUMP_IF_FALSE_KEEP, line);
+            op(c, PLUM_OP_POP, line);
+            op1(c, PLUM_OP_GET_LOCAL, x, line);
+            compile_expr(c, r->as.range.high);
+            op(c, r->as.range.inclusive ? PLUM_OP_LE_INT : PLUM_OP_LT_INT, line);
+            patch_jump(c, skip, e->span);
+            c->fs->next_slot = saved;
+            return;
+        }
         compile_as(c, l, ty_is(r->ty, PLUM_TY_MAP) ? r->ty->as.map.key : r->ty->as.elem);
         compile_expr(c, r);
         op(c, PLUM_OP_CONTAINS, line);
@@ -621,8 +639,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         compile_map(c, e);
         return;
     case PLUM_EXPR_RANGE:
-        unsupported(c, e->span, "ranges as values", 20);
-        return;
+        return; /* not a value: the checker allows it only where it is used */
     case PLUM_EXPR_LAMBDA:
         unsupported(c, e->span, "lambdas", 19);
         return;

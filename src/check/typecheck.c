@@ -13,8 +13,9 @@ typedef struct Checker {
     PlumArena *arena;
     PlumInterner *names;
     PlumDiagList *diags;
-    PlumTy *result;        /* the current function's result type; NULL at top level */
-    PlumSymbol *self_tree; /* the tree whose method is being checked */
+    PlumTy *result;           /* the current function's result type; NULL at top level */
+    PlumSymbol *self_tree;    /* the tree whose method is being checked */
+    const PlumExpr *range_ok; /* the one range expression allowed right now */
 } Checker;
 
 #define TYBUF 96
@@ -1033,6 +1034,9 @@ static PlumTy *check_binary(Checker *c, PlumExpr *e) {
         return l->as.elem;
     }
     PlumTy *l = check_expr(c, e->as.binary.left, NULL);
+    if (op == PLUM_TOK_IN) {
+        c->range_ok = e->as.binary.right; /* x in 0..10 */
+    }
     PlumTy *r = check_expr(c, e->as.binary.right, NULL);
     return binary_type(c, op, l, r, e->span);
 }
@@ -1187,6 +1191,7 @@ static PlumTy *check_index(Checker *c, PlumExpr *e) {
     PlumTy *obj = check_expr(c, e->as.index.object, NULL);
     PlumExpr *idx = e->as.index.index;
     bool slice = idx->kind == PLUM_EXPR_RANGE;
+    c->range_ok = idx;
     PlumTy *i = check_expr(c, idx, NULL);
     if (plum_ty_is_loose(obj)) {
         return c->t.unknown;
@@ -1309,6 +1314,7 @@ static void check_pattern(Checker *c, PlumExpr *p, PlumTy *subject) {
         p->ty = subject;
         return;
     }
+    c->range_ok = p;
     PlumTy *t = check_expr(c, p, subject);
     if (p->kind == PLUM_EXPR_RANGE) {
         if (!plum_ty_is_loose(subject) && !is_int_like(subject)) {
@@ -1419,6 +1425,11 @@ static PlumTy *check_expr(Checker *c, PlumExpr *e, PlumTy *expected) {
         t = check_binary(c, e);
         break;
     case PLUM_EXPR_RANGE: {
+        if (e != c->range_ok) {
+            plum_diag_error(c->diags, e->span, "E0418",
+                            "a range can only be used in a for loop, a slice, with 'in' or as a "
+                            "match pattern; it isn't a value of its own");
+        }
         PlumTy *lo = check_expr(c, e->as.range.low, c->t.integer);
         PlumTy *hi = check_expr(c, e->as.range.high, c->t.integer);
         if ((!plum_ty_is_loose(lo) && !is_int_like(lo)) ||
@@ -1647,6 +1658,7 @@ static void check_for(Checker *c, PlumStmt *s) {
         check_stmt(c, s->as.for_.body);
         return;
     }
+    c->range_ok = iterable;
     PlumTy *it = check_expr(c, iterable, NULL);
     PlumTy *first = c->t.unknown, *second = NULL;
     bool two = s->as.for_.second != NULL;

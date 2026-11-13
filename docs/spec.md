@@ -431,12 +431,15 @@ drop("{n:x}  {n:b}")      # hex, binary
 ### 4.11 Ranges
 
 `a..b` is the integers from `a` up to but not including `b`; `a..=b`
-includes `b`. Ranges are used in `for` loops and slices:
+includes `b`. A range is written where it is used, in a `for` loop, a
+slice, after `in`, or as a `match` pattern; it is not a value that can be
+stored or passed:
 
 ```plum
 for i in 0..5 { }          # 0 1 2 3 4
 plant middle = items[1..3] # a new list of items 1 and 2
 plant word = text[0..5]    # characters 0 to 4
+if age in 13..=19 { }      # 13 <= age and age <= 19
 ```
 
 ## 5. Statements

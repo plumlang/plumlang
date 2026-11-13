@@ -561,6 +561,16 @@ throw ValueError("failed")          # fix
 A type with the wrong number of type arguments: `list` needs one
 (`list[int]`), `map` two (`map[str, int]`), `int` none.
 
+### E0418
+
+A range (`0..5`) used as a value. A range is written where it is used: in
+a `for` loop, a slice, after `in`, or as a `match` pattern.
+
+```plum
+plant r = 0..5        # error
+for i in 0..5 { }     # fix
+```
+
 ### E0415
 
 A field, method or kind case that doesn't exist.
