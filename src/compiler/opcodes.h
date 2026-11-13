@@ -70,6 +70,8 @@
     X(TO_STRING, 1, "text of the top value, with format constant [a] (0xFFFF: none)")          \
     X(BUILD_STRING, 1, "join the top [a] strings")                                             \
     /* Lists */                                                                                \
+    X(BUILD_MAP, 1, "a map of the top [a] key, value pairs")                                   \
+    X(INDEX_MAP, 0, "map[key], or a missing-key error")                                        \
     X(BUILD_LIST, 1, "a list of the top [a] values")                                           \
     X(INDEX_LIST, 0, "list[index], or an index error")                                         \
     X(SLICE, 1, "list[low..high] (..= if [a]) as a new list")                                  \
@@ -118,6 +120,7 @@ typedef enum PlumOpcode {
     X(INT, "int")         \
     X(FLOAT, "float")     \
     X(BYTE, "byte")       \
+    X(SET, "set")         \
     X(TYPE_OF, "type_of") \
     X(ASSERT, "assert")   \
     X(EXIT, "exit")       \

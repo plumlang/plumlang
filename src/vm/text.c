@@ -3,6 +3,7 @@
 
 #include "util/array.h"
 #include "util/fmt.h"
+#include "vm/table.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -228,6 +229,31 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
             put_plain(b, list->items[i], true);
         }
         put(b, "]", 1);
+        return;
+    }
+    case PLUM_OBJ_MAP: {
+        /* {"a": 1} and {:} for maps, set([1, 2]) for sets, in insertion order */
+        PlumTable *t = plum_as_table(v);
+        if (!t->is_set && t->count == 0) {
+            put(b, "{:}", 3);
+            return;
+        }
+        put(b, t->is_set ? "set([" : "{", t->is_set ? 5 : 1);
+        int64_t pos = 0;
+        bool first = true;
+        const PlumTableEntry *e;
+        while ((e = plum_table_next(t, &pos)) != NULL) {
+            if (!first) {
+                put(b, ", ", 2);
+            }
+            first = false;
+            put_plain(b, e->key, true);
+            if (!t->is_set) {
+                put(b, ": ", 2);
+                put_plain(b, e->value, true);
+            }
+        }
+        put(b, t->is_set ? "])" : "}", t->is_set ? 2 : 1);
         return;
     }
     }

@@ -25,7 +25,16 @@
     X(LIST_CONTAINS, LIST, "contains", false)  \
     X(LIST_INDEX_OF, LIST, "index_of", false)  \
     X(LIST_SORTED, LIST, "sorted", false)      \
-    X(LIST_JOIN, LIST, "join", false)
+    X(LIST_JOIN, LIST, "join", false)          \
+    X(MAP_GET, MAP, "get", false)              \
+    X(MAP_REMOVE, MAP, "remove", true)         \
+    X(MAP_KEYS, MAP, "keys", false)            \
+    X(MAP_VALUES, MAP, "values", false)        \
+    X(MAP_CLEAR, MAP, "clear", true)           \
+    X(SET_ADD, SET, "add", true)               \
+    X(SET_REMOVE, SET, "remove", true)         \
+    X(SET_CONTAINS, SET, "contains", false)    \
+    X(SET_CLEAR, SET, "clear", true)
 
 typedef enum PlumMethod {
 #define PLUM_METHOD_ENUM(id, receiver, name, mutates) PLUM_METHOD_##id,
@@ -37,6 +46,8 @@ typedef enum PlumMethod {
 /* The receiver kinds methods belong to. */
 typedef enum PlumMethodReceiver {
     PLUM_RECEIVER_LIST,
+    PLUM_RECEIVER_MAP,
+    PLUM_RECEIVER_SET,
 } PlumMethodReceiver;
 
 #include "vm/value.h"

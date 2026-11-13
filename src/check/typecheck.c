@@ -387,6 +387,45 @@ static PlumTy *list_method(Checker *c, PlumExpr *e, PlumTy *list, const char *na
     return NULL;
 }
 
+/* The type of a map or set method (vm/methods.h), or NULL with an error. */
+static PlumTy *table_method(Checker *c, PlumExpr *e, PlumTy *t, const char *name) {
+    char a[TYBUF];
+    if (t->kind == PLUM_TY_MAP) {
+        PlumTy *k = t->as.map.key, *v = t->as.map.value;
+        switch (plum_method_find(PLUM_RECEIVER_MAP, name)) {
+        case PLUM_METHOD_MAP_GET:
+        case PLUM_METHOD_MAP_REMOVE:
+            return method_type(c, plum_ty_wrap(&c->t, PLUM_TY_OPTIONAL, v), "key", k, false, NULL,
+                               NULL);
+        case PLUM_METHOD_MAP_KEYS:
+            return method_type(c, plum_ty_wrap(&c->t, PLUM_TY_LIST, k), NULL, NULL, false, NULL,
+                               NULL);
+        case PLUM_METHOD_MAP_VALUES:
+            return method_type(c, plum_ty_wrap(&c->t, PLUM_TY_LIST, v), NULL, NULL, false, NULL,
+                               NULL);
+        case PLUM_METHOD_MAP_CLEAR:
+            return method_type(c, c->t.none, NULL, NULL, false, NULL, NULL);
+        default:
+            break;
+        }
+    } else {
+        PlumTy *item = t->as.elem;
+        switch (plum_method_find(PLUM_RECEIVER_SET, name)) {
+        case PLUM_METHOD_SET_ADD:
+            return method_type(c, c->t.none, "value", item, false, NULL, NULL);
+        case PLUM_METHOD_SET_REMOVE:
+        case PLUM_METHOD_SET_CONTAINS:
+            return method_type(c, c->t.boolean, "value", item, false, NULL, NULL);
+        case PLUM_METHOD_SET_CLEAR:
+            return method_type(c, c->t.none, NULL, NULL, false, NULL, NULL);
+        default:
+            break;
+        }
+    }
+    plum_diag_error(c->diags, e->span, "E0415", "%s has no method '%s'", tx(t, a), name);
+    return NULL;
+}
+
 /* a.b: a field, a method, a kind case, or a built-in member. */
 static PlumTy *check_field(Checker *c, PlumExpr *e) {
     PlumExpr *obj = e->as.field.object;
@@ -458,9 +497,14 @@ static PlumTy *check_field(Checker *c, PlumExpr *e) {
         if (result == NULL) {
             return c->t.error;
         }
+    } else if (t->kind == PLUM_TY_MAP || t->kind == PLUM_TY_SET) {
+        result = table_method(c, e, t, name);
+        if (result == NULL) {
+            return c->t.error;
+        }
     } else {
-        /* Methods of str, map, set and numbers arrive with the standard
-         * library (#24); accept them for now. */
+        /* Methods of str and numbers arrive with the standard library
+         * (#24); accept them for now. */
         result = c->t.unknown;
     }
     return optional && !plum_ty_is_loose(result) ? plum_ty_wrap(&c->t, PLUM_TY_OPTIONAL, result)

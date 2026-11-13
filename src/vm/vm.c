@@ -4,7 +4,9 @@
 #include "compiler/chunk.h"
 #include "util/alloc.h"
 #include "util/fmt.h"
+#include "util/random.h"
 #include "vm/methods.h"
+#include "vm/table.h"
 #include "vm/text.h"
 
 #include <math.h>
@@ -30,7 +32,8 @@ typedef struct VM {
     FILE *out;
     FILE *err;
     int exit_code;
-    bool stopped; /* exit() was called */
+    bool stopped;     /* exit() was called */
+    uint64_t seed[2]; /* the random key maps hash with */
 } VM;
 
 /* ------------------------------------------------------------------ */
@@ -288,6 +291,8 @@ static const char *type_name(PlumValue v) {
             return "branch";
         case PLUM_OBJ_LIST:
             return "list";
+        case PLUM_OBJ_MAP:
+            return plum_as_table(v)->is_set ? "set" : "map";
         }
     }
     return "?";
@@ -343,6 +348,8 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
     case PLUM_BUILTIN_LEN:
         if (plum_is_obj(args[0], PLUM_OBJ_LIST)) {
             result = plum_int((int64_t)plum_as_list(args[0])->len);
+        } else if (plum_is_obj(args[0], PLUM_OBJ_MAP)) {
+            result = plum_int((int64_t)plum_as_table(args[0])->count);
         } else {
             PlumString *s = plum_as_string(args[0]);
             result = plum_int((int64_t)plum_utf8_length(s->chars, s->len));
@@ -399,6 +406,15 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         }
         result = args[0];
         break;
+    case PLUM_BUILTIN_SET: {
+        PlumTable *s = plum_table_new(true, vm->seed);
+        PlumList *items = plum_as_list(args[0]);
+        for (size_t i = 0; i < items->len; i++) {
+            plum_table_put(s, plum_retain(items->items[i]), plum_none());
+        }
+        result = plum_obj(&s->obj);
+        break;
+    }
     case PLUM_BUILTIN_TYPE_OF: {
         const char *name = type_name(args[0]);
         result = str_value(plum_string_new(name, strlen(name)));
@@ -787,6 +803,40 @@ static bool execute(VM *vm) {
             break;
         }
 
+        case PLUM_OP_BUILD_MAP: {
+            uint16_t n = READ_U16(); /* pairs: key, value, key, value ... */
+            PlumTable *table = plum_table_new(false, vm->seed);
+            PlumValue *pairs = &vm->stack[vm->top - 2 * (size_t)n];
+            for (uint16_t i = 0; i < n; i++) {
+                plum_table_put(table, pairs[2 * i], pairs[2 * i + 1]); /* refs move */
+            }
+            vm->top -= 2 * (size_t)n;
+            push(vm, plum_obj(&table->obj));
+            break;
+        }
+        case PLUM_OP_INDEX_MAP: {
+            PlumValue key = pop(vm);
+            PlumValue m = pop(vm);
+            PlumValue *found = plum_table_find(plum_as_table(m), key);
+            if (found == NULL) {
+                char error[16];
+                PlumString *k = plum_value_text(key, NULL, error, sizeof error);
+                plum_release(m);
+                plum_release(key);
+                SAVE_IP();
+                runtime_error(vm,
+                              "the key %s%s%s is not in the map; use .get(key) for a value "
+                              "that may be missing",
+                              plum_is_obj(key, PLUM_OBJ_STRING) ? "\"" : "", k->chars,
+                              plum_is_obj(key, PLUM_OBJ_STRING) ? "\"" : "");
+                plum_release(plum_obj(&k->obj));
+                return false;
+            }
+            push(vm, plum_retain(*found));
+            plum_release(m);
+            plum_release(key);
+            break;
+        }
         case PLUM_OP_BUILD_LIST: {
             uint16_t n = READ_U16();
             PlumList *list = plum_list_new(n);
@@ -831,10 +881,14 @@ static bool execute(VM *vm) {
         case PLUM_OP_CONTAINS: {
             PlumValue coll = pop(vm);
             PlumValue item = pop(vm);
-            PlumList *list = plum_as_list(coll);
             bool found = false;
-            for (size_t i = 0; i < list->len && !found; i++) {
-                found = plum_values_equal(list->items[i], item);
+            if (plum_is_obj(coll, PLUM_OBJ_MAP)) {
+                found = plum_table_find(plum_as_table(coll), item) != NULL; /* a key */
+            } else {
+                PlumList *list = plum_as_list(coll);
+                for (size_t i = 0; i < list->len && !found; i++) {
+                    found = plum_values_equal(list->items[i], item);
+                }
             }
             plum_release(coll);
             plum_release(item);
@@ -874,8 +928,13 @@ static bool execute(VM *vm) {
         case PLUM_OP_SET_INDEX_GLOBAL: {
             uint16_t slot = READ_U16();
             PlumValue value = pop(vm);
-            int64_t i = pop(vm).as.i;
             PlumValue *place = op == PLUM_OP_SET_INDEX_LOCAL ? &SLOT(slot) : &vm->globals[slot];
+            if (plum_is_obj(*place, PLUM_OBJ_MAP)) {
+                PlumValue key = pop(vm);
+                plum_table_put(plum_table_unique(place), key, value); /* copy first if shared */
+                break;
+            }
+            int64_t i = pop(vm).as.i;
             PlumList *list = plum_list_unique(place); /* copy first if shared */
             SAVE_IP();                                /* so the error names this line */
             if (!check_index(vm, i, list->len)) {
@@ -891,6 +950,23 @@ static bool execute(VM *vm) {
             uint16_t at = READ_U16();
             uint16_t var = READ_U16();
             uint16_t d = READ_U16();
+            if (plum_is_obj(SLOT(at), PLUM_OBJ_MAP)) {
+                /* maps give keys (and values with two names); sets give items */
+                int64_t pos = SLOT(at + 1).as.i;
+                const PlumTableEntry *e = plum_table_next(plum_as_table(SLOT(at)), &pos);
+                if (e == NULL) {
+                    ip += d;
+                    break;
+                }
+                SLOT(at + 1).as.i = pos;
+                plum_release(SLOT(var));
+                SLOT(var) = plum_retain(e->key);
+                if (op == PLUM_OP_FOR_EACH2) {
+                    plum_release(SLOT(var + 1));
+                    SLOT(var + 1) = plum_retain(e->value);
+                }
+                break;
+            }
             PlumList *list = plum_as_list(SLOT(at));
             int64_t pos = SLOT(at + 1).as.i;
             if ((uint64_t)pos >= list->len) {
@@ -1051,6 +1127,7 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out
     vm->out = out;
     vm->err = err;
     vm->global_count = program->global_count;
+    plum_random_key(vm->seed);
     vm->globals = plum_alloc_zeroed(program->global_count > 0 ? (size_t)program->global_count : 1,
                                     sizeof(PlumValue));
 

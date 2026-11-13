@@ -26,6 +26,7 @@ typedef enum PlumObjType {
     PLUM_OBJ_STRING,
     PLUM_OBJ_FUNCTION,
     PLUM_OBJ_LIST,
+    PLUM_OBJ_MAP, /* maps and sets: vm/table.h */
 } PlumObjType;
 
 /* The header every heap object starts with. */
