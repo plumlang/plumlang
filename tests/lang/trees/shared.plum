@@ -1,0 +1,30 @@
+# Objects are shared: a change through one name is seen through every name.
+tree Counter {
+    count: int = 0
+}
+
+branch bump(c: Counter) {
+    c.count += 1
+}
+
+plant x = Counter()
+plant y = x
+bump(x)
+bump(y)
+drop(x.count, y.count)
+
+plant counters = [Counter(), Counter()]
+plant first = counters[0]
+first.count = 7
+drop(counters[0].count, counters[1].count)
+
+# a list held in a field is still a value: copying it out copies on change
+tree Bag {
+    items: list[int] = []
+}
+plant bag = Bag()
+plant items = bag.items
+items.push(1)
+drop(bag.items, items)
+bag.items = items
+drop(bag.items)

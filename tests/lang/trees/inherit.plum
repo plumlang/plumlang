@@ -1,0 +1,16 @@
+# A child tree has its parent's fields first, then its own.
+tree Animal {
+    name: str
+    legs: int = 4
+}
+
+tree Bird : Animal {
+    can_fly: bool = good
+}
+
+plant tweety = Bird("Tweety", 2)
+drop(tweety.name, tweety.legs, tweety.can_fly)
+plant pets: list[Animal] = [Animal("Rex"), Bird("Polly", legs: 2, can_fly: bad)]
+for pet in pets {
+    drop(pet.name, pet is Bird, pet is Animal)
+}

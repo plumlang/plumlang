@@ -6,6 +6,7 @@
 #include "compiler/chunk.h"
 #include "util/alloc.h"
 #include "util/array.h"
+#include "util/map.h"
 #include "vm/methods.h"
 
 #include <string.h>
@@ -42,6 +43,7 @@ typedef struct FnState {
 typedef struct Compiler {
     PlumDiagList *diags;
     PlumInterner *names;
+    PlumMap trees; /* tree name -> PlumTreeInfo*, one per tree for the whole program */
     FnState *fs;
     int global_count;
     PlumTy *result; /* the current function's result type, for return */
@@ -506,6 +508,175 @@ static int builtin_id(const char *name) {
     return -1;
 }
 
+/* ------------------------------------------------------------------ */
+/* Trees                                                               */
+/* ------------------------------------------------------------------ */
+
+/* A field of a tree, parents' first; `decl` is NULL for an error's message. */
+typedef struct FieldSlot {
+    const char *name;
+    const PlumField *decl;
+} FieldSlot;
+
+static PlumSymbol *parent_of(const PlumSymbol *tree) {
+    if (tree->decl == NULL || tree->decl->kind != PLUM_STMT_TREE) {
+        return NULL;
+    }
+    const PlumStmt *s = tree->decl;
+    for (size_t i = 0; i < s->as.tree.super_count; i++) {
+        const PlumType *super = s->as.tree.supers[i];
+        if (super->kind == PLUM_TYPE_NAME && super->as.name.symbol != NULL &&
+            super->as.name.symbol->kind == PLUM_SYM_TREE) {
+            return super->as.name.symbol;
+        }
+    }
+    return NULL;
+}
+
+static bool is_builtin_error(const PlumSymbol *tree) {
+    return tree->kind == PLUM_SYM_TREE && tree->decl == NULL;
+}
+
+/* Every field of `tree` in object order: the parents' first. */
+static void tree_fields(const PlumSymbol *tree, FieldSlot *out, int *count, int max) {
+    if (tree == NULL || *count >= max) {
+        return;
+    }
+    if (is_builtin_error(tree)) {
+        if (*count < max) {
+            out[(*count)++] = (FieldSlot){"message", NULL}; /* every error has a message */
+        }
+        return;
+    }
+    tree_fields(parent_of(tree), out, count, max);
+    const PlumStmt *s = tree->decl;
+    for (size_t i = 0; i < s->as.tree.field_count && *count < max; i++) {
+        out[(*count)++] = (FieldSlot){s->as.tree.fields[i].name, &s->as.tree.fields[i]};
+    }
+}
+
+#define MAX_FIELDS 256
+
+static int field_index(const PlumSymbol *tree, const char *name) {
+    FieldSlot fields[MAX_FIELDS];
+    int n = 0;
+    tree_fields(tree, fields, &n, MAX_FIELDS);
+    for (int i = 0; i < n; i++) {
+        if (strcmp(fields[i].name, name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* The one PlumTreeInfo for `tree` in this program, made with its parents. */
+static PlumTreeInfo *tree_info(Compiler *c, PlumSymbol *tree) {
+    void *found = NULL;
+    if (plum_map_get(&c->trees, tree->name, strlen(tree->name), &found)) {
+        return found;
+    }
+    PlumTreeInfo *parent = NULL;
+    if (is_builtin_error(tree)) {
+        if (strcmp(tree->name, "Error") != 0) {
+            /* ValueError, KeyError, ... all extend Error */
+            PlumSymbol error_sym = *tree;
+            error_sym.name = plum_intern_cstr(c->names, "Error");
+            parent = tree_info(c, &error_sym);
+        }
+    } else if (parent_of(tree) != NULL) {
+        parent = tree_info(c, parent_of(tree));
+    }
+    FieldSlot fields[MAX_FIELDS];
+    const char *names[MAX_FIELDS];
+    int n = 0;
+    tree_fields(tree, fields, &n, MAX_FIELDS);
+    for (int i = 0; i < n; i++) {
+        names[i] = fields[i].name;
+    }
+    PlumTreeInfo *info = plum_tree_info_new(tree->name, parent, n, names);
+    plum_map_set(&c->trees, tree->name, strlen(tree->name), info);
+    return info;
+}
+
+/* Push a reference to `tree`'s info as a constant of the current chunk. */
+static uint16_t tree_constant(Compiler *c, PlumSymbol *tree, PlumSpan span) {
+    PlumTreeInfo *info = tree_info(c, tree);
+    return constant(c, plum_retain(plum_obj(&info->obj)), span);
+}
+
+/* Does the field's declared type say float (so an int value widens)? */
+static bool declared_float(const PlumType *t) {
+    if (t != NULL && t->kind == PLUM_TYPE_OPTIONAL) {
+        t = t->as.optional;
+    }
+    return t != NULL && t->kind == PLUM_TYPE_NAME && strcmp(t->as.name.name, "float") == 0;
+}
+
+/* Tree(args): the fields in order, by position or name, else their defaults. */
+static void compile_constructor(Compiler *c, const PlumExpr *e, PlumSymbol *tree) {
+    FieldSlot fields[MAX_FIELDS];
+    int n = 0;
+    tree_fields(tree, fields, &n, MAX_FIELDS);
+    const PlumExpr *given[MAX_FIELDS] = {NULL};
+    int positional = 0;
+    for (size_t i = 0; i < e->as.call.arg_count; i++) {
+        const PlumArg *arg = &e->as.call.args[i];
+        int at = arg->name != NULL ? -1 : positional++;
+        for (int k = 0; arg->name != NULL && k < n; k++) {
+            if (strcmp(fields[k].name, arg->name) == 0) {
+                at = k;
+            }
+        }
+        if (at >= 0 && at < n) {
+            given[at] = arg->value;
+        }
+    }
+    for (int k = 0; k < n; k++) {
+        const PlumExpr *v = given[k];
+        if (v == NULL && fields[k].decl != NULL) {
+            v = fields[k].decl->fallback;
+        }
+        if (v == NULL) {
+            /* an error's message defaults to empty */
+            emit_const(c, plum_obj(&plum_string_new("", 0)->obj), e->span);
+            continue;
+        }
+        compile_expr(c, v);
+        if (fields[k].decl != NULL && declared_float(fields[k].decl->type) && int_like(v->ty)) {
+            op(c, PLUM_OP_INT_TO_FLOAT, e->span.line);
+        }
+    }
+    op2(c, PLUM_OP_NEW_OBJECT, tree_constant(c, tree, e->span), (uint16_t)n, e->span.line);
+}
+
+/* The tree an expression's type is an object of (through T?), or NULL. */
+static PlumSymbol *tree_of(const PlumTy *t) {
+    if (t != NULL && t->kind == PLUM_TY_OPTIONAL) {
+        t = t->as.elem;
+    }
+    return t != NULL && t->kind == PLUM_TY_TREE ? t->as.decl : NULL;
+}
+
+/* obj.field and obj?.field */
+static void compile_field(Compiler *c, const PlumExpr *e) {
+    const PlumExpr *obj = e->as.field.object;
+    PlumSymbol *tree = tree_of(obj->ty);
+    int index = tree != NULL ? field_index(tree, e->as.field.name) : -1;
+    if (index < 0) {
+        unsupported(c, e->span, "methods and kind cases", 22);
+        return;
+    }
+    compile_expr(c, obj);
+    size_t skip = 0;
+    if (e->as.field.optional) {
+        skip = emit_jump(c, PLUM_OP_JUMP_IF_NONE_KEEP, e->span.line); /* none?.x is none */
+    }
+    op1(c, PLUM_OP_GET_FIELD, (uint16_t)index, e->span.line);
+    if (e->as.field.optional) {
+        patch_jump(c, skip, e->span);
+    }
+}
+
 static void compile_list(Compiler *c, const PlumExpr *e) {
     const PlumTy *elem = ty_is(e->ty, PLUM_TY_LIST) ? e->ty->as.elem : NULL;
     if (e->as.list.count > 0xFFFF) {
@@ -668,8 +839,21 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
         op2(c, PLUM_OP_CALL_BUILTIN, (uint16_t)id, (uint16_t)e->as.call.arg_count, line);
         return;
     }
-    if (sym != NULL && (sym->kind == PLUM_SYM_TREE || sym->kind == PLUM_SYM_KIND)) {
-        unsupported(c, e->span, "creating tree objects", 22);
+    if (sym != NULL && sym->kind == PLUM_SYM_TREE) {
+        if (!is_builtin_error(sym) && sym->decl != NULL) {
+            const PlumStmt *d = sym->decl;
+            for (size_t i = 0; i < d->as.tree.method_count; i++) {
+                if (strcmp(d->as.tree.methods[i].name, "init") == 0) {
+                    unsupported(c, e->span, "init constructors", 22);
+                    return;
+                }
+            }
+        }
+        compile_constructor(c, e, sym);
+        return;
+    }
+    if (sym != NULL && sym->kind == PLUM_SYM_KIND) {
+        unsupported(c, e->span, "kinds", 22);
         return;
     }
     if (callee->kind == PLUM_EXPR_FIELD) {
@@ -779,11 +963,23 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         patch_jump(c, to_end, e->span);
         return;
     }
+    case PLUM_EXPR_FIELD:
+        compile_field(c, e);
+        return;
+    case PLUM_EXPR_IS: {
+        const PlumType *ty = e->as.cast.type;
+        PlumSymbol *tree = ty->kind == PLUM_TYPE_NAME ? ty->as.name.symbol : NULL;
+        if (tree == NULL || tree->kind != PLUM_SYM_TREE) {
+            unsupported(c, e->span, "'is' with traits and other types", 22);
+            return;
+        }
+        compile_expr(c, e->as.cast.value);
+        op1(c, PLUM_OP_IS_TREE, tree_constant(c, tree, e->span), line);
+        return;
+    }
     case PLUM_EXPR_SELF:
     case PLUM_EXPR_SUPER:
-    case PLUM_EXPR_FIELD:
-    case PLUM_EXPR_IS:
-        unsupported(c, e->span, "trees, fields and methods", 22);
+        unsupported(c, e->span, "methods (self and super)", 22);
         return;
     case PLUM_EXPR_LIST:
         compile_list(c, e);
@@ -967,6 +1163,36 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
 static PlumTokenKind compound_operator(PlumTokenKind tok);
 
 /*
+ * obj.f = v and obj.f op= v. Objects are shared, so SET_FIELD changes the
+ * one object every holder sees. The object is computed once.
+ */
+static void compile_field_assign(Compiler *c, const PlumStmt *s) {
+    const PlumExpr *target = s->as.assign.target;
+    PlumSymbol *tree = tree_of(target->as.field.object->ty);
+    int index = tree != NULL ? field_index(tree, target->as.field.name) : -1;
+    if (index < 0 || target->as.field.optional) {
+        unsupported(c, target->span, "assigning to this field", 22);
+        return;
+    }
+    uint32_t line = s->span.line;
+    int saved = c->fs->next_slot;
+    uint16_t obj = new_local(c, NULL, s->span);
+    compile_expr(c, target->as.field.object);
+    op1(c, PLUM_OP_SET_LOCAL, obj, line);
+    op1(c, PLUM_OP_GET_LOCAL, obj, line);
+    if (s->as.assign.op == PLUM_TOK_EQ) {
+        compile_as(c, s->as.assign.value, target->ty);
+    } else {
+        op1(c, PLUM_OP_GET_LOCAL, obj, line);
+        op1(c, PLUM_OP_GET_FIELD, (uint16_t)index, line);
+        arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
+                   line);
+    }
+    op1(c, PLUM_OP_SET_FIELD, (uint16_t)index, line);
+    c->fs->next_slot = saved;
+}
+
+/*
  * grid[i][j] = v and grid[i][j] op= v: each key is computed once into a
  * hidden slot; SET_PATH takes the keys and the new value.
  */
@@ -1090,8 +1316,12 @@ static void compile_assign(Compiler *c, const PlumStmt *s) {
         compile_index_assign(c, s);
         return;
     }
+    if (target->kind == PLUM_EXPR_FIELD) {
+        compile_field_assign(c, s);
+        return;
+    }
     if (target->kind != PLUM_EXPR_NAME) {
-        unsupported(c, target->span, "assigning to fields", 22);
+        unsupported(c, target->span, "assigning to this", 22);
         return;
     }
     PlumTokenKind tok = s->as.assign.op;
@@ -1288,6 +1518,7 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
     memset(&c, 0, sizeof c);
     c.diags = diags;
     c.names = names;
+    plum_map_init(&c.trees);
     size_t errors_before = diags->errors;
 
     PlumFunction *main = plum_function_new("<main>", 0);
@@ -1331,6 +1562,13 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
     op(&c, PLUM_OP_RETURN_NONE,
        program->count > 0 ? program->stmts[program->count - 1]->span.line : 1);
 
+    /* the constants that use a tree info hold it now */
+    size_t cursor = 0;
+    const PlumMapEntry *entry;
+    while ((entry = plum_map_next(&c.trees, &cursor)) != NULL) {
+        plum_release(plum_obj(&((PlumTreeInfo *)entry->value)->obj));
+    }
+    plum_map_free(&c.trees);
     PlumCompiled out = {main, c.global_count};
     if (diags->errors != errors_before) {
         plum_release(plum_obj(&main->obj));
