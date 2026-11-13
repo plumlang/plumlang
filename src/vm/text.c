@@ -164,23 +164,23 @@ static bool put_number(Buf *b, PlumValue v, const Spec *spec, char *error, size_
 }
 
 /* The plain text of a value; strings inside collections are quoted. */
-static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
+static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHook *hook) {
     char tmp[PLUM_FLOAT_BUF + 160];
     switch (v.type) {
     case PLUM_VAL_NONE:
         put(b, "none", 4);
-        return;
+        return true;
     case PLUM_VAL_BOOL:
         put(b, v.as.b ? "good" : "bad", v.as.b ? 4 : 3);
-        return;
+        return true;
     case PLUM_VAL_INT:
         snprintf(tmp, sizeof tmp, "%lld", (long long)v.as.i);
         put(b, tmp, strlen(tmp));
-        return;
+        return true;
     case PLUM_VAL_FLOAT:
         plum_format_float(v.as.f, tmp);
         put(b, tmp, strlen(tmp));
-        return;
+        return true;
     case PLUM_VAL_OBJ:
         break;
     }
@@ -189,7 +189,7 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
         PlumString *s = plum_as_string(v);
         if (!quote_strings) {
             put(b, s->chars, s->len);
-            return;
+            return true;
         }
         /* The same escapes as a string literal in source. */
         put(b, "\"", 1);
@@ -213,7 +213,7 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
             }
         }
         put(b, "\"", 1);
-        return;
+        return true;
     }
     case PLUM_OBJ_FUNCTION:
     case PLUM_OBJ_CLOSURE: {
@@ -221,20 +221,29 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
             v.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(v)->fn : plum_as_function(v);
         snprintf(tmp, sizeof tmp, "<branch %.150s>", fn->name);
         put(b, tmp, strlen(tmp));
-        return;
+        return true;
     }
     case PLUM_OBJ_CELL:
-        put_plain(b, plum_as_cell(v)->value, quote_strings); /* never seen by programs */
-        return;
-    case PLUM_OBJ_OBJECT:
-        /* to_str() (trait Show) arrives with methods; until then, the tree's name */
+        return put_plain(b, plum_as_cell(v)->value, quote_strings, hook); /* never seen */
+    case PLUM_OBJ_OBJECT: {
+        /* to_str() (trait Show) if its tree has one, else the tree's name */
+        PlumString *text = NULL;
+        if (hook != NULL && !hook->object_text(hook->ctx, v, &text)) {
+            return false;
+        }
+        if (text != NULL) {
+            put(b, text->chars, text->len);
+            plum_release(plum_obj(&text->obj));
+            return true;
+        }
         snprintf(tmp, sizeof tmp, "<%.150s>", plum_as_object(v)->tree->name);
         put(b, tmp, strlen(tmp));
-        return;
+        return true;
+    }
     case PLUM_OBJ_TREE_INFO:
         snprintf(tmp, sizeof tmp, "<tree %.150s>", plum_as_tree_info(v)->name);
         put(b, tmp, strlen(tmp));
-        return;
+        return true;
     case PLUM_OBJ_LIST: {
         PlumList *list = plum_as_list(v);
         put(b, "[", 1);
@@ -242,17 +251,19 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
             if (i > 0) {
                 put(b, ", ", 2);
             }
-            put_plain(b, list->items[i], true);
+            if (!put_plain(b, list->items[i], true, hook)) {
+                return false;
+            }
         }
         put(b, "]", 1);
-        return;
+        return true;
     }
     case PLUM_OBJ_MAP: {
         /* {"a": 1} and {:} for maps, set([1, 2]) for sets, in insertion order */
         PlumTable *t = plum_as_table(v);
         if (!t->is_set && t->count == 0) {
             put(b, "{:}", 3);
-            return;
+            return true;
         }
         put(b, t->is_set ? "set([" : "{", t->is_set ? 5 : 1);
         int64_t pos = 0;
@@ -263,19 +274,29 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
                 put(b, ", ", 2);
             }
             first = false;
-            put_plain(b, e->key, true);
+            if (!put_plain(b, e->key, true, hook)) {
+                return false;
+            }
             if (!t->is_set) {
                 put(b, ": ", 2);
-                put_plain(b, e->value, true);
+                if (!put_plain(b, e->value, true, hook)) {
+                    return false;
+                }
             }
         }
         put(b, t->is_set ? "])" : "}", t->is_set ? 2 : 1);
-        return;
+        return true;
     }
     }
+    return true;
 }
 
 PlumString *plum_value_text(PlumValue v, const char *format, char *error, size_t error_size) {
+    return plum_value_text_with(v, format, NULL, error, error_size);
+}
+
+PlumString *plum_value_text_with(PlumValue v, const char *format, const PlumTextHook *hook,
+                                 char *error, size_t error_size) {
     Spec spec;
     if (format != NULL && format[0] == '\0') {
         format = NULL;
@@ -299,8 +320,12 @@ PlumString *plum_value_text(PlumValue v, const char *format, char *error, size_t
         if (plum_is_obj(v, PLUM_OBJ_STRING) && spec.precision >= 0) {
             PlumString *s = plum_as_string(v);
             put(&b, s->chars, utf8_prefix(s->chars, s->len, (size_t)spec.precision));
-        } else {
-            put_plain(&b, v, false);
+        } else if (!put_plain(&b, v, false, hook)) {
+            plum_array_free(&b);
+            if (error_size > 0) {
+                error[0] = '\0'; /* to_str() threw */
+            }
+            return NULL;
         }
     }
 

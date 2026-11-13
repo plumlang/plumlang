@@ -28,6 +28,7 @@ typedef struct Resolver {
     PlumMap cases;      /* bare kind-case names, for match patterns */
     int function_depth; /* 0 at module level */
     bool in_method;     /* inside a tree's method: self and super are allowed */
+    PlumSymbol *self;   /* the method's self (lambdas inside it capture it) */
 } Resolver;
 
 const char *plum_symbol_kind_text(PlumSymbolKind kind) {
@@ -477,6 +478,12 @@ static void resolve_expr(Resolver *r, PlumExpr *e) {
         if (!r->in_method) {
             plum_diag_error(r->diags, e->span, "E0306", "'%s' can only be used inside a method",
                             e->kind == PLUM_EXPR_SELF ? "self" : "super");
+        } else if (r->self != NULL) {
+            e->symbol = r->self;
+            r->self->used = true;
+            if (r->self->function_depth < r->function_depth) {
+                r->self->captured = true; /* a lambda in the method uses self */
+            }
         }
         break;
     case PLUM_EXPR_INTERP:
@@ -585,9 +592,19 @@ static void check_assignable(Resolver *r, const PlumExpr *target) {
 static void resolve_function(Resolver *r, PlumBranch *b, bool method) {
     Scope scope;
     bool was_method = r->in_method;
+    PlumSymbol *outer_self = r->self;
     r->in_method = method;
     r->function_depth++;
     push(r, &scope, SCOPE_FUNCTION);
+    if (method) {
+        /* self is the method's first parameter; it has no name to look up */
+        b->self = new_symbol(r, PLUM_SYM_PARAM, plum_intern_cstr(r->names, "self"),
+                             b->body != NULL    ? b->body->span
+                             : b->arrow != NULL ? b->arrow->span
+                                                : (PlumSpan){0},
+                             NULL);
+        r->self = b->self;
+    }
     resolve_type(r, b->result);
     resolve_params(r, b->params, b->param_count);
     if (b->arrow != NULL) {
@@ -598,6 +615,7 @@ static void resolve_function(Resolver *r, PlumBranch *b, bool method) {
     pop(r);
     r->function_depth--;
     r->in_method = was_method;
+    r->self = outer_self;
 }
 
 /* A function's body shares the parameters' scope, so `plant a` can't

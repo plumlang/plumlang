@@ -1,0 +1,4 @@
+tests/lang/trees/error_trait_missing.plum:4:1: error[E0420]: Blob doesn't have the method area() -> float, which the trait Shape needs
+4 | tree Blob : Shape {
+  | ^~~~~~~~~~~~~~~~~~~
+1 error

@@ -1,0 +1,20 @@
+# Changing a list or map held in a field changes it in the object.
+tree Board {
+    grid: list[list[int]] = [[0, 0], [0, 0]]
+    tags: map[str, list[str]] = {:}
+    items: list[int] = []
+}
+plant b = Board()
+plant alias = b.items
+b.items.push(1)
+b.items.push(2)
+b.items[0] = 10
+b.items[1] += 5
+b.grid[1][0] = 7
+b.grid[0].push(3)
+b.tags["x"] = ["a"]
+b.tags["x"].push("b")
+drop(b.items, b.grid, b.tags, alias)
+plant boards = [Board()]
+boards[0].items.push(9)
+drop(boards[0].items)

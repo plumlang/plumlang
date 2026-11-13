@@ -1,0 +1,4 @@
+tests/lang/trees/error_override.plum:5:40: error[E0421]: speak(bool) -> str must have the same parameters and result as in Animal: speak() -> str
+5 |     branch speak(loud: bool) -> str => "woof"
+  |                                        ^~~~~~
+1 error

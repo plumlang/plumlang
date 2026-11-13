@@ -248,6 +248,12 @@ static bool is_builtin_error(const PlumSymbol *tree) {
     return tree->kind == PLUM_SYM_TREE && tree->decl == NULL;
 }
 
+/* Is the code being checked a method of `tree`, or of a tree related to it? */
+static bool inside_tree(const Checker *c, const PlumSymbol *tree) {
+    const PlumSymbol *self = c->self_tree;
+    return self != NULL && (plum_tree_extends(self, tree) || plum_tree_extends(tree, self));
+}
+
 static bool is_error_tree(const PlumTy *t) {
     if (t->kind != PLUM_TY_TREE) {
         return false;
@@ -486,6 +492,13 @@ static PlumTy *check_field(Checker *c, PlumExpr *e) {
                 if (is_error_tree(t) && strcmp(name, "message") == 0) {
                     result = c->t.str;
                 }
+            }
+            if ((f != NULL || m != NULL) && name[0] == '_' && !inside_tree(c, t->as.decl)) {
+                plum_diag_error(c->diags, e->span, "E0423",
+                                "'%s' is private to %s: names starting with '_' can only be "
+                                "used in its methods",
+                                name, tx(t, a));
+                return c->t.error;
             }
             if (f != NULL) {
                 result = from_syntax(c, f->type);
@@ -1995,6 +2008,265 @@ static void check_function(Checker *c, PlumBranch *b, PlumTy *sig, PlumSymbol *s
     c->self_tree = outer_self;
 }
 
+/* ------------------------------------------------------------------ */
+/* Trees and traits                                                    */
+/* ------------------------------------------------------------------ */
+
+/* The method `name` a tree actually runs: its own or a parent's, else a
+ * trait's default. NULL when there is none (a trait method left out). */
+static const PlumBranch *method_impl(const PlumSymbol *tree, const char *name) {
+    for (const PlumSymbol *t = tree; t != NULL && t->decl != NULL; t = parent_tree(t)) {
+        const PlumStmt *s = t->decl;
+        for (size_t i = 0; i < s->as.tree.method_count; i++) {
+            if (s->as.tree.methods[i].name == name) {
+                return &s->as.tree.methods[i];
+            }
+        }
+    }
+    const PlumBranch *m = find_method(tree, name, 0);
+    return m != NULL && (m->body != NULL || m->arrow != NULL) ? m : NULL;
+}
+
+static void signature_text(Checker *c, const PlumBranch *m, char *buf, size_t size) {
+    char t[TYBUF];
+    tx(m->ty != NULL ? m->ty : signature(c, m), t);
+    snprintf(buf, size, "%s%s", m->name, strncmp(t, "branch", 6) == 0 ? t + 6 : t);
+}
+
+/* An override or a trait's method must keep its exact type: calls are
+ * checked against the declaration the caller sees. */
+static void expect_same_signature(Checker *c, const PlumBranch *m, const PlumBranch *base,
+                                  const char *base_owner, PlumSpan span) {
+    PlumTy *mine = m->ty != NULL ? m->ty : signature(c, m);
+    PlumTy *theirs = base->ty != NULL ? base->ty : signature(c, base);
+    if (plum_ty_equal(mine, theirs)) {
+        return;
+    }
+    char a[TYBUF * 2], b[TYBUF * 2];
+    signature_text(c, m, a, sizeof a);
+    signature_text(c, base, b, sizeof b);
+    plum_diag_error(c->diags, span, "E0421",
+                    "%s must have the same parameters and result as in %s: %s", a, base_owner, b);
+}
+
+/* Methods the language calls itself have a fixed shape. */
+static void check_special_method(Checker *c, const PlumSymbol *tree, const PlumBranch *m,
+                                 PlumSpan span) {
+    const PlumTy *f = m->ty;
+    const char *want = NULL;
+    if (strcmp(m->name, "to_str") == 0) {
+        if (f->as.func.param_count != 0 || f->as.func.result->kind != PLUM_TY_STR) {
+            want = "to_str() -> str";
+        }
+    } else if (strcmp(m->name, "equals") == 0) {
+        const PlumTy *p = f->as.func.param_count == 1 ? f->as.func.params[0].ty : NULL;
+        if (p == NULL || f->as.func.result->kind != PLUM_TY_BOOL ||
+            !((p->kind == PLUM_TY_TREE || p->kind == PLUM_TY_TRAIT) &&
+              plum_tree_extends(tree, p->as.decl))) {
+            want = "equals(other: <this tree>) -> bool";
+        }
+    } else if (strcmp(m->name, "init") == 0) {
+        if (f->as.func.result->kind != PLUM_TY_NONE) {
+            want = "init(...) with no result";
+        }
+    }
+    if (want != NULL) {
+        plum_diag_error(c->diags, span, "E0424", "the method %s must be written %s", m->name, want);
+    }
+}
+
+/* Does the expression use self (or super)? Lambdas and matches count, to be safe. */
+static bool uses_self(const PlumExpr *e) {
+    if (e == NULL) {
+        return false;
+    }
+    switch (e->kind) {
+    case PLUM_EXPR_SELF:
+    case PLUM_EXPR_SUPER:
+    case PLUM_EXPR_LAMBDA:
+    case PLUM_EXPR_MATCH:
+        return true;
+    case PLUM_EXPR_INTERP:
+        for (size_t i = 0; i < e->as.interp.count; i++) {
+            if (uses_self(e->as.interp.parts[i].expr)) {
+                return true;
+            }
+        }
+        return false;
+    case PLUM_EXPR_LIST:
+        for (size_t i = 0; i < e->as.list.count; i++) {
+            if (uses_self(e->as.list.items[i])) {
+                return true;
+            }
+        }
+        return false;
+    case PLUM_EXPR_MAP:
+        for (size_t i = 0; i < e->as.map.count; i++) {
+            if (uses_self(e->as.map.entries[i].key) || uses_self(e->as.map.entries[i].value)) {
+                return true;
+            }
+        }
+        return false;
+    case PLUM_EXPR_UNARY:
+        return uses_self(e->as.unary.operand);
+    case PLUM_EXPR_BINARY:
+        return uses_self(e->as.binary.left) || uses_self(e->as.binary.right);
+    case PLUM_EXPR_RANGE:
+        return uses_self(e->as.range.low) || uses_self(e->as.range.high);
+    case PLUM_EXPR_IS:
+    case PLUM_EXPR_AS:
+        return uses_self(e->as.cast.value);
+    case PLUM_EXPR_CALL:
+        for (size_t i = 0; i < e->as.call.arg_count; i++) {
+            if (uses_self(e->as.call.args[i].value)) {
+                return true;
+            }
+        }
+        return uses_self(e->as.call.callee);
+    case PLUM_EXPR_INDEX:
+        return uses_self(e->as.index.object) || uses_self(e->as.index.index);
+    case PLUM_EXPR_FIELD:
+        return uses_self(e->as.field.object);
+    case PLUM_EXPR_IF:
+        return uses_self(e->as.if_.cond) || uses_self(e->as.if_.then) ||
+               uses_self(e->as.if_.otherwise);
+    case PLUM_EXPR_TRY:
+    case PLUM_EXPR_SPAWN:
+        return uses_self(e->as.inner);
+    default:
+        return false;
+    }
+}
+
+/* The fields of `tree` and its parents that have no default. */
+static size_t required_fields(const PlumSymbol *tree, const PlumField **out, size_t max) {
+    size_t n = 0;
+    for (const PlumSymbol *t = tree; t != NULL && t->decl != NULL; t = parent_tree(t)) {
+        const PlumStmt *s = t->decl;
+        for (size_t i = 0; i < s->as.tree.field_count && n < max; i++) {
+            if (s->as.tree.fields[i].fallback == NULL) {
+                out[n++] = &s->as.tree.fields[i];
+            }
+        }
+    }
+    return n;
+}
+
+/*
+ * init runs on an object whose fields without defaults aren't set yet, so
+ * it must set them first: its opening statements are `self.field = value`
+ * (the value not using self), until every such field is set. After that,
+ * self can be used freely.
+ */
+static void check_init(Checker *c, const PlumSymbol *tree, const PlumBranch *init) {
+    const PlumField *need[256];
+    size_t n = required_fields(tree, need, 256);
+    bool set[256] = {false};
+    size_t left = n;
+    const PlumStmt *body = init->body;
+    size_t count = body != NULL && body->kind == PLUM_STMT_BLOCK ? body->as.block.count : 0;
+    PlumSpan where = body != NULL ? body->span : tree->span;
+    for (size_t i = 0; i < count && left > 0; i++) {
+        const PlumStmt *s = body->as.block.stmts[i];
+        const PlumExpr *target = s->kind == PLUM_STMT_ASSIGN ? s->as.assign.target : NULL;
+        if (target == NULL || s->as.assign.op != PLUM_TOK_EQ || target->kind != PLUM_EXPR_FIELD ||
+            target->as.field.object->kind != PLUM_EXPR_SELF || uses_self(s->as.assign.value)) {
+            where = s->span;
+            break;
+        }
+        for (size_t k = 0; k < n; k++) {
+            if (!set[k] && need[k]->name == target->as.field.name) {
+                set[k] = true;
+                left--;
+            }
+        }
+        where = s->span;
+    }
+    for (size_t k = 0; k < n; k++) {
+        if (!set[k]) {
+            plum_diag_error(c->diags, where, "E0422",
+                            "init must set self.%s before anything else uses self: start init "
+                            "with 'self.%s = ...' for each field without a default",
+                            need[k]->name, need[k]->name);
+            return;
+        }
+    }
+}
+
+static void check_tree_decl(Checker *c, PlumStmt *s) {
+    PlumSymbol *tree = s->symbol;
+    if (tree == NULL) {
+        return;
+    }
+    for (size_t k = 0; k < s->as.tree.method_count; k++) {
+        PlumBranch *m = &s->as.tree.methods[k];
+        m->ty = signature(c, m);
+    }
+    if (s->kind == PLUM_STMT_TRAIT) {
+        return;
+    }
+    const char *init_name = plum_intern_cstr(c->names, "init");
+    PlumSymbol *parent = parent_tree(tree);
+    for (size_t k = 0; k < s->as.tree.method_count; k++) {
+        PlumBranch *m = &s->as.tree.methods[k];
+        PlumSpan span = m->body != NULL    ? m->body->span
+                        : m->arrow != NULL ? m->arrow->span
+                                           : s->span;
+        check_special_method(c, tree, m, span);
+        if (m->name == init_name) {
+            check_init(c, tree, m);
+            continue;
+        }
+        const PlumBranch *base = parent != NULL ? method_impl(parent, m->name) : NULL;
+        if (base == NULL && parent != NULL) {
+            base = find_method(parent, m->name, 0);
+        }
+        if (base != NULL) {
+            expect_same_signature(c, m, base, parent->name, span);
+        }
+    }
+    /* An inherited init can't set fields this tree adds. */
+    bool own_init = false;
+    for (size_t k = 0; k < s->as.tree.method_count; k++) {
+        own_init = own_init || s->as.tree.methods[k].name == init_name;
+    }
+    const PlumBranch *inherited =
+        own_init || parent == NULL ? NULL : find_method(parent, init_name, 0);
+    if (inherited != NULL) {
+        for (size_t i = 0; i < s->as.tree.field_count; i++) {
+            if (s->as.tree.fields[i].fallback == NULL) {
+                plum_diag_error(c->diags, s->as.tree.fields[i].span, "E0422",
+                                "%s adds the field '%s' without a default, so it needs its own "
+                                "init (the one it inherits doesn't set it)",
+                                tree->name, s->as.tree.fields[i].name);
+                break;
+            }
+        }
+    }
+    /* Every trait method must be there, with the trait's type. */
+    for (size_t i = 0; i < s->as.tree.super_count; i++) {
+        const PlumType *super = s->as.tree.supers[i];
+        PlumSymbol *trait = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
+        if (trait == NULL || trait->kind != PLUM_SYM_TRAIT || trait->decl == NULL) {
+            continue;
+        }
+        const PlumStmt *t = trait->decl;
+        for (size_t k = 0; k < t->as.tree.method_count; k++) {
+            const PlumBranch *want = &t->as.tree.methods[k];
+            const PlumBranch *have = method_impl(tree, want->name);
+            if (have == NULL) {
+                char sig[TYBUF * 2];
+                signature_text(c, want, sig, sizeof sig);
+                plum_diag_error(c->diags, s->span, "E0420",
+                                "%s doesn't have the method %s, which the trait %s needs",
+                                tree->name, sig, trait->name);
+            } else if (have != want) {
+                expect_same_signature(c, have, want, trait->name, s->span);
+            }
+        }
+    }
+}
+
 void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
                     PlumDiagList *diags) {
     Checker c;
@@ -2009,6 +2281,19 @@ void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *
         PlumStmt *s = program->stmts[i];
         if (s->kind == PLUM_STMT_BRANCH && s->symbol != NULL) {
             s->symbol->ty = signature(&c, &s->as.branch);
+        }
+    }
+    /* Methods' types, and the rules trees and traits follow. */
+    for (size_t i = 0; i < program->count; i++) {
+        PlumStmt *s = program->stmts[i];
+        if (s->kind == PLUM_STMT_TRAIT) {
+            check_tree_decl(&c, s);
+        }
+    }
+    for (size_t i = 0; i < program->count; i++) {
+        PlumStmt *s = program->stmts[i];
+        if (s->kind == PLUM_STMT_TREE) {
+            check_tree_decl(&c, s);
         }
     }
     /* 2. The top level, in order, giving module variables their types. */
@@ -2029,7 +2314,7 @@ void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *
             }
             for (size_t k = 0; k < s->as.tree.method_count; k++) {
                 PlumBranch *m = &s->as.tree.methods[k];
-                check_function(&c, m, signature(&c, m), s->symbol);
+                check_function(&c, m, m->ty != NULL ? m->ty : signature(&c, m), s->symbol);
             }
         }
     }

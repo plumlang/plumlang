@@ -1,0 +1,17 @@
+# equals (trait Equal) is what == means for a tree's objects.
+tree Point {
+    x: int
+    y: int
+    branch equals(other: Point) -> bool => self.x == other.x and self.y == other.y
+    branch to_str() -> str => "({self.x}, {self.y})"
+}
+plant a = Point(1, 2)
+drop(a == Point(1, 2), a != Point(2, 1), a == a)
+
+# without equals, == asks whether it is the same object
+tree Box {
+    v: int
+}
+plant b = Box(1)
+plant same = b
+drop(b == same, b == Box(1))

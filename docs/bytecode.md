@@ -137,29 +137,33 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 73 | `SET_PATH_LOCAL` | 2 | local [a], [b] keys down: set the item, copying shared levels |
 | 74 | `SET_PATH_GLOBAL` | 2 | global [a], [b] keys down: set the item, copying shared levels |
 | 75 | `SET_PATH_CAPTURE` | 2 | captured variable [a], [b] keys down: set the item |
-| 76 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
-| 77 | `NEW_OBJECT` | 2 | an object of tree constant [a] from its [b] fields on the stack |
-| 78 | `GET_FIELD` | 1 | field [a] of the object on top |
-| 79 | `SET_FIELD` | 1 | object.field [a] = value (shared: every holder sees it) |
-| 80 | `IS_TREE` | 1 | is the top value an object of tree constant [a] or one extending it |
-| 81 | `EQ` | 0 | a == b, for any two values |
-| 82 | `NE` | 0 | a != b, for any two values |
-| 83 | `NOT` | 0 | not a |
-| 84 | `IS_NONE` | 0 | a == none |
-| 85 | `JUMP` | 1 | jump forward [a] bytes |
-| 86 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 87 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 88 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 89 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 90 | `JUMP_IF_NONE_KEEP` | 1 | jump forward [a] bytes if none, keeping the value |
-| 91 | `LOOP` | 1 | jump back [a] bytes |
-| 92 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 93 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 94 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
-| 95 | `END_TRY` | 1 | the last [a] tries are over |
-| 96 | `THROW` | 0 | throw the error on top |
-| 97 | `CALL` | 1 | call the function under [a] arguments |
-| 98 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 99 | `RETURN` | 0 | return the top value |
-| 100 | `RETURN_NONE` | 0 | return none |
+| 76 | `SET_PATH_FIELD` | 2 | object.field [a], [b] keys down: set the item, copying shared levels |
+| 77 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
+| 78 | `NEW_OBJECT` | 2 | an object of tree constant [a] from its [b] fields on the stack |
+| 79 | `GET_FIELD` | 1 | field [a] of the object on top |
+| 80 | `SET_FIELD` | 1 | object.field [a] = value (shared: every holder sees it) |
+| 81 | `IS_TREE` | 1 | is the top value an object of tree constant [a] or one extending it |
+| 82 | `IS_TRAIT` | 1 | does the top value's tree have the trait named by constant [a] |
+| 83 | `INVOKE` | 2 | call method [a] of the object under [b] arguments, the object as self |
+| 84 | `INVOKE_FROM` | 3 | call tree constant [a]'s method [b] (super, init) with [c] arguments |
+| 85 | `EQ` | 0 | a == b, for any two values |
+| 86 | `NE` | 0 | a != b, for any two values |
+| 87 | `NOT` | 0 | not a |
+| 88 | `IS_NONE` | 0 | a == none |
+| 89 | `JUMP` | 1 | jump forward [a] bytes |
+| 90 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 91 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 92 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 93 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 94 | `JUMP_IF_NONE_KEEP` | 1 | jump forward [a] bytes if none, keeping the value |
+| 95 | `LOOP` | 1 | jump back [a] bytes |
+| 96 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 97 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
+| 98 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
+| 99 | `END_TRY` | 1 | the last [a] tries are over |
+| 100 | `THROW` | 0 | throw the error on top |
+| 101 | `CALL` | 1 | call the function under [a] arguments |
+| 102 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 103 | `RETURN` | 0 | return the top value |
+| 104 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

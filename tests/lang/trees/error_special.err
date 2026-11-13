@@ -1,0 +1,7 @@
+tests/lang/trees/error_special.plum:2:31: error[E0424]: the method to_str must be written to_str() -> str
+2 |     branch to_str() -> int => 1
+  |                               ^
+tests/lang/trees/error_special.plum:3:42: error[E0424]: the method equals must be written equals(other: <this tree>) -> bool
+3 |     branch equals(other: str) -> bool => good
+  |                                          ^~~~
+2 errors

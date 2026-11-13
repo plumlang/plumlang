@@ -1,0 +1,12 @@
+# Freeing a long chain of objects works without deep recursion.
+tree Node {
+    v: int
+    next: Node? = none
+}
+plant head = Node(0)
+for i in 1..1000000 {
+    head = Node(i, head)
+}
+drop(head.v)
+head = Node(-1)
+drop("freed")

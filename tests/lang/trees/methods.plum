@@ -1,0 +1,46 @@
+# Methods reach the object through self; to_str is how an object prints.
+tree Account {
+    owner: str
+    balance: float = 0.0
+
+    branch deposit(amount: float) {
+        if amount <= 0 {
+            throw ValueError("deposit must be positive")
+        }
+        self.balance += amount
+    }
+
+    branch withdraw(amount: float, fee: float = 0.5) -> bool {
+        if amount + fee > self.balance {
+            return bad
+        }
+        self.balance -= amount + fee
+        return good
+    }
+
+    branch to_str() -> str => "{self.owner}: {self.balance:.2}"
+}
+
+plant acct = Account("Ada")
+acct.deposit(50)
+drop(acct)
+drop(acct.withdraw(10), acct.withdraw(100, fee: 0))
+drop("statement: {acct}", str(acct), [acct])
+try {
+    acct.deposit(-1)
+} catch e: ValueError {
+    drop(e.message)
+}
+
+# methods calling methods, and a field holding a function
+tree Greeter {
+    greet: (str) -> str
+    branch twice(name: str) -> str => self.greet(name) + " " + self.greet(name)
+}
+drop(Greeter((n) => "hi {n}").twice("Bo"))
+
+# ?. calls a method only when there is an object
+plant none_yet: Account? = none
+drop(none_yet?.to_str())
+none_yet = acct
+drop(none_yet?.to_str())

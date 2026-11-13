@@ -24,6 +24,21 @@
  */
 PlumString *plum_value_text(PlumValue v, const char *format, char *error, size_t error_size);
 
+/*
+ * How the VM turns an object into text: its to_str(), if its tree has
+ * one. `object_text` stores the text (or NULL: use the default `<Name>`)
+ * and returns false if to_str() failed, an error now being thrown.
+ */
+typedef struct PlumTextHook {
+    bool (*object_text)(void *ctx, PlumValue object, PlumString **out);
+    void *ctx;
+} PlumTextHook;
+
+/* plum_value_text with objects' to_str(). NULL with an empty `error`: to_str()
+ * threw. */
+PlumString *plum_value_text_with(PlumValue v, const char *format, const PlumTextHook *hook,
+                                 char *error, size_t error_size);
+
 /* The number of characters (code points) in UTF-8 text. */
 size_t plum_utf8_length(const char *s, size_t len);
 

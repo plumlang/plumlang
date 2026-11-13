@@ -17,6 +17,12 @@
 /* Calls deeper than this are a runtime error, not a crash (spec 6.5). */
 #define PLUM_MAX_FRAMES 10000
 
+/* How deep native code may call back into Plumlang (to_str while printing,
+ * map, filter, ...). Each level also nests the C run loop, so this limit
+ * keeps the C stack safe; it is far below what the C stack can take, even
+ * with Windows' 1 MB stack. */
+#define PLUM_MAX_CALLBACK_DEPTH 100
+
 /*
  * Run a compiled program. Output from drop goes to `out`, errors to `err`.
  * Returns the exit code: 0, 1 after a runtime error, or the code given to

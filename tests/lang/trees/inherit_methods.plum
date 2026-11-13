@@ -1,0 +1,18 @@
+# A child tree overrides methods; calls go to the object's own tree.
+tree Animal {
+    name: str
+    branch speak() -> str => "..."
+    branch intro() -> str => "{self.name}: {self.speak()}"
+}
+tree Dog : Animal {
+    branch speak() -> str => "woof"
+}
+tree Puppy : Dog {
+    branch speak() -> str => super.speak() + " (squeaky)"
+}
+
+plant pets: list[Animal] = [Animal("Generic"), Dog("Rex"), Puppy("Bit")]
+for pet in pets {
+    drop(pet.intro())
+}
+drop(pets[2] is Dog, pets[1] is Puppy)

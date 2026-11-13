@@ -1,0 +1,4 @@
+tree Thing {
+    branch to_str() -> int => 1
+    branch equals(other: str) -> bool => good
+}

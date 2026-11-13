@@ -1,0 +1,12 @@
+tree Point {
+    x: float
+    y: float
+    branch init(r: float) {
+        self.x = r
+        drop(self.x)
+        self.y = r
+    }
+}
+tree Point3 : Point {
+    z: float
+}

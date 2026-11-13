@@ -40,9 +40,10 @@ typedef struct VM {
     FILE *out;
     FILE *err;
     int exit_code;
-    bool stopped;     /* exit() was called */
-    int stop_at;      /* execute() returns when a RETURN leaves this many frames */
-    uint64_t seed[2]; /* the random key maps hash with */
+    bool stopped;       /* exit() was called */
+    int stop_at;        /* execute() returns when a RETURN leaves this many frames */
+    int callback_depth; /* nested call_value()s */
+    uint64_t seed[2];   /* the random key maps hash with */
     Handler *handlers;
     int handler_count;
     int handler_cap;
@@ -52,6 +53,8 @@ typedef struct VM {
     size_t trace_len;
     size_t trace_cap;
     PlumTreeInfo *const *errors; /* the built-in error trees */
+    int to_str;                  /* the method number of to_str */
+    PlumTextHook text_hook;      /* objects become text through their to_str() */
 } VM;
 
 /* ------------------------------------------------------------------ */
@@ -435,15 +438,30 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
     char error[256];
 
     switch (id) {
-    case PLUM_BUILTIN_DROP:
+    case PLUM_BUILTIN_DROP: {
+        /* All the text first: a to_str() may print, or throw, or grow the stack. */
+        size_t first = vm->top - (size_t)argc;
+        PLUM_ARRAY(char) line = {0};
         for (int i = 0; i < argc; i++) {
-            if (i > 0) {
-                fputc(' ', vm->out);
+            PlumString *s = plum_value_text_with(vm->stack[first + (size_t)i], NULL, &vm->text_hook,
+                                                 error, sizeof error);
+            if (s == NULL) {
+                plum_array_free(&line);
+                return false; /* to_str() threw */
             }
-            plum_print_value(vm->out, args[i]);
+            if (i > 0) {
+                plum_array_push(&line, ' ');
+            }
+            for (size_t k = 0; k < s->len; k++) {
+                plum_array_push(&line, s->chars[k]);
+            }
+            plum_release(plum_obj(&s->obj));
         }
-        fputc('\n', vm->out);
+        plum_array_push(&line, '\n');
+        fwrite(line.items, 1, line.len, vm->out);
+        plum_array_free(&line);
         break;
+    }
     case PLUM_BUILTIN_LEN:
         if (plum_is_obj(args[0], PLUM_OBJ_LIST)) {
             result = plum_int((int64_t)plum_as_list(args[0])->len);
@@ -454,7 +472,10 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         }
         break;
     case PLUM_BUILTIN_STR: {
-        PlumString *s = plum_value_text(args[0], NULL, error, sizeof error);
+        PlumString *s = plum_value_text_with(args[0], NULL, &vm->text_hook, error, sizeof error);
+        if (s == NULL) {
+            return false; /* to_str() threw */
+        }
         result = str_value(s);
         break;
     }
@@ -538,7 +559,13 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         break;
     case PLUM_BUILTIN_ASK:
         if (argc > 0) {
-            plum_print_value(vm->out, args[0]);
+            PlumString *s =
+                plum_value_text_with(args[0], NULL, &vm->text_hook, error, sizeof error);
+            if (s == NULL) {
+                return false; /* to_str() threw */
+            }
+            fwrite(s->chars, 1, s->len, vm->out);
+            plum_release(plum_obj(&s->obj));
             fflush(vm->out);
         }
         result = read_line();
@@ -632,6 +659,13 @@ static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc);
  * or exit() returns false, the error already reported.
  */
 static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, PlumValue *out) {
+    if (vm->callback_depth == PLUM_MAX_CALLBACK_DEPTH) {
+        runtime_error(vm, PLUM_ERROR_ERROR,
+                      "too much recursion: more than %d calls nested inside to_str, map and "
+                      "other callbacks",
+                      PLUM_MAX_CALLBACK_DEPTH);
+        return false;
+    }
     push(vm, plum_retain(fn));
     grow(vm, vm->top + (size_t)argc);
     for (int i = 0; i < argc; i++) {
@@ -641,7 +675,9 @@ static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, Pl
     PlumFunction *f = closure != NULL ? closure->fn : plum_as_function(fn);
     int saved = vm->stop_at;
     vm->stop_at = vm->frame_count;
+    vm->callback_depth++;
     bool ok = call(vm, f, closure, argc) && execute(vm) && !vm->stopped;
+    vm->callback_depth--;
     vm->stop_at = saved;
     if (!ok) {
         return false;
@@ -758,6 +794,43 @@ static bool run_higher_order(VM *vm, PlumMethod m, PlumList *list, const PlumVal
     default:
         return false;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Methods                                                             */
+/* ------------------------------------------------------------------ */
+
+static PlumFunction *method_of(const PlumTreeInfo *tree, int id) {
+    return id >= 0 && id < tree->method_count ? tree->methods[id] : NULL;
+}
+
+/* An object's text: its to_str(), if its tree has one. */
+static bool object_text(void *ctx, PlumValue object, PlumString **out) {
+    VM *vm = ctx;
+    *out = NULL;
+    PlumFunction *fn = method_of(plum_as_object(object)->tree, vm->to_str);
+    if (fn == NULL) {
+        return true;
+    }
+    PlumValue text;
+    if (!call_value(vm, plum_obj(&fn->obj), &object, 1, &text)) {
+        return false;
+    }
+    *out = plum_as_string(text);
+    return true;
+}
+
+/*
+ * Call `fn` as a method: the object sits under its `argc` arguments, and
+ * the function goes under the object, where a call expects it.
+ */
+static bool invoke(VM *vm, PlumFunction *fn, int argc) {
+    grow(vm, vm->top + 1);
+    size_t at = vm->top - (size_t)argc - 1; /* the object */
+    memmove(&vm->stack[at + 1], &vm->stack[at], ((size_t)argc + 1) * sizeof(PlumValue));
+    vm->stack[at] = plum_retain(plum_obj(&fn->obj));
+    vm->top++;
+    return call(vm, fn, NULL, argc + 1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1117,10 +1190,15 @@ static bool execute(VM *vm) {
             const char *format =
                 f == 0xFFFF ? NULL : plum_as_string(chunk->constants.items[f])->chars;
             char error[256];
-            PlumString *s = plum_value_text(*v, format, error, sizeof error);
+            SAVE_IP(); /* to_str() may run */
+            PlumString *s = plum_value_text_with(*v, format, &vm->text_hook, error, sizeof error);
+            if (s == NULL && error[0] == '\0') {
+                goto thrown; /* to_str() threw */
+            }
             if (s == NULL) {
                 FAIL(PLUM_ERROR_VALUE, "%s", error);
             }
+            v = peek(vm, 0); /* the stack may have moved */
             plum_release(*v);
             *v = plum_obj(&s->obj);
             break;
@@ -1350,13 +1428,19 @@ static bool execute(VM *vm) {
         }
         case PLUM_OP_SET_PATH_LOCAL:
         case PLUM_OP_SET_PATH_GLOBAL:
-        case PLUM_OP_SET_PATH_CAPTURE: {
+        case PLUM_OP_SET_PATH_CAPTURE:
+        case PLUM_OP_SET_PATH_FIELD: {
             uint16_t slot = READ_U16();
             uint16_t depth = READ_U16();
             PlumValue value = pop(vm);
             PlumValue *keys = &vm->stack[vm->top - depth];
-            PlumValue *root = place_of(
-                vm, frame, PLACE_KIND(op, PLUM_OP_SET_PATH_LOCAL, PLUM_OP_SET_PATH_GLOBAL), slot);
+            /* a field's object sits under the keys */
+            PlumValue *root =
+                op == PLUM_OP_SET_PATH_FIELD
+                    ? &plum_as_object(vm->stack[vm->top - depth - 1])->fields[slot]
+                    : place_of(vm, frame,
+                               PLACE_KIND(op, PLUM_OP_SET_PATH_LOCAL, PLUM_OP_SET_PATH_GLOBAL),
+                               slot);
             SAVE_IP();
             /* down to the container of the item, then set it */
             PlumValue *container = walk_path(vm, root, keys, depth - 1);
@@ -1376,20 +1460,24 @@ static bool execute(VM *vm) {
                 plum_release(list->items[key.as.i]);
                 list->items[key.as.i] = value;
             }
-            unwind_to(vm, vm->top - depth);
+            unwind_to(vm, vm->top - depth - (op == PLUM_OP_SET_PATH_FIELD ? 1 : 0));
             break;
         }
         case PLUM_OP_METHOD_PATH_LOCAL:
         case PLUM_OP_METHOD_PATH_GLOBAL:
-        case PLUM_OP_METHOD_PATH_CAPTURE: {
+        case PLUM_OP_METHOD_PATH_CAPTURE:
+        case PLUM_OP_METHOD_PATH_FIELD: {
             uint16_t slot = READ_U16();
             uint16_t m = READ_U16();
             uint16_t packed = READ_U16();
             int depth = packed >> 8, argc = packed & 0xFF;
+            size_t under = op == PLUM_OP_METHOD_PATH_FIELD ? 1 : 0; /* the field's object */
             PlumValue *keys = &vm->stack[vm->top - (size_t)argc - (size_t)depth];
-            PlumValue *root = place_of(
-                vm, frame, PLACE_KIND(op, PLUM_OP_METHOD_PATH_LOCAL, PLUM_OP_METHOD_PATH_GLOBAL),
-                slot);
+            PlumValue *root = under ? &plum_as_object(keys[-1])->fields[slot]
+                                    : place_of(vm, frame,
+                                               PLACE_KIND(op, PLUM_OP_METHOD_PATH_LOCAL,
+                                                          PLUM_OP_METHOD_PATH_GLOBAL),
+                                               slot);
             SAVE_IP();
             PlumValue *receiver = walk_path(vm, root, keys, depth);
             if (receiver == NULL) {
@@ -1399,7 +1487,7 @@ static bool execute(VM *vm) {
             char error[256];
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - (size_t)argc],
                                       argc, &result, error, sizeof error);
-            unwind_to(vm, vm->top - (size_t)argc - (size_t)depth);
+            unwind_to(vm, vm->top - (size_t)argc - (size_t)depth - under);
             if (!ok) {
                 FAIL(PLUM_ERROR_INDEX, "%s", error);
             }
@@ -1509,6 +1597,44 @@ static bool execute(VM *vm) {
                       plum_tree_is(plum_as_object(v)->tree, tree);
             push(vm, plum_bool(is));
             plum_release(v);
+            break;
+        }
+        case PLUM_OP_IS_TRAIT: {
+            const PlumString *trait = plum_as_string(chunk->constants.items[READ_U16()]);
+            PlumValue v = pop(vm);
+            bool is = false;
+            if (v.type == PLUM_VAL_OBJ && v.as.obj->type == PLUM_OBJ_OBJECT) {
+                const PlumTreeInfo *tree = plum_as_object(v)->tree;
+                for (int i = 0; i < tree->trait_count && !is; i++) {
+                    is = strcmp(tree->traits[i], trait->chars) == 0;
+                }
+            }
+            push(vm, plum_bool(is));
+            plum_release(v);
+            break;
+        }
+        case PLUM_OP_INVOKE:
+        case PLUM_OP_INVOKE_FROM: {
+            const PlumTreeInfo *tree = NULL;
+            if (op == PLUM_OP_INVOKE_FROM) {
+                tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
+            }
+            uint16_t id = READ_U16();
+            uint16_t argc = READ_U16();
+            if (tree == NULL) {
+                tree = plum_as_object(*peek(vm, argc))->tree;
+            }
+            PlumFunction *fn = method_of(tree, id);
+            SAVE_IP();
+            if (fn == NULL) {
+                FAIL(PLUM_ERROR_ERROR, "internal error: %s has no method %d", tree->name, (int)id);
+            }
+            if (!invoke(vm, fn, argc)) {
+                goto thrown;
+            }
+            frame = &vm->frames[vm->frame_count - 1];
+            ip = frame->ip;
+            chunk = frame->fn->chunk;
             break;
         }
         case PLUM_OP_IS_NONE: {
@@ -1688,6 +1814,8 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out
     /* <main> sits at stack index 0, like any called function. */
     push(vm, plum_retain(plum_obj(&program->main->obj)));
     vm->errors = program->errors;
+    vm->to_str = program->to_str;
+    vm->text_hook = (PlumTextHook){object_text, vm};
     vm->thrown = plum_none();
     vm->trace_of = plum_none();
     if (!(call(vm, program->main, NULL, 0) && execute(vm)) && !vm->stopped) {

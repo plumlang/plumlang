@@ -95,6 +95,9 @@
     X(SET_PATH_LOCAL, 2, "local [a], [b] keys down: set the item, copying shared levels")        \
     X(SET_PATH_GLOBAL, 2, "global [a], [b] keys down: set the item, copying shared levels")      \
     X(SET_PATH_CAPTURE, 2, "captured variable [a], [b] keys down: set the item")                 \
+    X(SET_PATH_FIELD, 2, "object.field [a], [b] keys down: set the item, copying shared levels") \
+    X(METHOD_PATH_FIELD, 3,                                                                      \
+      "method [b] on the item [c / 256] keys into object.field [a], [c % 256] arguments")        \
     X(METHOD_PATH_LOCAL, 3,                                                                      \
       "method [b] on the item [c / 256] keys into local [a], [c % 256] arguments")               \
     X(METHOD_PATH_GLOBAL, 3,                                                                     \
@@ -109,6 +112,9 @@
     X(GET_FIELD, 1, "field [a] of the object on top")                                            \
     X(SET_FIELD, 1, "object.field [a] = value (shared: every holder sees it)")                   \
     X(IS_TREE, 1, "is the top value an object of tree constant [a] or one extending it")         \
+    X(IS_TRAIT, 1, "does the top value's tree have the trait named by constant [a]")             \
+    X(INVOKE, 2, "call method [a] of the object under [b] arguments, the object as self")        \
+    X(INVOKE_FROM, 3, "call tree constant [a]'s method [b] (super, init) with [c] arguments")    \
     /* Every type */                                                                             \
     X(EQ, 0, "a == b, for any two values")                                                       \
     X(NE, 0, "a != b, for any two values")                                                       \

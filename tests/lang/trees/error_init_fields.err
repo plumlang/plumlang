@@ -1,0 +1,7 @@
+tests/lang/trees/error_init_fields.plum:6:9: error[E0422]: init must set self.y before anything else uses self: start init with 'self.y = ...' for each field without a default
+ 6 |         drop(self.x)
+   |         ^~~~~~~~~~~~
+tests/lang/trees/error_init_fields.plum:11:5: error[E0422]: Point3 adds the field 'z' without a default, so it needs its own init (the one it inherits doesn't set it)
+11 |     z: float
+   |     ^~~~~~~~
+2 errors

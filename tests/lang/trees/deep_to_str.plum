@@ -1,0 +1,18 @@
+# to_str calling to_str: deep nesting is a catchable error, never a crash.
+tree Node {
+    v: int
+    next: Node? = none
+    branch to_str() -> str {
+        if plant n = self.next {
+            return "{self.v} {n}"
+        }
+        return "{self.v}"
+    }
+}
+plant head = Node(0)
+for i in 1..20000 {
+    head = Node(i, head)
+}
+plant s = try str(head) ?? "too deep"
+drop(s)
+drop(len(str(Node(1, Node(2)))))

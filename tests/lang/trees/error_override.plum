@@ -1,0 +1,6 @@
+tree Animal {
+    branch speak() -> str => "..."
+}
+tree Dog : Animal {
+    branch speak(loud: bool) -> str => "woof"
+}

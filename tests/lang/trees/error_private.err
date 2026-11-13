@@ -1,0 +1,4 @@
+tests/lang/trees/error_private.plum:6:18: error[E0423]: '_code' is private to Safe: names starting with '_' can only be used in its methods
+6 | drop(s.check(1), s._code)
+  |                  ^~~~~~~
+1 error

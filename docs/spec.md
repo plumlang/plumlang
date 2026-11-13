@@ -604,7 +604,10 @@ is declared in an enclosing function, not across tasks).
 ### 6.5 Recursion
 
 Functions may call themselves. Deep recursion past the stack limit (by
-default 10,000 frames) is a runtime error, not a crash.
+default 10,000 frames) is a runtime error, not a crash. Calls made from
+inside the runtime (a `to_str` running while something prints, the
+function given to `map` or `filter`) may nest 100 deep; past that is also
+a runtime error.
 
 ## 7. Built-in functions
 
@@ -660,8 +663,11 @@ the fields in declaration order; fields with defaults may be left out or
 named: `Account("Ada", balance: 10.0)`.
 
 A tree may define `init` to construct objects differently. When it does,
-calls to the tree's name call `init`, which must set every field without
-a default:
+calls to the tree's name call `init`. Fields with defaults are set first;
+`init` must then set every field without a default, in its opening
+statements (`self.field = value`), before anything else uses `self`. A
+tree that inherits `init` and adds a field without a default needs its
+own `init`.
 
 ```plum
 tree Temperature {
@@ -726,10 +732,27 @@ branch total_area(shapes: list[Shape]) -> float {
 }
 ```
 
-Missing methods are compile errors. The standard traits the language uses
-are `Show` (`to_str`, for interpolation and `drop`), `Equal` (`equals`,
-for `==`), `Order` (`compare`, for `<` and sorting), `Hash` (`hash`, for
-map keys) and `Iterable` (`iter`, for `for`).
+Missing methods are compile errors, and a tree's version of a trait's
+method (or of a parent's method it overrides) must have exactly the same
+parameters and result. `x is Shape` asks whether an object's tree has the
+trait.
+
+Some methods the language calls itself:
+
+- `to_str() -> str` is how an object prints: in `drop`, `str()` and
+  interpolation, and inside a printed list or map. Without it, an object
+  prints as `<TreeName>`.
+- `equals(other: T) -> bool`, where `T` is the tree or one it extends, is
+  what `a == b` and `a != b` mean when `a`'s type is a tree with
+  `equals`. Without it, `==` asks whether both are the same object.
+  (Comparisons inside collections, like `list.contains`, still compare
+  objects by identity.)
+
+`Order` (`compare`, for `<` and sorting), `Hash` (`hash`, for map keys)
+and `Iterable` (`iter`, for `for`) come with the standard library.
+
+Fields and methods whose names start with `_` are private to the tree and
+the trees that extend it (section 9.4).
 
 ### 8.6 Kinds: enumerations
 
