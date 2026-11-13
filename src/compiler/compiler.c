@@ -602,6 +602,14 @@ static void tree_fields(const PlumSymbol *tree, FieldSlot *out, int *count, int 
 
 #define MAX_FIELDS 256
 
+/* Is field `index` of `tree` declared weak? */
+static bool field_weak(const PlumSymbol *tree, int index) {
+    FieldSlot fields[MAX_FIELDS];
+    int n = 0;
+    tree_fields(tree, fields, &n, MAX_FIELDS);
+    return index >= 0 && index < n && fields[index].decl != NULL && fields[index].decl->weak;
+}
+
 static int field_index(const PlumSymbol *tree, const char *name) {
     FieldSlot fields[MAX_FIELDS];
     int n = 0;
@@ -707,6 +715,9 @@ static void compile_constructor(Compiler *c, const PlumExpr *e, PlumSymbol *tree
         if (fields[k].decl != NULL && declared_float(fields[k].decl->type) && int_like(v->ty)) {
             op(c, PLUM_OP_INT_TO_FLOAT, e->span.line);
         }
+        if (fields[k].decl != NULL && fields[k].decl->weak) {
+            op(c, PLUM_OP_WEAK, e->span.line); /* hold it without keeping it alive */
+        }
     }
     op2(c, PLUM_OP_NEW_OBJECT, tree_constant(c, tree, e->span), (uint16_t)n, e->span.line);
 }
@@ -748,6 +759,9 @@ static void compile_field(Compiler *c, const PlumExpr *e) {
         skip = emit_jump(c, PLUM_OP_JUMP_IF_NONE_KEEP, e->span.line); /* none?.x is none */
     }
     op1(c, PLUM_OP_GET_FIELD, (uint16_t)index, e->span.line);
+    if (field_weak(tree, index)) {
+        op(c, PLUM_OP_UNWEAK, e->span.line); /* the object, or none if it's gone */
+    }
     if (e->as.field.optional) {
         patch_jump(c, skip, e->span);
     }
@@ -1895,6 +1909,9 @@ static void compile_field_assign(Compiler *c, const PlumStmt *s) {
         op1(c, PLUM_OP_GET_FIELD, (uint16_t)index, line);
         arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
                    line);
+    }
+    if (field_weak(tree, index)) {
+        op(c, PLUM_OP_WEAK, line);
     }
     op1(c, PLUM_OP_SET_FIELD, (uint16_t)index, line);
     c->fs->next_slot = saved;

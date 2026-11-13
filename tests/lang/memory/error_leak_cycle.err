@@ -1,0 +1,5 @@
+leak check: 4 objects are still alive in reference cycles:
+  1 Person, made on line 7
+  1 Person, made on line 8
+  2 Person, made on line 11
+  hint: make one direction of each cycle weak, like 'parent: weak Node? = none'

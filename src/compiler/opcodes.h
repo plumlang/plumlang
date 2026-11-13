@@ -112,6 +112,8 @@
     X(GET_FIELD, 1, "field [a] of the object on top")                                            \
     X(SET_FIELD, 1, "object.field [a] = value (shared: every holder sees it)")                   \
     X(IS_TREE, 1, "is the top value an object of tree constant [a] or one extending it")         \
+    X(WEAK, 0, "the top value as a weak reference (an object's weak box; none stays none)")      \
+    X(UNWEAK, 0, "a weak reference's object, or none if it is gone")                             \
     X(IS_TRAIT, 1, "does the top value's tree have the trait named by constant [a]")             \
     X(INVOKE, 2, "call method [a] of the object under [b] arguments, the object as self")        \
     X(INVOKE_FROM, 3, "call tree constant [a]'s method [b] (super, init) with [c] arguments")    \

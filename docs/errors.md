@@ -634,6 +634,13 @@ A method the language calls itself, written with the wrong shape:
 `to_str() -> str` (for printing), `equals(other: <this tree>) -> bool`
 (for `==`), and `init(...)` with no result.
 
+### E0425
+
+`weak` on a field whose type isn't an optional tree or trait. A weak
+reference reads as `none` once its object is freed, so its type must be
+optional, like `parent: weak Node? = none`; numbers, strings and
+collections are values and can't be weak.
+
 ## Control flow
 
 ### E0501

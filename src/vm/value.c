@@ -113,6 +113,7 @@ PlumObject *plum_object_new(PlumTreeInfo *tree) {
     o->obj.refcount = 1;
     o->obj.type = PLUM_OBJ_OBJECT;
     o->tree = tree;
+    o->weak = NULL;
     tree->obj.refcount++;
     o->fields = (PlumValue *)(o + 1);
     for (size_t i = 0; i < n; i++) {
@@ -128,6 +129,19 @@ const char *plum_error_name(PlumErrorKind kind) {
 #undef PLUM_ERROR_NAME
     };
     return (unsigned)kind < PLUM_ERROR_COUNT ? names[kind] : "Error";
+}
+
+PlumWeak *plum_weak_of(PlumObject *o) {
+    if (o->weak != NULL) {
+        o->weak->obj.refcount++;
+        return o->weak;
+    }
+    PlumWeak *w = plum_alloc_zeroed(1, sizeof *w);
+    w->obj.refcount = 1;
+    w->obj.type = PLUM_OBJ_WEAK;
+    w->target = o;
+    o->weak = w;
+    return w;
 }
 
 bool plum_tree_is(const PlumTreeInfo *tree, const PlumTreeInfo *ancestor) {
@@ -239,7 +253,18 @@ static void free_object(PlumObj *obj, Pending *p) {
             drop_ref(p, o->fields[i]);
         }
         drop_obj(p, &o->tree->obj);
+        if (o->weak != NULL) {
+            o->weak->target = NULL; /* weak references to it now read none */
+        }
         plum_free(o);
+        return;
+    }
+    case PLUM_OBJ_WEAK: {
+        PlumWeak *w = (PlumWeak *)obj;
+        if (w->target != NULL) {
+            w->target->weak = NULL;
+        }
+        plum_free(w);
         return;
     }
     case PLUM_OBJ_CELL: {

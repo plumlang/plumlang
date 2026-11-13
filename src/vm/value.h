@@ -31,6 +31,7 @@ typedef enum PlumObjType {
     PLUM_OBJ_CLOSURE,   /* a function with the cells it captured */
     PLUM_OBJ_TREE_INFO, /* what the VM knows about a tree: name, parent, fields */
     PLUM_OBJ_OBJECT,    /* an object of a tree */
+    PLUM_OBJ_WEAK,      /* a weak reference to an object */
 } PlumObjType;
 
 /* The header every heap object starts with. */
@@ -94,9 +95,25 @@ typedef struct PlumTreeInfo {
 /* An object of a tree: shared, not copied (spec 8.3). */
 typedef struct PlumObject {
     PlumObj obj;
-    PlumTreeInfo *tree; /* holds a reference */
-    PlumValue *fields;  /* tree->field_count values, just past the struct */
+    PlumTreeInfo *tree;    /* holds a reference */
+    PlumValue *fields;     /* tree->field_count values, just past the struct */
+    struct PlumWeak *weak; /* its weak box, if anything refers to it weakly */
 } PlumObject;
+
+/*
+ * A weak reference (spec 11.3): a box pointing at an object without
+ * keeping it alive. Freeing the object empties the box, so reading it
+ * gives none. An object has at most one box, shared by all its weak
+ * references.
+ */
+typedef struct PlumWeak {
+    PlumObj obj;
+    PlumObject *target; /* NULL once the object is gone */
+    uint32_t line;      /* where the object was made (for the leak check) */
+} PlumWeak;
+
+/* The weak box of `o`, made if needed, with a new reference. */
+PlumWeak *plum_weak_of(PlumObject *o);
 
 typedef struct PlumChunk PlumChunk;
 

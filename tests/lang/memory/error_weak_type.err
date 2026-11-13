@@ -1,0 +1,7 @@
+tests/lang/memory/error_weak_type.plum:2:5: error[E0425]: a weak field holds an object that may be gone, so its type is an optional tree, like 'weak Node?'; this is int
+2 |     hits: weak int = 0
+  |     ^~~~~~~~~~~~~~~~~~
+tests/lang/memory/error_weak_type.plum:3:5: error[E0425]: a weak field holds an object that may be gone, so its type is an optional tree, like 'weak Node?'; this is Cache
+3 |     owner: weak Cache
+  |     ^~~~~~~~~~~~~~~~~
+2 errors

@@ -1,0 +1,4 @@
+tree Cache {
+    hits: weak int = 0
+    owner: weak Cache
+}
