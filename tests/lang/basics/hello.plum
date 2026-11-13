@@ -1,3 +1,2 @@
-# pending: needs the compiler and VM (#16)
 # From the prototype's index.plum.
 drop("hello world! this is plum")

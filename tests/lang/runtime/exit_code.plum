@@ -1,0 +1,4 @@
+# exit: 3
+drop("before")
+exit(3)
+drop("never printed")

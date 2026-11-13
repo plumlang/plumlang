@@ -1,0 +1,2 @@
+tests/lang/runtime/error_power.plum:1: runtime error: 2 ** -1: an int power needs an exponent of 0 or more; use a float for fractions
+  in <main>, line 1

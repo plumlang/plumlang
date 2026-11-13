@@ -24,6 +24,9 @@ file(GLOB_RECURSE PLUM_CLI_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/cli
 file(GLOB_RECURSE PLUM_UNIT_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/unit/*.c)
 
 add_library(plumcore STATIC ${PLUM_LIB_SOURCES})
+if(NOT MSVC)
+  target_link_libraries(plumcore PUBLIC m) # pow, fmod; part of the C runtime on MSVC
+endif()
 add_executable(plum ${PLUM_CLI_SOURCES})
 add_executable(plum_unit_tests ${PLUM_UNIT_SOURCES})
 target_link_libraries(plum PRIVATE plumcore)

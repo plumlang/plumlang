@@ -1,0 +1,10 @@
+# Strings, characters and formats.
+drop(len("héllo🍑"), "apple" < "banana", "b" > "a", "abc" == "abc")
+drop("{3.14159:.2}|{42:>6}|{42:<6}|{42:^6}|{7:*^9}")
+drop("{255:x} {255:X} {8:o} {5:b} {-255:x} {5:.2} {1234.5:e}")
+drop("{"abcdef":.3}|{"hé":>4}|{good}|{none}")
+drop(str(42) + str(2.5) + str(bad))
+drop(int("  42 "), int("-1_000"), float("2.5e3"))
+drop(type_of(1), type_of(1.5), type_of("x"), type_of(good), type_of(none))
+plant answer = ask("Name? ")
+drop(answer ?? "(end of input)")

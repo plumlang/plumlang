@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # drop prints its arguments separated by spaces.
 drop("a", 1, 2.5, good)
 drop()

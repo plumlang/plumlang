@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 plant name = "Ada"
 plant n = 3
 drop("Hello, {name}!")

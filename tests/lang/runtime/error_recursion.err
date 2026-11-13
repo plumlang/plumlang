@@ -1,0 +1,14 @@
+tests/lang/runtime/error_recursion.plum:1: runtime error: too much recursion: more than 10000 calls deep
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  in down, line 1
+  ... 9988 more calls
+  in down, line 1
+  in <main>, line 2

@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # From the prototype's variable.plum, in the spec's syntax.
 plant age = 21
 drop(age)

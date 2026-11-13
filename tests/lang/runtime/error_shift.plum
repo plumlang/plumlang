@@ -1,0 +1,2 @@
+plant n = 64
+drop(1 << n)

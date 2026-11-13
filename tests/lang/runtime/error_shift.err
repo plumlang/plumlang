@@ -1,0 +1,2 @@
+tests/lang/runtime/error_shift.plum:2: runtime error: shift count 64 is out of range; it must be 0 to 63
+  in <main>, line 2
