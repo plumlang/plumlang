@@ -1,0 +1,6 @@
+# Floats follow IEEE 754: dividing by zero gives inf or nan, not an error.
+drop(1.0 / 0, -1.0 / 0, 0.0 / 0)
+drop(0.1 + 0.2, 1e300 * 10, 2.0 ** 0.5)
+drop(7.5 // 2, -7.5 // 2, 7.5 % 2, -7.5 % 2)
+drop(0.0 / 0 == 0.0 / 0, 1.0 / 0 > 1e308)
+drop(int(3.9), int(-3.9), float(3))

@@ -1,0 +1,2 @@
+tests/lang/runtime/error_conversion.plum:2: runtime error: int("twelve"): not a whole number
+  in <main>, line 2

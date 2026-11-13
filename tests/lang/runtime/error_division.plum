@@ -1,0 +1,5 @@
+branch ratio(a: int, b: int) -> int => a // b
+branch report(n: int) {
+    drop(ratio(n, n - 3))
+}
+report(3)

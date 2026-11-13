@@ -1,0 +1,2 @@
+tests/lang/runtime/error_overflow.plum:3: runtime error: integer overflow: 9223372036854775807 + 1 doesn't fit in an int
+  in <main>, line 3

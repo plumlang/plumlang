@@ -1,0 +1,2 @@
+drop(int("12"))
+drop(int("twelve"))

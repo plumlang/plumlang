@@ -1,0 +1,3 @@
+plant total = 3
+assert(total == 3)
+assert(total > 5, "total must be over 5")

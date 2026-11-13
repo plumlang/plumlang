@@ -1,0 +1,10 @@
+# The ends of the int range, without wrap-around.
+root MAX = 9223372036854775807
+root MIN = -9223372036854775807 - 1
+drop(MAX, MIN)
+for i in MAX - 2..=MAX {       # an inclusive range ending at the largest int
+    drop(i)
+}
+drop(MIN // 1, MIN % -1, -7 // 2, 7 // -2, -7 % 3, 7 % -3)
+drop(2 ** 62, (-2) ** 63, 0 ** 0)
+drop(-8 >> 1, -1 >> 63, 1 << 62)
