@@ -1,9 +1,9 @@
-tests/lang/compiler/error_unsupported.plum:3:1: warning[W0502]: 'xs' is never used; remove it, or start its name with '_' to keep it
-3 | plant xs: list[int] = [1, 2]
-  | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:3:23: error[E0601]: lists, maps and ranges as values: not supported by the compiler yet (it arrives with #20)
-3 | plant xs: list[int] = [1, 2]
-  |                       ^~~~~~
+tests/lang/compiler/error_unsupported.plum:3:1: warning[W0502]: 'ages' is never used; remove it, or start its name with '_' to keep it
+3 | plant ages: map[str, int] = {"a": 1}
+  | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/lang/compiler/error_unsupported.plum:3:29: error[E0601]: maps and ranges as values: not supported by the compiler yet (it arrives with #20)
+3 | plant ages: map[str, int] = {"a": 1}
+  |                             ^~~~~~~~
 tests/lang/compiler/error_unsupported.plum:4:1: warning[W0502]: 'double' is never used; remove it, or start its name with '_' to keep it
 4 | plant double = (x: int) => x * 2
   | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
