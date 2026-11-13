@@ -138,20 +138,25 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 74 | `SET_PATH_GLOBAL` | 2 | global [a], [b] keys down: set the item, copying shared levels |
 | 75 | `SET_PATH_CAPTURE` | 2 | captured variable [a], [b] keys down: set the item |
 | 76 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
-| 77 | `EQ` | 0 | a == b, for any two values |
-| 78 | `NE` | 0 | a != b, for any two values |
-| 79 | `NOT` | 0 | not a |
-| 80 | `IS_NONE` | 0 | a == none |
-| 81 | `JUMP` | 1 | jump forward [a] bytes |
-| 82 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 83 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 84 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 85 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 86 | `LOOP` | 1 | jump back [a] bytes |
-| 87 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 88 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 89 | `CALL` | 1 | call the function under [a] arguments |
-| 90 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 91 | `RETURN` | 0 | return the top value |
-| 92 | `RETURN_NONE` | 0 | return none |
+| 77 | `NEW_OBJECT` | 2 | an object of tree constant [a] from its [b] fields on the stack |
+| 78 | `GET_FIELD` | 1 | field [a] of the object on top |
+| 79 | `SET_FIELD` | 1 | object.field [a] = value (shared: every holder sees it) |
+| 80 | `IS_TREE` | 1 | is the top value an object of tree constant [a] or one extending it |
+| 81 | `EQ` | 0 | a == b, for any two values |
+| 82 | `NE` | 0 | a != b, for any two values |
+| 83 | `NOT` | 0 | not a |
+| 84 | `IS_NONE` | 0 | a == none |
+| 85 | `JUMP` | 1 | jump forward [a] bytes |
+| 86 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 87 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 88 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 89 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 90 | `JUMP_IF_NONE_KEEP` | 1 | jump forward [a] bytes if none, keeping the value |
+| 91 | `LOOP` | 1 | jump back [a] bytes |
+| 92 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 93 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
+| 94 | `CALL` | 1 | call the function under [a] arguments |
+| 95 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 96 | `RETURN` | 0 | return the top value |
+| 97 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

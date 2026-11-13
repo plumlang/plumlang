@@ -26,7 +26,7 @@ typedef enum PlumObjType {
     PLUM_OBJ_STRING,
     PLUM_OBJ_FUNCTION,
     PLUM_OBJ_LIST,
-    PLUM_OBJ_MAP,     /* maps and sets: vm/table.h */
+    PLUM_OBJ_MAP,       /* maps and sets: vm/table.h */
     PLUM_OBJ_CELL,      /* a captured variable's box */
     PLUM_OBJ_CLOSURE,   /* a function with the cells it captured */
     PLUM_OBJ_TREE_INFO, /* what the VM knows about a tree: name, parent, fields */

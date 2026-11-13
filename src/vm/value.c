@@ -99,8 +99,8 @@ PlumTreeInfo *plum_tree_info_new(const char *name, PlumTreeInfo *parent, int fie
         parent->obj.refcount++;
     }
     info->field_count = field_count;
-    info->field_names = plum_alloc_zeroed(field_count > 0 ? (size_t)field_count : 1,
-                                          sizeof(const char *));
+    info->field_names =
+        plum_alloc_zeroed(field_count > 0 ? (size_t)field_count : 1, sizeof(const char *));
     for (int i = 0; i < field_count; i++) {
         info->field_names[i] = field_names[i];
     }
