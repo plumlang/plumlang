@@ -35,6 +35,7 @@ Format for a new entry:
 - **Maps and sets**: `map[K, V]` and `set[T]` values in insertion order, hashed with a randomly keyed SipHash; `m[k]`, `get`, `remove`, `keys`, `values`, `for k, v in m`, `add`, `in`.
 - **Strings as sequences**: `s[i]`, `s[a..b]`, `for ch in s` and `sub in s`, all by character, not byte.
 - **Nested collections**: `grid[i][j] = v`, `m["k"].push(x)`, with copy-on-write at every level; `x in a..b`. Ranges are written where they are used, not stored.
+- **Closures**: lambdas and nested functions capture variables and share them; each loop iteration captures its own value.
 - **Tests**: golden-file tests (`tests/lang/`) with pending markers and `make golden-update`; the Python prototype's programs ported to the spec's syntax.
 - **CI**: builds and tests on Linux (x86_64, arm64), macOS and Windows (MSVC, mingw-w64), under ASan and UBSan, with a clang-format check.
 - **Licensing and governance**: the Plumlang Commercial License 1.0 with its

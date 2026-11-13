@@ -1,0 +1,32 @@
+# A closure that changes a captured variable changes it for everyone.
+plant items: list[str] = []
+plant add = (s: str) => { items.push(s) }
+add("a")
+add("b")
+drop(items)
+
+branch tally() -> int {
+    plant total = 0
+    plant counts: map[str, int] = {:}
+    plant see = (w: str) => {
+        counts[w] = (counts.get(w) ?? 0) + 1
+        total += 1
+    }
+    see("plum")
+    see("tree")
+    see("plum")
+    drop(counts)
+    return total
+}
+drop(tally())
+
+branch nest() -> int {
+    plant a = 1
+    plant f = () => {
+        plant g = () => a + 100
+        return g()
+    }
+    a = 2
+    return f()
+}
+drop(nest())

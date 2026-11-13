@@ -1,0 +1,11 @@
+# Each time round a loop, a closure captures that iteration's value.
+plant fns: list[() -> int] = []
+for i in 0..3 {
+    fns.push(() => i * 10)
+}
+for word in ["a", "b"] {
+    fns.push(() => len(word))
+}
+for f in fns {
+    drop(f())
+}

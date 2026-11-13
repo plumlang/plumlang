@@ -16,6 +16,7 @@
 
 typedef struct Frame {
     PlumFunction *fn;
+    PlumClosure *closure; /* its captured variables; NULL for a plain function */
     const uint8_t *ip;
     size_t base; /* index of slot 0 in the stack; the function itself sits at base - 1 */
 } Frame;
@@ -288,6 +289,8 @@ static const char *type_name(PlumValue v) {
         case PLUM_OBJ_STRING:
             return "str";
         case PLUM_OBJ_FUNCTION:
+        case PLUM_OBJ_CLOSURE:
+        case PLUM_OBJ_CELL:
             return "branch";
         case PLUM_OBJ_LIST:
             return "list";
@@ -521,13 +524,14 @@ static PlumValue *walk_path(VM *vm, PlumValue *place, const PlumValue *keys, int
 /* The run loop                                                        */
 /* ------------------------------------------------------------------ */
 
-static bool call(VM *vm, PlumFunction *fn, int argc) {
+static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
     if (vm->frame_count == PLUM_MAX_FRAMES) {
         runtime_error(vm, "too much recursion: more than %d calls deep", PLUM_MAX_FRAMES);
         return false;
     }
     Frame *f = &vm->frames[vm->frame_count++];
     f->fn = fn;
+    f->closure = closure;
     f->ip = fn->chunk->code.items;
     f->base = vm->top - (size_t)argc;
     /* The other local slots start as none. */
@@ -551,6 +555,28 @@ static inline uint16_t read_u16(const uint8_t **ip) {
     *ip += 2;
     return v;
 }
+
+/*
+ * The value an in-place instruction changes: a local slot (looking through
+ * a cell if a closure captured the variable), a global, or a variable the
+ * running closure captured.
+ */
+static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
+    PlumValue *p;
+    if (kind == 0) {
+        p = &vm->stack[frame->base + n];
+        if (plum_is_obj(*p, PLUM_OBJ_CELL)) {
+            p = &plum_as_cell(*p)->value;
+        }
+    } else if (kind == 1) {
+        p = &vm->globals[n];
+    } else {
+        p = &frame->closure->cells[n]->value;
+    }
+    return p;
+}
+
+#define PLACE_KIND(op, local, global) ((op) == (local) ? 0 : (op) == (global) ? 1 : 2)
 
 static bool execute(VM *vm) {
     Frame *frame = &vm->frames[vm->frame_count - 1];
@@ -628,6 +654,47 @@ static bool execute(VM *vm) {
             PlumValue v = pop(vm);
             plum_release(SLOT(n));
             SLOT(n) = v;
+            break;
+        }
+        case PLUM_OP_BOX_LOCAL: {
+            uint16_t n = READ_U16();
+            SLOT(n) = plum_obj(&plum_cell_new(SLOT(n))->obj); /* the cell takes the value */
+            break;
+        }
+        case PLUM_OP_GET_CELL:
+            push(vm, plum_retain(plum_as_cell(SLOT(READ_U16()))->value));
+            break;
+        case PLUM_OP_SET_CELL: {
+            PlumCell *cell = plum_as_cell(SLOT(READ_U16()));
+            PlumValue v = pop(vm);
+            plum_release(cell->value);
+            cell->value = v;
+            break;
+        }
+        case PLUM_OP_GET_CAPTURE:
+            push(vm, plum_retain(frame->closure->cells[READ_U16()]->value));
+            break;
+        case PLUM_OP_SET_CAPTURE: {
+            PlumCell *cell = frame->closure->cells[READ_U16()];
+            PlumValue v = pop(vm);
+            plum_release(cell->value);
+            cell->value = v;
+            break;
+        }
+        case PLUM_OP_GET_SELF:
+            push(vm, plum_retain(vm->stack[frame->base - 1])); /* the callee sits below slot 0 */
+            break;
+        case PLUM_OP_MAKE_CLOSURE: {
+            PlumFunction *fn = plum_as_function(chunk->constants.items[READ_U16()]);
+            PlumClosure *closure = plum_closure_new(fn);
+            for (int i = 0; i < fn->capture_count; i++) {
+                const PlumCapture *cap = &fn->captures[i];
+                PlumCell *cell = cap->from_local ? plum_as_cell(SLOT(cap->index))
+                                                 : frame->closure->cells[cap->index];
+                cell->obj.refcount++;
+                closure->cells[i] = cell;
+            }
+            push(vm, plum_obj(&closure->obj));
             break;
         }
         case PLUM_OP_GET_GLOBAL:
@@ -970,13 +1037,16 @@ static bool execute(VM *vm) {
         }
         case PLUM_OP_METHOD:
         case PLUM_OP_METHOD_LOCAL:
-        case PLUM_OP_METHOD_GLOBAL: {
+        case PLUM_OP_METHOD_GLOBAL:
+        case PLUM_OP_METHOD_CAPTURE: {
             uint16_t slot = op == PLUM_OP_METHOD ? 0 : READ_U16();
             uint16_t m = READ_U16();
             uint16_t argc = READ_U16();
-            PlumValue *receiver = op == PLUM_OP_METHOD         ? peek(vm, argc)
-                                  : op == PLUM_OP_METHOD_LOCAL ? &SLOT(slot)
-                                                               : &vm->globals[slot];
+            PlumValue *receiver =
+                op == PLUM_OP_METHOD
+                    ? peek(vm, argc)
+                    : place_of(vm, frame,
+                               PLACE_KIND(op, PLUM_OP_METHOD_LOCAL, PLUM_OP_METHOD_GLOBAL), slot);
             PlumValue result;
             char error[256];
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - argc], argc,
@@ -989,10 +1059,12 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_SET_INDEX_LOCAL:
-        case PLUM_OP_SET_INDEX_GLOBAL: {
+        case PLUM_OP_SET_INDEX_GLOBAL:
+        case PLUM_OP_SET_INDEX_CAPTURE: {
             uint16_t slot = READ_U16();
             PlumValue value = pop(vm);
-            PlumValue *place = op == PLUM_OP_SET_INDEX_LOCAL ? &SLOT(slot) : &vm->globals[slot];
+            PlumValue *place = place_of(
+                vm, frame, PLACE_KIND(op, PLUM_OP_SET_INDEX_LOCAL, PLUM_OP_SET_INDEX_GLOBAL), slot);
             if (plum_is_obj(*place, PLUM_OBJ_MAP)) {
                 PlumValue key = pop(vm);
                 plum_table_put(plum_table_unique(place), key, value); /* copy first if shared */
@@ -1010,12 +1082,14 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_SET_PATH_LOCAL:
-        case PLUM_OP_SET_PATH_GLOBAL: {
+        case PLUM_OP_SET_PATH_GLOBAL:
+        case PLUM_OP_SET_PATH_CAPTURE: {
             uint16_t slot = READ_U16();
             uint16_t depth = READ_U16();
             PlumValue value = pop(vm);
             PlumValue *keys = &vm->stack[vm->top - depth];
-            PlumValue *root = op == PLUM_OP_SET_PATH_LOCAL ? &SLOT(slot) : &vm->globals[slot];
+            PlumValue *root = place_of(
+                vm, frame, PLACE_KIND(op, PLUM_OP_SET_PATH_LOCAL, PLUM_OP_SET_PATH_GLOBAL), slot);
             SAVE_IP();
             /* down to the container of the item, then set it */
             PlumValue *container = walk_path(vm, root, keys, depth - 1);
@@ -1039,13 +1113,16 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_METHOD_PATH_LOCAL:
-        case PLUM_OP_METHOD_PATH_GLOBAL: {
+        case PLUM_OP_METHOD_PATH_GLOBAL:
+        case PLUM_OP_METHOD_PATH_CAPTURE: {
             uint16_t slot = READ_U16();
             uint16_t m = READ_U16();
             uint16_t packed = READ_U16();
             int depth = packed >> 8, argc = packed & 0xFF;
             PlumValue *keys = &vm->stack[vm->top - (size_t)argc - (size_t)depth];
-            PlumValue *root = op == PLUM_OP_METHOD_PATH_LOCAL ? &SLOT(slot) : &vm->globals[slot];
+            PlumValue *root = place_of(
+                vm, frame, PLACE_KIND(op, PLUM_OP_METHOD_PATH_LOCAL, PLUM_OP_METHOD_PATH_GLOBAL),
+                slot);
             SAVE_IP();
             PlumValue *receiver = walk_path(vm, root, keys, depth);
             if (receiver == NULL) {
@@ -1199,9 +1276,12 @@ static bool execute(VM *vm) {
 
         case PLUM_OP_CALL: {
             uint16_t argc = READ_U16();
-            PlumFunction *fn = plum_as_function(*peek(vm, argc));
+            PlumValue callee = *peek(vm, argc);
+            PlumClosure *closure =
+                callee.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(callee) : NULL;
+            PlumFunction *fn = closure != NULL ? closure->fn : plum_as_function(callee);
             SAVE_IP();
-            if (!call(vm, fn, argc)) {
+            if (!call(vm, fn, closure, argc)) {
                 return false;
             }
             frame = &vm->frames[vm->frame_count - 1];
@@ -1266,7 +1346,7 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out
 
     /* <main> sits at stack index 0, like any called function. */
     push(vm, plum_retain(plum_obj(&program->main->obj)));
-    if (call(vm, program->main, 0)) {
+    if (call(vm, program->main, NULL, 0)) {
         execute(vm);
     }
     fflush(out);

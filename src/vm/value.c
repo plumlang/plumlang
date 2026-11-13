@@ -88,6 +88,26 @@ PlumList *plum_list_unique(PlumValue *slot) {
     return copy;
 }
 
+PlumCell *plum_cell_new(PlumValue v) {
+    PlumCell *cell = plum_alloc(sizeof *cell);
+    cell->obj.refcount = 1;
+    cell->obj.type = PLUM_OBJ_CELL;
+    cell->value = v;
+    return cell;
+}
+
+PlumClosure *plum_closure_new(PlumFunction *fn) {
+    PlumClosure *c = plum_alloc_zeroed(1, sizeof *c);
+    c->obj.refcount = 1;
+    c->obj.type = PLUM_OBJ_CLOSURE;
+    c->fn = fn;
+    fn->obj.refcount++;
+    c->count = fn->capture_count;
+    c->cells = plum_alloc_zeroed(fn->capture_count > 0 ? (size_t)fn->capture_count : 1,
+                                 sizeof(PlumCell *));
+    return c;
+}
+
 PlumFunction *plum_function_new(const char *name, int arity) {
     PlumFunction *fn = plum_alloc_zeroed(1, sizeof *fn);
     fn->obj.refcount = 1;
@@ -108,7 +128,26 @@ static void free_object(PlumObj *obj) {
         PlumFunction *fn = (PlumFunction *)obj;
         plum_chunk_free(fn->chunk);
         plum_free(fn->chunk);
+        plum_free(fn->captures);
         plum_free(fn);
+        return;
+    }
+    case PLUM_OBJ_CELL: {
+        PlumCell *cell = (PlumCell *)obj;
+        plum_release(cell->value);
+        plum_free(cell);
+        return;
+    }
+    case PLUM_OBJ_CLOSURE: {
+        PlumClosure *c = (PlumClosure *)obj;
+        for (int i = 0; i < c->count; i++) {
+            if (c->cells[i] != NULL) {
+                plum_release(plum_obj(&c->cells[i]->obj));
+            }
+        }
+        plum_free(c->cells);
+        plum_release(plum_obj(&c->fn->obj));
+        plum_free(c);
         return;
     }
     case PLUM_OBJ_LIST: {

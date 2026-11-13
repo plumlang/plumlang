@@ -1,0 +1,7 @@
+# A nested function can call itself, even while capturing other variables.
+branch outer(base: int) -> int {
+    branch fact(n: int) -> int => if n <= 1 { base } else { n * fact(n - 1) }
+    return fact(5)
+}
+drop(outer(1), outer(2))
+drop(type_of(outer), "{(x: int) => x}")

@@ -23,12 +23,20 @@ typedef struct Loop {
 } Loop;
 
 /* The function being compiled. */
+/* A variable a closure captures, and where it comes from. */
+typedef struct Capture {
+    PlumSymbol *sym;
+    PlumCapture from;
+} Capture;
+
 typedef struct FnState {
     struct FnState *enclosing;
     PlumFunction *fn;
     int depth;     /* the resolver's function depth of its body */
     int next_slot; /* the next free local slot */
     Loop *loop;
+    PLUM_ARRAY(Capture) captures; /* the outer variables this function uses */
+    PlumSymbol *self;             /* a nested function's own name: GET_SELF, not a capture */
 } FnState;
 
 typedef struct Compiler {
@@ -132,30 +140,96 @@ static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
     return (uint16_t)slot;
 }
 
+/*
+ * The index of `sym` among `fs`'s captures, adding it if needed: from the
+ * enclosing function's cell when declared there, otherwise from what the
+ * enclosing function itself captured.
+ */
+static int capture_index(FnState *fs, PlumSymbol *sym) {
+    for (size_t i = 0; i < fs->captures.len; i++) {
+        if (fs->captures.items[i].sym == sym) {
+            return (int)i;
+        }
+    }
+    FnState *outer = fs->enclosing;
+    Capture cap = {sym, {true, 0}};
+    if (outer->depth == sym->function_depth) {
+        cap.from.index = (uint16_t)sym->slot;
+    } else {
+        cap.from.from_local = false;
+        cap.from.index = (uint16_t)capture_index(outer, sym);
+    }
+    plum_array_push(&fs->captures, cap);
+    return (int)fs->captures.len - 1;
+}
+
+/* Where a symbol lives right now: 0 a local slot, 1 a global, 2 a capture. */
+static int symbol_place(Compiler *c, PlumSymbol *sym, uint16_t *index) {
+    if (sym->global) {
+        *index = (uint16_t)sym->slot;
+        return 1;
+    }
+    if (sym->function_depth != c->fs->depth) {
+        *index = (uint16_t)capture_index(c->fs, sym);
+        return 2;
+    }
+    *index = (uint16_t)sym->slot;
+    return 0;
+}
+
 static void load_symbol(Compiler *c, PlumSymbol *sym, PlumSpan span) {
     if (!sym->has_slot) {
         unsupported(c, span, "this kind of name", 22);
         return;
     }
-    if (sym->global) {
-        op1(c, PLUM_OP_GET_GLOBAL, (uint16_t)sym->slot, span.line);
+    if (sym == c->fs->self) {
+        /* Calling itself through a capture would make a cycle the closure and its
+         * cell can't escape; the running function is on the stack. */
+        op(c, PLUM_OP_GET_SELF, span.line);
         return;
     }
-    if (sym->function_depth != c->fs->depth) {
-        unsupported(c, span, "closures (using a variable of an outer function)", 19);
+    uint16_t n;
+    switch (symbol_place(c, sym, &n)) {
+    case 1:
+        op1(c, PLUM_OP_GET_GLOBAL, n, span.line);
+        return;
+    case 2:
+        op1(c, PLUM_OP_GET_CAPTURE, n, span.line);
+        return;
+    default:
+        op1(c, sym->captured ? PLUM_OP_GET_CELL : PLUM_OP_GET_LOCAL, n, span.line);
         return;
     }
-    op1(c, PLUM_OP_GET_LOCAL, (uint16_t)sym->slot, span.line);
 }
 
 static void store_symbol(Compiler *c, PlumSymbol *sym, PlumSpan span) {
-    if (sym->global) {
-        op1(c, PLUM_OP_SET_GLOBAL, (uint16_t)sym->slot, span.line);
-    } else if (sym->function_depth != c->fs->depth) {
-        unsupported(c, span, "closures (changing a variable of an outer function)", 19);
-    } else {
-        op1(c, PLUM_OP_SET_LOCAL, (uint16_t)sym->slot, span.line);
+    uint16_t n;
+    switch (symbol_place(c, sym, &n)) {
+    case 1:
+        op1(c, PLUM_OP_SET_GLOBAL, n, span.line);
+        return;
+    case 2:
+        op1(c, PLUM_OP_SET_CAPTURE, n, span.line);
+        return;
+    default:
+        op1(c, sym->captured ? PLUM_OP_SET_CELL : PLUM_OP_SET_LOCAL, n, span.line);
+        return;
     }
+}
+
+/* A new local of a captured variable goes in a cell, so closures share it. */
+static void box_if_captured(Compiler *c, const PlumSymbol *sym, PlumSpan span) {
+    if (sym != NULL && sym->captured && !sym->global) {
+        op1(c, PLUM_OP_BOX_LOCAL, (uint16_t)sym->slot, span.line);
+    }
+}
+
+/* An in-place instruction (method, index or path) on a variable: the local,
+ * global or capture form, and its operand. */
+static PlumOpcode place_op(Compiler *c, PlumSymbol *sym, PlumOpcode local, PlumOpcode global,
+                           PlumOpcode capture, uint16_t *operand) {
+    int kind = symbol_place(c, sym, operand);
+    return kind == 0 ? local : kind == 1 ? global : capture;
 }
 
 /* ------------------------------------------------------------------ */
@@ -481,14 +555,11 @@ static void compile_index(Compiler *c, const PlumExpr *e) {
 
 /* A variable a method can change in place, or NULL. */
 static PlumSymbol *place_of(Compiler *c, const PlumExpr *obj) {
+    (void)c; /* any variable, here or captured: place_op picks the instruction */
     if (obj->kind != PLUM_EXPR_NAME || obj->symbol == NULL || !obj->symbol->has_slot) {
         return NULL;
     }
-    PlumSymbol *sym = obj->symbol;
-    if (!sym->global && sym->function_depth != c->fs->depth) {
-        return NULL; /* a closure's variable */
-    }
-    return sym;
+    return obj->symbol;
 }
 
 #define MAX_PATH 32
@@ -557,8 +628,10 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
                 compile_key(c, keys[i]);
             }
             compile_args(c, e, fty, NULL);
-            op2(c, base->global ? PLUM_OP_METHOD_PATH_GLOBAL : PLUM_OP_METHOD_PATH_LOCAL,
-                (uint16_t)base->slot, (uint16_t)m, line);
+            uint16_t n;
+            PlumOpcode o = place_op(c, base, PLUM_OP_METHOD_PATH_LOCAL, PLUM_OP_METHOD_PATH_GLOBAL,
+                                    PLUM_OP_METHOD_PATH_CAPTURE, &n);
+            op2(c, o, n, (uint16_t)m, line);
             plum_chunk_write_u16(chunk(c), (uint16_t)((depth << 8) | argc), line);
             return;
         }
@@ -571,8 +644,10 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
         op2(c, PLUM_OP_METHOD, (uint16_t)m, argc, line);
         return;
     }
-    op2(c, place->global ? PLUM_OP_METHOD_GLOBAL : PLUM_OP_METHOD_LOCAL, (uint16_t)place->slot,
-        (uint16_t)m, line);
+    uint16_t n;
+    PlumOpcode o =
+        place_op(c, place, PLUM_OP_METHOD_LOCAL, PLUM_OP_METHOD_GLOBAL, PLUM_OP_METHOD_CAPTURE, &n);
+    op2(c, o, n, (uint16_t)m, line);
     plum_chunk_write_u16(chunk(c), argc, line);
 }
 
@@ -614,6 +689,32 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
     compile_expr(c, callee);
     compile_args(c, e, fty, callee_decl(sym));
     op1(c, PLUM_OP_CALL, (uint16_t)fty->as.func.param_count, line);
+}
+
+static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b, int depth,
+                             const PlumTy *result, PlumSymbol *self);
+static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam *params,
+                                  size_t param_count, const PlumExpr *arrow, const PlumStmt *body,
+                                  int depth, const PlumTy *result, PlumSymbol *self);
+
+/* Push `fn` as a value: a plain function, or a closure if it captures. */
+static void emit_function_value(Compiler *c, PlumFunction *fn, PlumSpan span) {
+    bool closure = fn->capture_count > 0;
+    uint16_t k = constant(c, plum_obj(&fn->obj), span);
+    op1(c, closure ? PLUM_OP_MAKE_CLOSURE : PLUM_OP_CONST, k, span.line);
+}
+
+static void compile_lambda(Compiler *c, const PlumExpr *e) {
+    char name[32];
+    snprintf(name, sizeof name, "<lambda:%u>", (unsigned)e->span.line);
+    const char *interned = plum_intern_cstr(c->names, name);
+    PlumFunction *fn = plum_function_new(interned, (int)e->as.lambda.param_count);
+    const PlumTy *result = ty_is(e->ty, PLUM_TY_FUNC) ? e->ty->as.func.result : NULL;
+    plum_retain(plum_obj(&fn->obj));
+    compile_function_body(c, fn, e->as.lambda.params, e->as.lambda.param_count, e->as.lambda.body,
+                          e->as.lambda.block, c->fs->depth + 1, result, NULL);
+    emit_function_value(c, fn, e->span); /* the constant pool takes one reference */
+    plum_release(plum_obj(&fn->obj));
 }
 
 static void compile_expr(Compiler *c, const PlumExpr *e) {
@@ -696,7 +797,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
     case PLUM_EXPR_RANGE:
         return; /* not a value: the checker allows it only where it is used */
     case PLUM_EXPR_LAMBDA:
-        unsupported(c, e->span, "lambdas", 19);
+        compile_lambda(c, e);
         return;
     case PLUM_EXPR_MATCH:
         unsupported(c, e->span, "match", 22);
@@ -795,6 +896,10 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
     op2(c, two ? PLUM_OP_FOR_EACH2 : PLUM_OP_FOR_EACH, list, var, line);
     plum_chunk_write_u16(chunk(c), 0xFFFF, line);
     size_t exit_at = chunk(c)->code.len - 2;
+    box_if_captured(c, s->symbol, s->span); /* a fresh cell each time round */
+    if (two) {
+        box_if_captured(c, s->symbol2, s->span);
+    }
     compile_block(c, s->as.for_.body);
     emit_loop(c, loop.start, s->span);
     patch_jump(c, exit_at, s->span);
@@ -819,8 +924,12 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
     }
     uint32_t line = s->span.line;
     int saved = c->fs->next_slot;
-    uint16_t var = new_local(c, s->symbol, s->span); /* `for _ in` has no symbol */
-    new_local(c, NULL, s->span);                     /* var + 1: the end */
+    /* A captured loop variable gets a fresh cell each time round, so the
+     * loop counts in a hidden slot and copies the count into it. */
+    bool boxed = s->symbol != NULL && s->symbol->captured;
+    uint16_t var = new_local(c, boxed ? NULL : s->symbol, s->span); /* `for _ in`: no symbol */
+    new_local(c, NULL, s->span);                                    /* var + 1: the end */
+    uint16_t user = boxed ? new_local(c, s->symbol, s->span) : var;
     bool inclusive = it->as.range.inclusive;
 
     compile_expr(c, it->as.range.low);
@@ -834,6 +943,11 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
     op2(c, PLUM_OP_FOR_RANGE, var, inclusive, line);
     plum_chunk_write_u16(chunk(c), 0xFFFF, line);
     size_t exit_at = chunk(c)->code.len - 2;
+    if (boxed) {
+        op1(c, PLUM_OP_GET_LOCAL, var, line);
+        op1(c, PLUM_OP_SET_LOCAL, user, line);
+        op1(c, PLUM_OP_BOX_LOCAL, user, line);
+    }
 
     compile_block(c, s->as.for_.body);
 
@@ -894,8 +1008,10 @@ static void compile_path_assign(Compiler *c, const PlumStmt *s) {
         arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
                    line);
     }
-    op2(c, base->global ? PLUM_OP_SET_PATH_GLOBAL : PLUM_OP_SET_PATH_LOCAL, (uint16_t)base->slot,
-        (uint16_t)depth, line);
+    uint16_t n;
+    PlumOpcode o = place_op(c, base, PLUM_OP_SET_PATH_LOCAL, PLUM_OP_SET_PATH_GLOBAL,
+                            PLUM_OP_SET_PATH_CAPTURE, &n);
+    op2(c, o, n, (uint16_t)depth, line);
     c->fs->next_slot = saved;
 }
 
@@ -936,8 +1052,10 @@ static void compile_index_assign(Compiler *c, const PlumStmt *s) {
         arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
                    line);
     }
-    op1(c, place->global ? PLUM_OP_SET_INDEX_GLOBAL : PLUM_OP_SET_INDEX_LOCAL,
-        (uint16_t)place->slot, line);
+    uint16_t n;
+    PlumOpcode o = place_op(c, place, PLUM_OP_SET_INDEX_LOCAL, PLUM_OP_SET_INDEX_GLOBAL,
+                            PLUM_OP_SET_INDEX_CAPTURE, &n);
+    op1(c, o, n, line);
     c->fs->next_slot = saved;
 }
 
@@ -988,7 +1106,7 @@ static void compile_assign(Compiler *c, const PlumStmt *s) {
 }
 
 static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b, int depth,
-                             const PlumTy *result);
+                             const PlumTy *result, PlumSymbol *self);
 
 static void compile_stmt(Compiler *c, const PlumStmt *s) {
     uint32_t line = s->span.line;
@@ -1001,9 +1119,10 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
         PlumSymbol *sym = s->symbol;
         compile_as(c, s->as.decl.value, sym != NULL ? sym->ty : NULL);
         if (sym != NULL && !sym->global) {
-            new_local(c, sym, s->span); /* after the value: plant x = x + 1 */
-        }
-        if (sym != NULL) {
+            uint16_t slot = new_local(c, sym, s->span); /* after the value: plant x = x + 1 */
+            op1(c, PLUM_OP_SET_LOCAL, slot, line);
+            box_if_captured(c, sym, s->span);
+        } else if (sym != NULL) {
             store_symbol(c, sym, s->span);
         }
         return;
@@ -1030,6 +1149,7 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
             op(c, PLUM_OP_IS_NONE, line);
             op(c, PLUM_OP_NOT, line);
             to_else = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line);
+            box_if_captured(c, s->symbol, s->span);
         }
         compile_block(c, s->as.if_.then);
         c->fs->next_slot = saved;
@@ -1076,14 +1196,25 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
         }
         return;
     case PLUM_STMT_BRANCH: {
-        /* A function inside a function: a local holding a function value. */
+        /* A function inside a function: a local holding a function or
+         * closure. If it calls itself, its slot is a cell made first, so
+         * the closure can capture it. */
         PlumFunction *fn = plum_function_new(s->as.branch.name, (int)s->as.branch.param_count);
         uint16_t slot = new_local(c, s->symbol, s->span);
-        emit_const(c, plum_obj(&fn->obj), s->span);
-        op1(c, PLUM_OP_SET_LOCAL, slot, line);
+        bool boxed = s->symbol != NULL && s->symbol->captured;
+        if (boxed) {
+            op(c, PLUM_OP_NONE, line);
+            op1(c, PLUM_OP_SET_LOCAL, slot, line);
+            op1(c, PLUM_OP_BOX_LOCAL, slot, line);
+        }
+        plum_retain(plum_obj(&fn->obj));
         compile_function(c, fn, &s->as.branch, c->fs->depth + 1,
                          s->symbol != NULL && s->symbol->ty != NULL ? s->symbol->ty->as.func.result
-                                                                    : NULL);
+                                                                    : NULL,
+                         s->symbol);
+        emit_function_value(c, fn, s->span);
+        plum_release(plum_obj(&fn->obj));
+        op1(c, boxed ? PLUM_OP_SET_CELL : PLUM_OP_SET_LOCAL, slot, line);
         return;
     }
     case PLUM_STMT_THROW:
@@ -1099,35 +1230,57 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
     }
 }
 
-static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b, int depth,
-                             const PlumTy *result) {
+static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam *params,
+                                  size_t param_count, const PlumExpr *arrow, const PlumStmt *body,
+                                  int depth, const PlumTy *result, PlumSymbol *self) {
     FnState fs;
     memset(&fs, 0, sizeof fs);
     fs.enclosing = c->fs;
     fs.fn = fn;
     fs.depth = depth;
+    fs.self = self;
     PlumTy *outer_result = c->result;
     c->fs = &fs;
     c->result = (PlumTy *)result;
 
-    for (size_t i = 0; i < b->param_count; i++) {
-        new_local(c, b->params[i].symbol, b->params[i].span);
+    for (size_t i = 0; i < param_count; i++) {
+        new_local(c, params[i].symbol, params[i].span);
     }
-    if (b->arrow != NULL) {
-        compile_as(c, b->arrow, result);
-        op(c, result != NULL && result->kind != PLUM_TY_NONE ? PLUM_OP_RETURN : PLUM_OP_POP,
-           b->arrow->span.line);
-        if (result == NULL || result->kind == PLUM_TY_NONE) {
-            op(c, PLUM_OP_RETURN_NONE, b->arrow->span.line);
-        }
-    } else if (b->body != NULL) {
-        for (size_t i = 0; i < b->body->as.block.count; i++) {
-            compile_stmt(c, b->body->as.block.stmts[i]);
-        }
-        op(c, PLUM_OP_RETURN_NONE, b->body->span.line);
+    for (size_t i = 0; i < param_count; i++) {
+        box_if_captured(c, params[i].symbol, params[i].span); /* shared with closures */
     }
+    bool returns_value = result != NULL && result->kind != PLUM_TY_NONE;
+    if (arrow != NULL) {
+        compile_as(c, arrow, result);
+        op(c, returns_value ? PLUM_OP_RETURN : PLUM_OP_POP, arrow->span.line);
+        if (!returns_value) {
+            op(c, PLUM_OP_RETURN_NONE, arrow->span.line);
+        }
+    } else if (body != NULL) {
+        const PlumStmt *const *stmts = (const PlumStmt *const *)body->as.block.stmts;
+        size_t n = body->kind == PLUM_STMT_BLOCK ? body->as.block.count : 0;
+        for (size_t i = 0; i < n; i++) {
+            compile_stmt(c, stmts[i]);
+        }
+        op(c, PLUM_OP_RETURN_NONE, body->span.line);
+    }
+
+    /* What a closure of this function captures, in order. */
+    fn->capture_count = (int)fs.captures.len;
+    if (fs.captures.len > 0) {
+        fn->captures = plum_alloc_zeroed(fs.captures.len, sizeof(PlumCapture));
+        for (size_t i = 0; i < fs.captures.len; i++) {
+            fn->captures[i] = fs.captures.items[i].from;
+        }
+    }
+    plum_array_free(&fs.captures);
     c->fs = fs.enclosing;
     c->result = outer_result;
+}
+
+static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b, int depth,
+                             const PlumTy *result, PlumSymbol *self) {
+    compile_function_body(c, fn, b->params, b->param_count, b->arrow, b->body, depth, result, self);
 }
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags) {
@@ -1165,7 +1318,7 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
         emit_const(&c, plum_obj(&fn->obj), s->span);
         op1(&c, PLUM_OP_SET_GLOBAL, (uint16_t)s->symbol->slot, s->span.line);
         compile_function(&c, fn, &s->as.branch, 1,
-                         s->symbol->ty != NULL ? s->symbol->ty->as.func.result : NULL);
+                         s->symbol->ty != NULL ? s->symbol->ty->as.func.result : NULL, NULL);
         plum_release(plum_obj(&fn->obj));
     }
 
