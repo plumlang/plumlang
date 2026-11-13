@@ -39,6 +39,20 @@ typedef enum PlumMethodReceiver {
     PLUM_RECEIVER_LIST,
 } PlumMethodReceiver;
 
+#include "vm/value.h"
+
+#include <stddef.h>
+
+/*
+ * Run method `m`. `receiver` is the slot holding the receiver: a
+ * variable's own slot, so a changing method copies a shared list into it
+ * first, or a stack slot for a temporary. `args` are borrowed. On success
+ * stores the result (with its own reference) and returns true; otherwise
+ * writes the reason into `error`.
+ */
+bool plum_run_method(PlumMethod m, PlumValue *receiver, const PlumValue *args, int argc,
+                     PlumValue *result, char *error, size_t error_size);
+
 /* The method `name` of `receiver`, or -1. */
 int plum_method_find(PlumMethodReceiver receiver, const char *name);
 const char *plum_method_name(PlumMethod m);
