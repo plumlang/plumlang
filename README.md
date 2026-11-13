@@ -59,6 +59,12 @@ drop("Listening on :8080")
 app.listen(8080)
 ```
 
+## Speed
+
+Plumlang compiles to typed bytecode run by a small virtual machine. On the
+[benchmarks](bench/README.md) it runs 1.2 to 2.6 times faster than Python
+3.14 on loops, float maths and text, and about even on deep recursion.
+
 ## Roadmap
 
 | Stage | What |
