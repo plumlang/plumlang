@@ -21,6 +21,9 @@ typedef struct PlumCompiled {
     int global_count;   /* module variables and functions */
     /* The built-in error trees, for the errors the VM itself raises. */
     PlumTreeInfo *errors[PLUM_ERROR_COUNT];
+    PlumFunction **methods; /* every tree's methods; trees' tables point into these */
+    int method_count;
+    int to_str; /* the method number of to_str, which printing an object calls */
 } PlumCompiled;
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags);

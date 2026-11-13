@@ -1,0 +1,15 @@
+# A lambda in a method keeps self: the object it was made from.
+tree Counter {
+    n: int = 0
+    branch adder(step: int) -> () -> int {
+        return () => {
+            self.n += step
+            return self.n
+        }
+    }
+}
+plant c = Counter()
+plant by_two = c.adder(2)
+by_two()
+by_two()
+drop(c.n, [1, 2, 3].map((x) => c.adder(x)()))

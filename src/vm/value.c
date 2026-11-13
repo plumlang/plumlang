@@ -189,6 +189,8 @@ static void free_object(PlumObj *obj) {
             plum_release(plum_obj(&info->parent->obj));
         }
         plum_free(info->field_names);
+        plum_free(info->methods);
+        plum_free(info->traits);
         plum_free(info);
         return;
     }

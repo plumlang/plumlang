@@ -1,0 +1,37 @@
+# A trait lists methods; trees promise them; default methods fill gaps.
+trait Shape {
+    branch area() -> float
+    branch name() -> str => "shape"
+    branch describe() -> str => "{self.name()} of area {self.area():.2}"
+}
+tree Circle : Shape {
+    radius: float
+    branch area() -> float => 3.14159 * self.radius ** 2
+}
+tree Rect : Shape {
+    w: float
+    h: float
+    branch area() -> float => self.w * self.h
+    branch name() -> str => "rect"
+}
+tree Square : Rect {
+    branch init(side: float) {
+        self.w = side
+        self.h = side
+    }
+    branch name() -> str => "square"
+}
+
+branch total_area(shapes: list[Shape]) -> float {
+    plant sum = 0.0
+    for s in shapes {
+        sum += s.area()
+    }
+    return sum
+}
+
+plant shapes: list[Shape] = [Circle(1.0), Rect(2.0, 3.0), Square(2.0)]
+drop("{total_area(shapes):.3}")
+for s in shapes {
+    drop(s.describe(), s is Shape, s is Rect)
+}

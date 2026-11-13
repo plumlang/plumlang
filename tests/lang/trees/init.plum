@@ -1,0 +1,35 @@
+# init constructs objects its own way; fields with defaults are set first.
+tree Temperature {
+    celsius: float
+    label: str = "temp"
+
+    branch init(fahrenheit: float) {
+        self.celsius = (fahrenheit - 32.0) * 5.0 / 9.0
+        self.label = "from {fahrenheit}F"
+    }
+    branch to_str() -> str => "{self.celsius:.1}C ({self.label})"
+}
+drop(Temperature(212.0), Temperature(fahrenheit: 32.0))
+
+# a child without its own init uses the parent's
+tree Reading : Temperature {
+    note: str = ""
+}
+plant r = Reading(50.0)
+r.note = "noon"
+drop(r, r.note)
+
+# init can call methods once every field is set
+tree Stack {
+    items: list[int]
+    branch init(first: int) {
+        self.items = []
+        self.push(first)
+    }
+    branch push(x: int) {
+        self.items.push(x)
+    }
+}
+plant s = Stack(1)
+s.push(2)
+drop(s.items)

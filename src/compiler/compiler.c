@@ -49,10 +49,24 @@ typedef struct FnState {
     PlumSymbol *self;             /* a nested function's own name: GET_SELF, not a capture */
 } FnState;
 
+typedef struct TreeEntry {
+    PlumSymbol *sym;
+    PlumTreeInfo *info;
+} TreeEntry;
+
+typedef struct MethodFn {
+    const PlumBranch *decl;
+    PlumFunction *fn; /* one reference, owned here until handed to PlumCompiled */
+} MethodFn;
+
 typedef struct Compiler {
     PlumDiagList *diags;
     PlumInterner *names;
     PlumMap trees; /* tree name -> PlumTreeInfo*, one per tree for the whole program */
+    PLUM_ARRAY(TreeEntry) user_trees; /* the trees above that the program declares */
+    PlumMap method_ids;               /* method name -> its number + 1 */
+    int method_id_count;
+    PLUM_ARRAY(MethodFn) methods; /* every method with a body, compiled */
     FnState *fs;
     int global_count;
     PlumTy *result; /* the current function's result type, for return */
@@ -60,6 +74,9 @@ typedef struct Compiler {
 
 static void compile_expr(Compiler *c, const PlumExpr *e);
 static void compile_stmt(Compiler *c, const PlumStmt *s);
+static uint16_t method_id(Compiler *c, const char *name);
+static const PlumBranch *method_decl(const PlumSymbol *decl, const char *name, int depth);
+static void compile_method_body(Compiler *c, PlumFunction *fn, const PlumBranch *m);
 
 /* ------------------------------------------------------------------ */
 /* Emitting                                                            */
@@ -373,8 +390,24 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
     }
     case PLUM_TOK_EQ_EQ:
     case PLUM_TOK_BANG_EQ: {
-        /* Numbers compare with a typed instruction; anything else, generically. */
+        /* Objects of a tree with equals (trait Equal) compare with it. */
         bool eq = tok == PLUM_TOK_EQ_EQ;
+        PlumSymbol *decl =
+            l->ty != NULL && (l->ty->kind == PLUM_TY_TREE || l->ty->kind == PLUM_TY_TRAIT)
+                ? l->ty->as.decl
+                : NULL;
+        const PlumBranch *equals = decl != NULL ? method_decl(decl, "equals", 0) : NULL;
+        if (equals != NULL && equals->ty != NULL && equals->ty->as.func.param_count == 1 &&
+            plum_ty_assignable(r->ty, equals->ty->as.func.params[0].ty)) {
+            compile_expr(c, l);
+            compile_expr(c, r);
+            op2(c, PLUM_OP_INVOKE, method_id(c, "equals"), 1, line);
+            if (!eq) {
+                op(c, PLUM_OP_NOT, line);
+            }
+            return;
+        }
+        /* Numbers compare with a typed instruction; anything else, generically. */
         bool ints = int_like(l->ty) && int_like(r->ty);
         bool floats = !ints && (int_like(l->ty) || ty_is(l->ty, PLUM_TY_FLOAT)) &&
                       (int_like(r->ty) || ty_is(r->ty, PLUM_TY_FLOAT));
@@ -613,6 +646,10 @@ static PlumTreeInfo *tree_info(Compiler *c, PlumSymbol *tree) {
     }
     PlumTreeInfo *info = plum_tree_info_new(tree->name, parent, n, names);
     plum_map_set(&c->trees, tree->name, strlen(tree->name), info);
+    if (!is_builtin_error(tree)) {
+        TreeEntry entry = {tree, info};
+        plum_array_push(&c->user_trees, entry);
+    }
     return info;
 }
 
@@ -631,13 +668,13 @@ static bool declared_float(const PlumType *t) {
 }
 
 /* Tree(args): the fields in order, by position or name, else their defaults. */
-static void compile_constructor(Compiler *c, const PlumExpr *e, PlumSymbol *tree) {
+static void compile_constructor(Compiler *c, const PlumExpr *e, PlumSymbol *tree, bool by_init) {
     FieldSlot fields[MAX_FIELDS];
     int n = 0;
     tree_fields(tree, fields, &n, MAX_FIELDS);
     const PlumExpr *given[MAX_FIELDS] = {NULL};
     int positional = 0;
-    for (size_t i = 0; i < e->as.call.arg_count; i++) {
+    for (size_t i = 0; i < e->as.call.arg_count && !by_init; i++) {
         const PlumArg *arg = &e->as.call.args[i];
         int at = arg->name != NULL ? -1 : positional++;
         for (int k = 0; arg->name != NULL && k < n; k++) {
@@ -653,6 +690,10 @@ static void compile_constructor(Compiler *c, const PlumExpr *e, PlumSymbol *tree
         const PlumExpr *v = given[k];
         if (v == NULL && fields[k].decl != NULL) {
             v = fields[k].decl->fallback;
+        }
+        if (v == NULL && fields[k].decl != NULL) {
+            op(c, PLUM_OP_NONE, e->span.line); /* init sets it before anything reads it */
+            continue;
         }
         if (v == NULL) {
             /* an error's message defaults to empty */
@@ -680,11 +721,20 @@ static void compile_field(Compiler *c, const PlumExpr *e) {
     const PlumExpr *obj = e->as.field.object;
     PlumSymbol *tree = tree_of(obj->ty);
     int index = tree != NULL ? field_index(tree, e->as.field.name) : -1;
-    if (index < 0) {
-        unsupported(c, e->span, "methods and kind cases", 22);
+    if (index < 0 && obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+        obj->symbol->kind == PLUM_SYM_KIND) {
+        unsupported(c, e->span, "kinds", 22);
         return;
     }
-    compile_expr(c, obj);
+    if (index < 0) {
+        unsupported(c, e->span, "a method as a value (call it, or wrap it in a lambda)", 22);
+        return;
+    }
+    if (obj->kind == PLUM_EXPR_SUPER) {
+        load_symbol(c, obj->symbol, obj->span); /* super.field is self's field */
+    } else {
+        compile_expr(c, obj);
+    }
     size_t skip = 0;
     if (e->as.field.optional) {
         skip = emit_jump(c, PLUM_OP_JUMP_IF_NONE_KEEP, e->span.line); /* none?.x is none */
@@ -693,6 +743,238 @@ static void compile_field(Compiler *c, const PlumExpr *e) {
     if (e->as.field.optional) {
         patch_jump(c, skip, e->span);
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Methods                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Methods are found by name at run time: each name has a number, and each
+ * tree a table from those numbers to the functions it runs. */
+static uint16_t method_id(Compiler *c, const char *name) {
+    void *found = NULL;
+    if (plum_map_get(&c->method_ids, name, strlen(name), &found)) {
+        return (uint16_t)((intptr_t)found - 1);
+    }
+    int id = c->method_id_count++;
+    plum_map_set(&c->method_ids, name, strlen(name), (void *)(intptr_t)(id + 1));
+    return (uint16_t)id;
+}
+
+/* The declaration of method `name` in a tree or trait or what it extends,
+ * with or without a body (for its parameters' defaults). */
+static const PlumBranch *method_decl(const PlumSymbol *decl, const char *name, int depth) {
+    if (decl == NULL || decl->decl == NULL || depth > 32) {
+        return NULL;
+    }
+    const PlumStmt *s = decl->decl;
+    if (s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT) {
+        return NULL;
+    }
+    for (size_t i = 0; i < s->as.tree.method_count; i++) {
+        if (strcmp(s->as.tree.methods[i].name, name) == 0) {
+            return &s->as.tree.methods[i];
+        }
+    }
+    for (size_t i = 0; i < s->as.tree.super_count; i++) {
+        const PlumType *super = s->as.tree.supers[i];
+        if (super->kind == PLUM_TYPE_NAME) {
+            const PlumBranch *m = method_decl(super->as.name.symbol, name, depth + 1);
+            if (m != NULL) {
+                return m;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* A trait's default for `name`, searching the traits `decl` names. */
+static const PlumBranch *trait_default(const PlumSymbol *decl, const char *name, int depth) {
+    if (decl == NULL || decl->decl == NULL || depth > 32) {
+        return NULL;
+    }
+    const PlumStmt *s = decl->decl;
+    for (size_t i = 0; i < s->as.tree.super_count; i++) {
+        const PlumType *super = s->as.tree.supers[i];
+        PlumSymbol *sym = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
+        if (sym == NULL || sym->kind != PLUM_SYM_TRAIT || sym->decl == NULL) {
+            continue;
+        }
+        const PlumStmt *trait = sym->decl;
+        for (size_t k = 0; k < trait->as.tree.method_count; k++) {
+            const PlumBranch *m = &trait->as.tree.methods[k];
+            if (strcmp(m->name, name) == 0 && (m->body != NULL || m->arrow != NULL)) {
+                return m;
+            }
+        }
+        const PlumBranch *m = trait_default(sym, name, depth + 1);
+        if (m != NULL) {
+            return m;
+        }
+    }
+    return NULL;
+}
+
+/* The method `tree` runs for `name`: its own, a parent's, or a trait default. */
+static const PlumBranch *method_impl(const PlumSymbol *tree, const char *name) {
+    for (const PlumSymbol *t = tree; t != NULL && t->decl != NULL; t = parent_of(t)) {
+        const PlumStmt *s = t->decl;
+        for (size_t i = 0; i < s->as.tree.method_count; i++) {
+            if (strcmp(s->as.tree.methods[i].name, name) == 0) {
+                return &s->as.tree.methods[i];
+            }
+        }
+    }
+    for (const PlumSymbol *t = tree; t != NULL && t->decl != NULL; t = parent_of(t)) {
+        const PlumBranch *m = trait_default(t, name, 0);
+        if (m != NULL) {
+            return m;
+        }
+    }
+    return NULL;
+}
+
+static PlumFunction *method_function(const Compiler *c, const PlumBranch *decl) {
+    for (size_t i = 0; i < c->methods.len; i++) {
+        if (c->methods.items[i].decl == decl) {
+            return c->methods.items[i].fn;
+        }
+    }
+    return NULL;
+}
+
+/* Every trait `decl` takes on, through its parents and the traits' own traits. */
+static void collect_traits(const PlumSymbol *decl, const char **out, int *n, int max, int depth) {
+    if (decl == NULL || decl->decl == NULL || depth > 32) {
+        return;
+    }
+    const PlumStmt *s = decl->decl;
+    for (size_t i = 0; i < s->as.tree.super_count; i++) {
+        const PlumType *super = s->as.tree.supers[i];
+        PlumSymbol *sym = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
+        if (sym == NULL) {
+            continue;
+        }
+        if (sym->kind == PLUM_SYM_TRAIT) {
+            bool seen = false;
+            for (int k = 0; k < *n; k++) {
+                seen = seen || out[k] == sym->name;
+            }
+            if (!seen && *n < max) {
+                out[(*n)++] = sym->name;
+            }
+        }
+        collect_traits(sym, out, n, max, depth + 1);
+    }
+}
+
+/* With every method compiled: each tree's table of what it runs. */
+static void fill_method_tables(Compiler *c) {
+    for (size_t i = 0; i < c->user_trees.len; i++) {
+        PlumSymbol *tree = c->user_trees.items[i].sym;
+        PlumTreeInfo *info = c->user_trees.items[i].info;
+        int n = c->method_id_count;
+        info->method_count = n;
+        info->methods = plum_alloc_zeroed(n > 0 ? (size_t)n : 1, sizeof(PlumFunction *));
+        size_t cursor = 0;
+        const PlumMapEntry *entry;
+        while ((entry = plum_map_next(&c->method_ids, &cursor)) != NULL) {
+            int id = (int)((intptr_t)entry->value - 1);
+            const PlumBranch *m = method_impl(tree, entry->key);
+            info->methods[id] = m != NULL ? method_function(c, m) : NULL;
+        }
+        const char *traits[64];
+        int count = 0;
+        collect_traits(tree, traits, &count, 64, 0);
+        info->trait_count = count;
+        info->traits = plum_alloc_zeroed(count > 0 ? (size_t)count : 1, sizeof(const char *));
+        for (int k = 0; k < count; k++) {
+            info->traits[k] = traits[k];
+        }
+    }
+}
+
+/* Compile the methods of a tree or trait (the ones with a body). */
+static void compile_methods(Compiler *c, const PlumStmt *s) {
+    for (size_t i = 0; i < s->as.tree.method_count; i++) {
+        const PlumBranch *m = &s->as.tree.methods[i];
+        if (m->body == NULL && m->arrow == NULL) {
+            continue;
+        }
+        char name[160];
+        snprintf(name, sizeof name, "%s.%s", s->as.tree.name, m->name);
+        PlumFunction *fn =
+            plum_function_new(plum_intern_cstr(c->names, name), (int)m->param_count + 1);
+        MethodFn entry = {m, fn};
+        plum_array_push(&c->methods, entry);
+        method_id(c, m->name);
+        compile_method_body(c, fn, m);
+    }
+}
+
+static PlumTy *unwrap_optional(PlumTy *t) {
+    return t != NULL && t->kind == PLUM_TY_OPTIONAL ? t->as.elem : t;
+}
+
+/* The tree or trait a receiver's type names (through T?), or NULL. */
+static PlumSymbol *object_decl(const PlumTy *t) {
+    t = unwrap_optional((PlumTy *)t);
+    return t != NULL && (t->kind == PLUM_TY_TREE || t->kind == PLUM_TY_TRAIT) ? t->as.decl : NULL;
+}
+
+/*
+ * obj.method(args), obj?.method(args) and super.method(args). The
+ * receiver goes first, as the method's self; INVOKE puts the method found
+ * in the object's table under it.
+ */
+static void compile_invoke(Compiler *c, const PlumExpr *e) {
+    const PlumExpr *callee = e->as.call.callee;
+    const PlumExpr *obj = callee->as.field.object;
+    const char *name = callee->as.field.name;
+    PlumSymbol *decl = object_decl(obj->ty);
+    const PlumTy *fty = unwrap_optional(callee->ty);
+    if (decl == NULL || !ty_is(fty, PLUM_TY_FUNC)) {
+        unsupported(c, e->span, "this method", 22);
+        return;
+    }
+    uint32_t line = e->span.line;
+    uint16_t id = method_id(c, name);
+    uint16_t argc = (uint16_t)fty->as.func.param_count;
+    if (obj->kind == PLUM_EXPR_SUPER) {
+        /* the parent's version, whatever the object's own tree is */
+        load_symbol(c, obj->symbol, obj->span);
+        compile_args(c, e, fty, method_decl(decl, name, 0));
+        op2(c, PLUM_OP_INVOKE_FROM, tree_constant(c, decl, e->span), id, line);
+        plum_chunk_write_u16(chunk(c), argc, line);
+        return;
+    }
+    compile_expr(c, obj);
+    size_t skip = 0;
+    if (callee->as.field.optional) {
+        skip = emit_jump(c, PLUM_OP_JUMP_IF_NONE_KEEP, line); /* none?.m() is none */
+    }
+    compile_args(c, e, fty, method_decl(decl, name, 0));
+    op2(c, PLUM_OP_INVOKE, id, argc, line);
+    if (callee->as.field.optional) {
+        patch_jump(c, skip, e->span);
+    }
+}
+
+/* Tree(args) for a tree with init: a new object, then init runs on it. */
+static void compile_init_call(Compiler *c, const PlumExpr *e, PlumSymbol *tree,
+                              const PlumBranch *init) {
+    uint32_t line = e->span.line;
+    int saved = c->fs->next_slot;
+    uint16_t obj = new_local(c, NULL, e->span);
+    compile_constructor(c, e, tree, true);
+    op1(c, PLUM_OP_SET_LOCAL, obj, line);
+    op1(c, PLUM_OP_GET_LOCAL, obj, line);
+    compile_args(c, e, init->ty, init);
+    op2(c, PLUM_OP_INVOKE_FROM, tree_constant(c, tree, e->span), method_id(c, "init"), line);
+    plum_chunk_write_u16(chunk(c), (uint16_t)init->param_count, line);
+    op(c, PLUM_OP_POP, line);
+    op1(c, PLUM_OP_GET_LOCAL, obj, line);
+    c->fs->next_slot = saved;
 }
 
 static void compile_list(Compiler *c, const PlumExpr *e) {
@@ -780,6 +1062,49 @@ static PlumSymbol *path_of(Compiler *c, const PlumExpr *e, const PlumExpr **keys
     return base;
 }
 
+/*
+ * obj.field[i][j]: like path_of, for a path rooted at a field of a tree
+ * object (not through ?.). Returns the object expression and the field.
+ */
+static const PlumExpr *field_path(const PlumExpr *e, const PlumExpr **keys, int *depth,
+                                  int *field) {
+    const PlumExpr *chain[MAX_PATH];
+    int n = 0;
+    while (e->kind == PLUM_EXPR_INDEX) {
+        const PlumExpr *obj = e->as.index.object;
+        if (n == MAX_PATH || e->as.index.index->kind == PLUM_EXPR_RANGE ||
+            (!ty_is(obj->ty, PLUM_TY_LIST) && !ty_is(obj->ty, PLUM_TY_MAP))) {
+            return NULL;
+        }
+        chain[n++] = e;
+        e = obj;
+    }
+    if (e->kind != PLUM_EXPR_FIELD || e->as.field.optional ||
+        ty_is(e->as.field.object->ty, PLUM_TY_OPTIONAL)) {
+        return NULL;
+    }
+    PlumSymbol *tree = tree_of(e->as.field.object->ty);
+    int index = tree != NULL ? field_index(tree, e->as.field.name) : -1;
+    if (index < 0) {
+        return NULL;
+    }
+    for (int i = 0; i < n; i++) {
+        keys[i] = chain[n - 1 - i];
+    }
+    *depth = n;
+    *field = index;
+    return e->as.field.object;
+}
+
+/* The object a field path starts from; super stands for self. */
+static void compile_object(Compiler *c, const PlumExpr *obj) {
+    if (obj->kind == PLUM_EXPR_SUPER) {
+        load_symbol(c, obj->symbol, obj->span);
+    } else {
+        compile_expr(c, obj);
+    }
+}
+
 /* Push one path key, as a map key or a list position. */
 static void compile_key(Compiler *c, const PlumExpr *index_node) {
     const PlumExpr *obj = index_node->as.index.object;
@@ -825,6 +1150,22 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
             return;
         }
     }
+    if (place == NULL && plum_method_mutates((PlumMethod)m) && argc < 256) {
+        /* self.items.push(x): change the list in the object's field */
+        const PlumExpr *keys[MAX_PATH];
+        int depth = 0, field = 0;
+        const PlumExpr *object = field_path(obj, keys, &depth, &field);
+        if (object != NULL) {
+            compile_object(c, object);
+            for (int i = 0; i < depth; i++) {
+                compile_key(c, keys[i]);
+            }
+            compile_args(c, e, fty, NULL);
+            op2(c, PLUM_OP_METHOD_PATH_FIELD, (uint16_t)field, (uint16_t)m, line);
+            plum_chunk_write_u16(chunk(c), (uint16_t)((depth << 8) | argc), line);
+            return;
+        }
+    }
     if (place == NULL) {
         compile_expr(c, obj);
     }
@@ -858,16 +1199,12 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
         return;
     }
     if (sym != NULL && sym->kind == PLUM_SYM_TREE) {
-        if (!is_builtin_error(sym) && sym->decl != NULL) {
-            const PlumStmt *d = sym->decl;
-            for (size_t i = 0; i < d->as.tree.method_count; i++) {
-                if (strcmp(d->as.tree.methods[i].name, "init") == 0) {
-                    unsupported(c, e->span, "init constructors", 22);
-                    return;
-                }
-            }
+        const PlumBranch *init = is_builtin_error(sym) ? NULL : method_impl(sym, "init");
+        if (init != NULL) {
+            compile_init_call(c, e, sym, init);
+        } else {
+            compile_constructor(c, e, sym, false);
         }
-        compile_constructor(c, e, sym);
         return;
     }
     if (sym != NULL && sym->kind == PLUM_SYM_KIND) {
@@ -878,10 +1215,15 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
         const PlumTy *rty = callee->as.field.object->ty;
         if (ty_is(rty, PLUM_TY_LIST) || ty_is(rty, PLUM_TY_MAP) || ty_is(rty, PLUM_TY_SET)) {
             compile_method(c, e);
-        } else {
-            unsupported(c, e->span, "methods", 22);
+            return;
         }
-        return;
+        PlumSymbol *tree = tree_of(rty);
+        bool field = tree != NULL && field_index(tree, callee->as.field.name) >= 0;
+        if (!field) {
+            compile_invoke(c, e);
+            return;
+        }
+        /* a field holding a function: called like any function value below */
     }
     const PlumTy *fty = callee->ty;
     if (!ty_is(fty, PLUM_TY_FUNC)) {
@@ -897,7 +1239,8 @@ static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b,
                              const PlumTy *result, PlumSymbol *self);
 static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam *params,
                                   size_t param_count, const PlumExpr *arrow, const PlumStmt *body,
-                                  int depth, const PlumTy *result, PlumSymbol *self);
+                                  int depth, const PlumTy *result, PlumSymbol *self,
+                                  PlumSymbol *receiver);
 
 /* Push `fn` as a value: a plain function, or a closure if it captures. */
 static void emit_function_value(Compiler *c, PlumFunction *fn, PlumSpan span) {
@@ -914,7 +1257,7 @@ static void compile_lambda(Compiler *c, const PlumExpr *e) {
     const PlumTy *result = ty_is(e->ty, PLUM_TY_FUNC) ? e->ty->as.func.result : NULL;
     plum_retain(plum_obj(&fn->obj));
     compile_function_body(c, fn, e->as.lambda.params, e->as.lambda.param_count, e->as.lambda.body,
-                          e->as.lambda.block, c->fs->depth + 1, result, NULL);
+                          e->as.lambda.block, c->fs->depth + 1, result, NULL, NULL);
     emit_function_value(c, fn, e->span); /* the constant pool takes one reference */
     plum_release(plum_obj(&fn->obj));
 }
@@ -987,8 +1330,15 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
     case PLUM_EXPR_IS: {
         const PlumType *ty = e->as.cast.type;
         PlumSymbol *tree = ty->kind == PLUM_TYPE_NAME ? ty->as.name.symbol : NULL;
+        if (tree != NULL && tree->kind == PLUM_SYM_TRAIT) {
+            compile_expr(c, e->as.cast.value);
+            uint16_t k = constant(
+                c, plum_obj(&plum_string_new(tree->name, strlen(tree->name))->obj), e->span);
+            op1(c, PLUM_OP_IS_TRAIT, k, line);
+            return;
+        }
         if (tree == NULL || tree->kind != PLUM_SYM_TREE) {
-            unsupported(c, e->span, "'is' with traits and other types", 22);
+            unsupported(c, e->span, "'is' with this type", 22);
             return;
         }
         compile_expr(c, e->as.cast.value);
@@ -997,7 +1347,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
     }
     case PLUM_EXPR_SELF:
     case PLUM_EXPR_SUPER:
-        unsupported(c, e->span, "methods (self and super)", 22);
+        load_symbol(c, e->symbol, e->span); /* super alone is self, seen as the parent */
         return;
     case PLUM_EXPR_LIST:
         compile_list(c, e);
@@ -1350,12 +1700,21 @@ static void compile_path_assign(Compiler *c, const PlumStmt *s) {
     const PlumExpr *keys[MAX_PATH];
     int depth = 0;
     PlumSymbol *base = path_of(c, target, keys, &depth);
-    if (base == NULL) {
+    int field = 0;
+    const PlumExpr *object = base == NULL ? field_path(target, keys, &depth, &field) : NULL;
+    if (base == NULL && object == NULL) {
         unsupported(c, target->span, "assigning into this", 22);
         return;
     }
     uint32_t line = s->span.line;
     int saved = c->fs->next_slot;
+    uint16_t obj = 0;
+    if (object != NULL) {
+        /* obj.field[k] = v: the object once, under the keys */
+        obj = new_local(c, NULL, s->span);
+        compile_object(c, object);
+        op1(c, PLUM_OP_SET_LOCAL, obj, line);
+    }
     uint16_t first = 0;
     for (int i = 0; i < depth; i++) {
         uint16_t slot = new_local(c, NULL, s->span);
@@ -1365,6 +1724,9 @@ static void compile_path_assign(Compiler *c, const PlumStmt *s) {
         compile_key(c, keys[i]);
         op1(c, PLUM_OP_SET_LOCAL, slot, line);
     }
+    if (object != NULL) {
+        op1(c, PLUM_OP_GET_LOCAL, obj, line);
+    }
     for (int i = 0; i < depth; i++) {
         op1(c, PLUM_OP_GET_LOCAL, (uint16_t)(first + i), line);
     }
@@ -1372,7 +1734,12 @@ static void compile_path_assign(Compiler *c, const PlumStmt *s) {
         compile_as(c, s->as.assign.value, target->ty);
     } else {
         /* the old value: down the same keys */
-        load_symbol(c, base, s->span);
+        if (object != NULL) {
+            op1(c, PLUM_OP_GET_LOCAL, obj, line);
+            op1(c, PLUM_OP_GET_FIELD, (uint16_t)field, line);
+        } else {
+            load_symbol(c, base, s->span);
+        }
         for (int i = 0; i < depth; i++) {
             op1(c, PLUM_OP_GET_LOCAL, (uint16_t)(first + i), line);
             op(c,
@@ -1382,6 +1749,11 @@ static void compile_path_assign(Compiler *c, const PlumStmt *s) {
         }
         arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
                    line);
+    }
+    if (object != NULL) {
+        op2(c, PLUM_OP_SET_PATH_FIELD, (uint16_t)field, (uint16_t)depth, line);
+        c->fs->next_slot = saved;
+        return;
     }
     uint16_t n;
     PlumOpcode o = place_op(c, base, PLUM_OP_SET_PATH_LOCAL, PLUM_OP_SET_PATH_GLOBAL,
@@ -1617,7 +1989,8 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
 
 static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam *params,
                                   size_t param_count, const PlumExpr *arrow, const PlumStmt *body,
-                                  int depth, const PlumTy *result, PlumSymbol *self) {
+                                  int depth, const PlumTy *result, PlumSymbol *self,
+                                  PlumSymbol *receiver) {
     FnState fs;
     memset(&fs, 0, sizeof fs);
     fs.enclosing = c->fs;
@@ -1628,6 +2001,10 @@ static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam
     c->fs = &fs;
     c->result = (PlumTy *)result;
 
+    if (receiver != NULL) {
+        new_local(c, receiver, receiver->span); /* a method's self is its first argument */
+        box_if_captured(c, receiver, receiver->span);
+    }
     for (size_t i = 0; i < param_count; i++) {
         new_local(c, params[i].symbol, params[i].span);
     }
@@ -1665,7 +2042,13 @@ static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam
 
 static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b, int depth,
                              const PlumTy *result, PlumSymbol *self) {
-    compile_function_body(c, fn, b->params, b->param_count, b->arrow, b->body, depth, result, self);
+    compile_function_body(c, fn, b->params, b->param_count, b->arrow, b->body, depth, result, self,
+                          NULL);
+}
+
+static void compile_method_body(Compiler *c, PlumFunction *fn, const PlumBranch *m) {
+    compile_function_body(c, fn, m->params, m->param_count, m->arrow, m->body, 1,
+                          m->ty != NULL ? m->ty->as.func.result : NULL, NULL, m->self);
 }
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags) {
@@ -1674,6 +2057,7 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
     c.diags = diags;
     c.names = names;
     plum_map_init(&c.trees);
+    plum_map_init(&c.method_ids);
     size_t errors_before = diags->errors;
 
     PlumFunction *main = plum_function_new("<main>", 0);
@@ -1708,6 +2092,14 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
         plum_release(plum_obj(&fn->obj));
     }
 
+    /* Methods: functions whose first argument is the object. */
+    for (size_t i = 0; i < program->count; i++) {
+        const PlumStmt *s = program->stmts[i];
+        if (s->kind == PLUM_STMT_TREE || s->kind == PLUM_STMT_TRAIT) {
+            compile_methods(&c, s);
+        }
+    }
+
     for (size_t i = 0; i < program->count; i++) {
         const PlumStmt *s = program->stmts[i];
         if (s->kind != PLUM_STMT_BRANCH) {
@@ -1717,11 +2109,25 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
     op(&c, PLUM_OP_RETURN_NONE,
        program->count > 0 ? program->stmts[program->count - 1]->span.line : 1);
 
-    PlumCompiled out = {main, c.global_count, {NULL}};
+    PlumCompiled out;
+    memset(&out, 0, sizeof out);
+    out.main = main;
+    out.global_count = c.global_count;
     for (int k = 0; k < PLUM_ERROR_COUNT; k++) {
         out.errors[k] = builtin_error_info(&c, plum_error_name((PlumErrorKind)k));
         plum_retain(plum_obj(&out.errors[k]->obj));
     }
+    out.to_str = method_id(&c, "to_str");
+    fill_method_tables(&c);
+    /* The program keeps the methods; trees' tables only point at them. */
+    out.method_count = (int)c.methods.len;
+    out.methods = plum_alloc_zeroed(c.methods.len > 0 ? c.methods.len : 1, sizeof(PlumFunction *));
+    for (size_t i = 0; i < c.methods.len; i++) {
+        out.methods[i] = c.methods.items[i].fn;
+    }
+    plum_array_free(&c.methods);
+    plum_array_free(&c.user_trees);
+    plum_map_free(&c.method_ids);
     /* the constants that use a tree info hold it now */
     size_t cursor = 0;
     const PlumMapEntry *entry;
@@ -1741,6 +2147,12 @@ void plum_compiled_free(PlumCompiled *compiled) {
         plum_release(plum_obj(&compiled->main->obj));
         compiled->main = NULL;
     }
+    for (int i = 0; i < compiled->method_count; i++) {
+        plum_release(plum_obj(&compiled->methods[i]->obj));
+    }
+    plum_free(compiled->methods);
+    compiled->methods = NULL;
+    compiled->method_count = 0;
     for (int k = 0; k < PLUM_ERROR_COUNT; k++) {
         if (compiled->errors[k] != NULL) {
             plum_release(plum_obj(&compiled->errors[k]->obj));

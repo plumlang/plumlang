@@ -80,6 +80,12 @@ typedef struct PlumTreeInfo {
     struct PlumTreeInfo *parent; /* holds a reference, or NULL */
     int field_count;             /* parents' fields included */
     const char **field_names;    /* owned array; names are interned */
+    /* What each method number runs on its objects (NULL: no such method);
+     * the functions belong to the program, not to this table. */
+    struct PlumFunction **methods;
+    int method_count;
+    const char **traits; /* every trait its objects have, by interned name */
+    int trait_count;
 } PlumTreeInfo;
 
 /* An object of a tree: shared, not copied (spec 8.3). */
