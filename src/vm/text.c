@@ -162,6 +162,77 @@ static bool put_number(Buf *b, PlumValue v, const Spec *spec, char *error, size_
     return true;
 }
 
+/* The plain text of a value; strings inside collections are quoted. */
+static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
+    char tmp[PLUM_FLOAT_BUF + 160];
+    switch (v.type) {
+    case PLUM_VAL_NONE:
+        put(b, "none", 4);
+        return;
+    case PLUM_VAL_BOOL:
+        put(b, v.as.b ? "good" : "bad", v.as.b ? 4 : 3);
+        return;
+    case PLUM_VAL_INT:
+        snprintf(tmp, sizeof tmp, "%lld", (long long)v.as.i);
+        put(b, tmp, strlen(tmp));
+        return;
+    case PLUM_VAL_FLOAT:
+        plum_format_float(v.as.f, tmp);
+        put(b, tmp, strlen(tmp));
+        return;
+    case PLUM_VAL_OBJ:
+        break;
+    }
+    switch ((PlumObjType)v.as.obj->type) {
+    case PLUM_OBJ_STRING: {
+        PlumString *s = plum_as_string(v);
+        if (!quote_strings) {
+            put(b, s->chars, s->len);
+            return;
+        }
+        /* The same escapes as a string literal in source. */
+        put(b, "\"", 1);
+        for (size_t i = 0; i < s->len; i++) {
+            unsigned char c = (unsigned char)s->chars[i];
+            const char *esc = c == '\n'   ? "\\n"
+                              : c == '\t' ? "\\t"
+                              : c == '\r' ? "\\r"
+                              : c == '"'  ? "\\\""
+                              : c == '\\' ? "\\\\"
+                              : c == '{'  ? "\\{"
+                              : c == '}'  ? "\\}"
+                                          : NULL;
+            if (esc != NULL) {
+                put(b, esc, strlen(esc));
+            } else if (c < 0x20) {
+                snprintf(tmp, sizeof tmp, "\\u{%X}", (unsigned)c);
+                put(b, tmp, strlen(tmp));
+            } else {
+                put(b, (const char *)&s->chars[i], 1);
+            }
+        }
+        put(b, "\"", 1);
+        return;
+    }
+    case PLUM_OBJ_FUNCTION:
+        snprintf(tmp, sizeof tmp, "<branch %.150s>", plum_as_function(v)->name);
+        put(b, tmp, strlen(tmp));
+        return;
+    case PLUM_OBJ_LIST: {
+        PlumList *list = plum_as_list(v);
+        put(b, "[", 1);
+        for (size_t i = 0; i < list->len; i++) {
+            if (i > 0) {
+                put(b, ", ", 2);
+            }
+            put_plain(b, list->items[i], true);
+        }
+        put(b, "]", 1);
+        return;
+    }
+    }
+}
+
 PlumString *plum_value_text(PlumValue v, const char *format, char *error, size_t error_size) {
     Spec spec;
     if (format != NULL && format[0] == '\0') {
@@ -183,21 +254,11 @@ PlumString *plum_value_text(PlumValue v, const char *format, char *error, size_t
             snprintf(error, error_size, "format '%c' needs a number", spec.type);
             return NULL;
         }
-        if (plum_is_obj(v, PLUM_OBJ_STRING)) {
+        if (plum_is_obj(v, PLUM_OBJ_STRING) && spec.precision >= 0) {
             PlumString *s = plum_as_string(v);
-            size_t n = s->len;
-            if (spec.precision >= 0) {
-                n = utf8_prefix(s->chars, s->len, (size_t)spec.precision);
-            }
-            put(&b, s->chars, n);
-        } else if (v.type == PLUM_VAL_BOOL) {
-            put(&b, v.as.b ? "good" : "bad", v.as.b ? 4 : 3);
-        } else if (v.type == PLUM_VAL_NONE) {
-            put(&b, "none", 4);
-        } else if (plum_is_obj(v, PLUM_OBJ_FUNCTION)) {
-            char tmp[160];
-            snprintf(tmp, sizeof tmp, "<branch %s>", plum_as_function(v)->name);
-            put(&b, tmp, strlen(tmp));
+            put(&b, s->chars, utf8_prefix(s->chars, s->len, (size_t)spec.precision));
+        } else {
+            put_plain(&b, v, false);
         }
     }
 

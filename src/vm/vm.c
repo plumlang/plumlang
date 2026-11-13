@@ -280,7 +280,14 @@ static const char *type_name(PlumValue v) {
     case PLUM_VAL_FLOAT:
         return "float";
     case PLUM_VAL_OBJ:
-        return v.as.obj->type == PLUM_OBJ_STRING ? "str" : "branch";
+        switch ((PlumObjType)v.as.obj->type) {
+        case PLUM_OBJ_STRING:
+            return "str";
+        case PLUM_OBJ_FUNCTION:
+            return "branch";
+        case PLUM_OBJ_LIST:
+            return "list";
+        }
     }
     return "?";
 }

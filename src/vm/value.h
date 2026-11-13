@@ -25,6 +25,7 @@ typedef enum PlumValueType {
 typedef enum PlumObjType {
     PLUM_OBJ_STRING,
     PLUM_OBJ_FUNCTION,
+    PLUM_OBJ_LIST,
 } PlumObjType;
 
 /* The header every heap object starts with. */
@@ -49,6 +50,18 @@ typedef struct PlumString {
     size_t len;
     char *chars;
 } PlumString;
+
+/*
+ * A list is a value (spec 11.1): assigning one shares it, and a change
+ * through a shared list first copies it (plum_list_unique). `items` holds
+ * one reference per element.
+ */
+typedef struct PlumList {
+    PlumObj obj;
+    size_t len;
+    size_t cap;
+    PlumValue *items;
+} PlumList;
 
 typedef struct PlumChunk PlumChunk;
 
@@ -108,6 +121,10 @@ static inline PlumFunction *plum_as_function(PlumValue v) {
     return (PlumFunction *)v.as.obj;
 }
 
+static inline PlumList *plum_as_list(PlumValue v) {
+    return (PlumList *)v.as.obj;
+}
+
 /* Take another reference to an object value (no-op for the rest). */
 static inline PlumValue plum_retain(PlumValue v) {
     if (v.type == PLUM_VAL_OBJ) {
@@ -126,10 +143,24 @@ PlumString *plum_string_alloc(size_t len);
 
 PlumFunction *plum_function_new(const char *name, int arity);
 
+/* An empty list with room for `cap` items, with one reference. */
+PlumList *plum_list_new(size_t cap);
+/* Append `v`, taking over its reference. The list must not be shared. */
+void plum_list_push(PlumList *list, PlumValue v);
+/*
+ * The list in `*slot`, made safe to change: if another holder shares it,
+ * `*slot` gets its own copy first (copy-on-write).
+ */
+PlumList *plum_list_unique(PlumValue *slot);
+
 /* Structural equality: numbers by value, strings by content. */
 bool plum_values_equal(PlumValue a, PlumValue b);
 
-/* Write a value the way `drop` prints it (spec 3.2.1). */
+/* Write a value the way `drop` prints it (spec 3.2.1): strings inside a
+ * collection are quoted. */
 void plum_print_value(FILE *out, PlumValue v);
+
+/* Order two numbers or two strings: <0, 0, >0. */
+int plum_compare_values(PlumValue a, PlumValue b);
 
 #endif /* PLUM_VM_VALUE_H */
