@@ -1,0 +1,6 @@
+# exit: 4
+drop([1, 2, 3].map((n) => {
+    if n == 2 { exit(4) }
+    return n
+}))
+drop("never")

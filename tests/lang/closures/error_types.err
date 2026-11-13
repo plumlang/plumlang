@@ -1,0 +1,19 @@
+tests/lang/closures/error_types.plum:3:16: error[E0402]: 'test' expects (int) -> bool, found (int) -> int
+3 | drop(xs.filter((n) => n + 1))
+  |                ^~~~~~~~~~~~
+tests/lang/closures/error_types.plum:4:13: error[E0402]: map() needs a function of one item, but this one takes 2 parameters
+4 | drop(xs.map((a, b) => a))
+  |             ^~~~~~~~~~~
+tests/lang/closures/error_types.plum:5:16: error[E0402]: reduce()'s function must return int, like its initial value, but returns str
+5 | drop(xs.reduce((total, n) => "x", 0))
+  |                ^~~~~~~~~~~~~~~~~
+tests/lang/closures/error_types.plum:6:19: error[E0415]: sorted_by() orders by numbers or strings, but this key gives bool
+6 | drop(xs.sorted_by((n) => n > 1))
+  |                   ^~~~~~~~~~~~
+tests/lang/closures/error_types.plum:7:13: error[E0402]: map()'s function takes str, but the list holds int
+7 | drop(xs.map((n: str) => n))
+  |             ^~~~~~~~~~~~~
+tests/lang/closures/error_types.plum:8:6: error[E0406]: reduce() takes 2 arguments
+8 | drop(xs.reduce((t, n) => t + n))
+  |      ^~~~~~~~~~~~~~~~~~~~~~~~~~
+6 errors

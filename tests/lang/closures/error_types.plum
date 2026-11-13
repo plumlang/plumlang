@@ -1,0 +1,8 @@
+# command: check
+plant xs = [1, 2, 3]
+drop(xs.filter((n) => n + 1))
+drop(xs.map((a, b) => a))
+drop(xs.reduce((total, n) => "x", 0))
+drop(xs.sorted_by((n) => n > 1))
+drop(xs.map((n: str) => n))
+drop(xs.reduce((t, n) => t + n))

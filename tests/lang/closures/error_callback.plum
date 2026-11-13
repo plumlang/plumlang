@@ -1,0 +1,6 @@
+# An error inside a callback names the lambda and who called the method.
+branch deep(n: int) -> int => if n == 0 { 0 } else { 1 + deep(n - 1) }
+plant xs = [10, 2000, 5000]
+drop(xs.map((n) => deep(n)))
+branch run() -> list[int] => [3, 1, 0].map((n) => 10 // n)
+drop(run())
