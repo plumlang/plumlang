@@ -1,0 +1,8 @@
+# A tight loop: 20 million additions and comparisons.
+plant total = 0
+for i in 0..20000000 {
+    if i % 3 == 0 {
+        total += i
+    }
+}
+drop(total)

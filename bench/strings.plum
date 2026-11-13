@@ -1,0 +1,7 @@
+# Building text: 500,000 interpolated strings.
+plant chars = 0
+for i in 0..500000 {
+    plant line = "item {i}: {i * 2} ({i % 7:>3})"
+    chars += len(line)
+}
+drop(chars)

@@ -1,0 +1,8 @@
+# Recursive calls: fib(30) makes about 2.7 million calls.
+branch fib(n: int) -> int {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+drop(fib(30))
