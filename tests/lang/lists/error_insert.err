@@ -1,0 +1,2 @@
+tests/lang/lists/error_insert.plum:2: runtime error: insert(5) is out of range for a list of 2 items
+  in <main>, line 2

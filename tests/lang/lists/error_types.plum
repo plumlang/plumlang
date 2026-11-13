@@ -1,0 +1,11 @@
+# command: check
+plant xs = [3, 1, 2]
+xs.push("four")
+plant flags = [good, bad]
+flags.sort()
+drop(xs.join(","))
+plant e = xs.enumerate()
+for x in xs.enumerate() { }
+xs.shuffle()
+drop(xs["a"])
+plant mixed = [1, "a"]

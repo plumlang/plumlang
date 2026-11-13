@@ -1,0 +1,12 @@
+# Literals, indexing, slices, len, +, in, printing.
+plant xs = [3, 1, 2]
+drop(xs, len(xs), xs[0], xs[2])
+drop(xs[0..2], xs[1..=2], xs[0..0], xs + [4, 5])
+drop(2 in xs, 9 in xs)
+plant words = ["plum", "tree"]
+drop(words, "{words}", str(words))
+plant nested = [[1, 2], [3]]
+drop(nested, nested[0][1], len(nested[1]))
+plant fl: list[float] = [1, 2.5]
+plant empty: list[int] = []
+drop(fl, empty == empty, [1, 2] == [1, 2], [1, 2] != [2, 1])

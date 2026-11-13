@@ -1,0 +1,2 @@
+plant xs: list[int] = []
+drop(xs[0])
