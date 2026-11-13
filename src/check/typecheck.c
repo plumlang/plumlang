@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
 #include "check/typecheck.h"
 
+#include "stdlib/native.h"
+
 #include "util/alloc.h"
 #include "util/array.h"
 #include "vm/methods.h"
@@ -443,11 +445,138 @@ static PlumTy *table_method(Checker *c, PlumExpr *e, PlumTy *t, const char *name
     return NULL;
 }
 
+/* ------------------------------------------------------------------ */
+/* The standard library's signatures                                   */
+/* ------------------------------------------------------------------ */
+
+typedef struct SigParser {
+    const char *p;
+} SigParser;
+
+static void sig_space(SigParser *s) {
+    while (*s->p == ' ') {
+        s->p++;
+    }
+}
+
+static bool sig_word(SigParser *s, const char *w) {
+    size_t n = strlen(w);
+    if (strncmp(s->p, w, n) == 0) {
+        s->p += n;
+        return true;
+    }
+    return false;
+}
+
+/* A type in a native signature: int float str bool byte none num, list[T],
+ * set[T], map[K, V], each optionally followed by ?. num checks as float. */
+static PlumTy *sig_type(Checker *c, SigParser *s) {
+    sig_space(s);
+    PlumTy *t = c->t.unknown;
+    if (sig_word(s, "list[") || sig_word(s, "set[")) {
+        bool list = s->p[-2] == 't';
+        PlumTy *elem = sig_type(c, s);
+        sig_word(s, "]");
+        t = plum_ty_wrap(&c->t, list ? PLUM_TY_LIST : PLUM_TY_SET, elem);
+    } else if (sig_word(s, "map[")) {
+        PlumTy *k = sig_type(c, s);
+        sig_word(s, ",");
+        PlumTy *v = sig_type(c, s);
+        sig_word(s, "]");
+        t = plum_ty_map(&c->t, k, v);
+    } else if (sig_word(s, "int")) {
+        t = c->t.integer;
+    } else if (sig_word(s, "float") || sig_word(s, "num")) {
+        t = c->t.floating;
+    } else if (sig_word(s, "str")) {
+        t = c->t.str;
+    } else if (sig_word(s, "bool")) {
+        t = c->t.boolean;
+    } else if (sig_word(s, "byte")) {
+        t = c->t.byte;
+    } else if (sig_word(s, "none")) {
+        t = c->t.none;
+    }
+    if (sig_word(s, "?")) {
+        t = plum_ty_wrap(&c->t, PLUM_TY_OPTIONAL, t);
+    }
+    return t;
+}
+
+/* The type of a native function from its signature; a method's self is left out. */
+static PlumTy *native_type(Checker *c, const PlumNativeFunction *fn, bool method) {
+    PlumTy *f = plum_ty_new(&c->t, PLUM_TY_FUNC);
+    PlumTyParam params[32];
+    size_t n = 0;
+    SigParser s = {fn->signature};
+    sig_word(&s, "(");
+    while (*s.p != '\0' && *s.p != ')') {
+        sig_space(&s);
+        const char *name = s.p;
+        while (*s.p != ':' && *s.p != '\0') {
+            s.p++;
+        }
+        size_t len = (size_t)(s.p - name);
+        sig_word(&s, ":");
+        PlumTy *ty = sig_type(c, &s);
+        sig_space(&s);
+        bool optional = false;
+        if (sig_word(&s, "=")) {
+            optional = true;
+            bool quoted = false;
+            while (*s.p != '\0' && (quoted || (*s.p != ',' && *s.p != ')'))) {
+                quoted = *s.p == '"' ? !quoted : quoted;
+                s.p++;
+            }
+        }
+        if (!(method && n == 0 && len == 4 && strncmp(name, "self", 4) == 0) && n < 32) {
+            params[n++] = (PlumTyParam){plum_intern(c->names, name, len), ty, optional};
+        } else if (method && len == 4) {
+            method = false; /* self taken off once */
+        }
+        sig_word(&s, ",");
+    }
+    sig_word(&s, ")");
+    sig_space(&s);
+    f->as.func.result = sig_word(&s, "->") ? sig_type(c, &s) : c->t.none;
+    f->as.func.params = plum_arena_alloc_zeroed(c->arena, (n ? n : 1) * sizeof(PlumTyParam));
+    memcpy(f->as.func.params, params, n * sizeof(PlumTyParam));
+    f->as.func.param_count = n;
+    return f;
+}
+
+static PlumTy *native_constant_type(Checker *c, const PlumNativeConstant *k) {
+    return k->kind == PLUM_NATIVE_INT ? c->t.integer : c->t.floating;
+}
+
+/* math.x: a function or constant of a module, or E0415. */
+static PlumTy *module_member(Checker *c, PlumExpr *e) {
+    const PlumExpr *obj = e->as.field.object;
+    e->as.field.object->ty = c->t.unknown;
+    bool method;
+    const PlumNativeFunction *fn = plum_callee_native(e, &method);
+    if (fn != NULL) {
+        return native_type(c, fn, false);
+    }
+    const PlumNativeConstant *k = plum_expr_native_constant(e);
+    if (k != NULL) {
+        return native_constant_type(c, k);
+    }
+    plum_diag_error(c->diags, e->span, "E0415", "the module '%s' has no '%s'",
+                    obj->symbol->decl->as.seed.path, e->as.field.name);
+    return c->t.error;
+}
+
 /* a.b: a field, a method, a kind case, or a built-in member. */
 static PlumTy *check_field(Checker *c, PlumExpr *e) {
     PlumExpr *obj = e->as.field.object;
     const char *name = e->as.field.name;
     char a[TYBUF];
+
+    if (obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+        obj->symbol->kind == PLUM_SYM_MODULE) {
+        return module_member(c, e);
+    }
 
     /* Direction.North, Figure.Circle */
     if (obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL && obj->symbol->kind == PLUM_SYM_KIND) {
@@ -526,10 +655,19 @@ static PlumTy *check_field(Checker *c, PlumExpr *e) {
         if (result == NULL) {
             return c->t.error;
         }
-    } else {
-        /* Methods of str and numbers arrive with the standard library
-         * (#24); accept them for now. */
+    } else if (t->kind == PLUM_TY_STR) {
+        const PlumNativeFunction *fn = plum_native_function(&plum_module_str, name);
+        if (fn == NULL) {
+            plum_diag_error(c->diags, e->span, "E0415", "str has no method '%s'", name);
+            return c->t.error;
+        }
+        result = native_type(c, fn, true);
+    } else if (plum_ty_is_loose(t)) {
         result = c->t.unknown;
+    } else {
+        plum_diag_error(c->diags, e->span, "E0415", "%s has no field or method '%s'", tx(t, a),
+                        name);
+        return c->t.error;
     }
     return optional && !plum_ty_is_loose(result) ? plum_ty_wrap(&c->t, PLUM_TY_OPTIONAL, result)
                                                  : result;
@@ -858,6 +996,8 @@ static PlumTy *check_higher_order(Checker *c, PlumExpr *e) {
     return out;
 }
 
+static bool is_int_like(const PlumTy *t);
+
 static PlumTy *check_call(Checker *c, PlumExpr *e) {
     PlumExpr *callee = e->as.call.callee;
     PlumSymbol *sym = callee->kind == PLUM_EXPR_NAME ? callee->symbol : NULL;
@@ -927,6 +1067,30 @@ static PlumTy *check_call(Checker *c, PlumExpr *e) {
     const char *n = name_of(callee);
     snprintf(what, sizeof what, n ? "'%s'" : "%s", n ? n : "this function");
     check_args(c, e, what, f->as.func.params, f->as.func.param_count);
+    bool method;
+    const PlumNativeFunction *native = plum_callee_native(callee, &method);
+    if (native != NULL && plum_native_result_is_num(native)) {
+        /* num: an int when every num argument is an int */
+        bool ints = true;
+        size_t positional = 0;
+        for (size_t i = 0; i < e->as.call.arg_count; i++) {
+            const PlumArg *arg = &e->as.call.args[i];
+            size_t k = positional;
+            for (size_t p = 0; arg->name != NULL && p < f->as.func.param_count; p++) {
+                if (f->as.func.params[p].name == arg->name) {
+                    k = p;
+                }
+            }
+            if (arg->name == NULL) {
+                positional++;
+            }
+            if (plum_native_param_is_num(native, k + (method ? 1 : 0)) && arg->value->ty != NULL &&
+                !is_int_like(arg->value->ty)) {
+                ints = false;
+            }
+        }
+        return ints ? c->t.integer : c->t.floating;
+    }
     return f->as.func.result != NULL ? f->as.func.result : c->t.none;
 }
 
@@ -1515,6 +1679,14 @@ static PlumTy *check_expr(Checker *c, PlumExpr *e, PlumTy *expected) {
         } else if (sym->kind == PLUM_SYM_FUNC && sym->decl != NULL) {
             sym->ty = signature(c, &sym->decl->as.branch);
             t = sym->ty;
+        } else if (sym->kind == PLUM_SYM_NATIVE) {
+            bool method;
+            const PlumNativeFunction *fn = plum_callee_native(e, &method);
+            const PlumNativeConstant *k = plum_expr_native_constant(e);
+            t = fn != NULL  ? native_type(c, fn, false)
+                : k != NULL ? native_constant_type(c, k)
+                            : c->t.error;
+            sym->ty = t;
         } else {
             t = c->t.unknown; /* types, built-ins as values: checked where they are used */
         }

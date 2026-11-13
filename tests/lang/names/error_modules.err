@@ -1,4 +1,4 @@
-tests/lang/names/error_modules.plum:2:1: error[E0308]: importing modules is not supported yet; it arrives with #23
-2 | seed math
-  | ^~~~~~~~~
+tests/lang/names/error_modules.plum:2:1: error[E0308]: importing files is not supported yet; it arrives with #23 (the standard modules are: math)
+2 | seed ./models/user
+  | ^~~~~~~~~~~~~~~~~~
 1 error

@@ -1,0 +1,6 @@
+# A seed gives the same random numbers on every platform.
+seed math
+math.seed_random(2024)
+drop([math.random_int(1, 100), math.random_int(1, 100), math.random_int(1, 100)])
+drop("{math.random():.6}")
+drop(math.random_int(5, 5), math.random_int(math.MIN_INT, math.MAX_INT) != 0)

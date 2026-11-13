@@ -1033,7 +1033,9 @@ Modules are imported with `seed`. The 1.0 library is planned as:
 | `net.http` | an HTTP server and client |
 | `test` | assertions and a test runner (`plum test`) |
 
-Each module is documented in `docs/stdlib/` as it lands. A web server, for
+Each module is documented in `docs/stdlib/` as it lands, and `plum stdlib`
+lists the functions of every module with their signatures. The methods of
+`str` are documented as the `str` page there. A web server, for
 a taste:
 
 ```plum

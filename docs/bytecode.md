@@ -166,6 +166,7 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 102 | `THROW` | 0 | throw the error on top |
 | 103 | `CALL` | 1 | call the function under [a] arguments |
 | 104 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 105 | `RETURN` | 0 | return the top value |
-| 106 | `RETURN_NONE` | 0 | return none |
+| 105 | `CALL_NATIVE` | 2 | call standard-library function [a] with [b] arguments |
+| 106 | `RETURN` | 0 | return the top value |
+| 107 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

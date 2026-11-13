@@ -421,7 +421,9 @@ plant b: boolean = good   # error: in Plumlang it is 'bool'
 
 ### E0308
 
-`seed`: importing modules arrives with #23.
+A `seed` of a module that doesn't exist. The message lists the standard
+modules (`plum stdlib` shows them with their functions). Importing your
+own files (`seed ./shapes`) arrives with #23.
 
 ### E0309
 

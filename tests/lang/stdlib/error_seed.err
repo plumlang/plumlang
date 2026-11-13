@@ -1,0 +1,10 @@
+tests/lang/stdlib/error_seed.plum:1:1: error[E0308]: there is no standard module 'maths'; the modules are: math
+1 | seed maths
+  | ^~~~~~~~~~
+tests/lang/stdlib/error_seed.plum:2:1: error[E0308]: importing files is not supported yet; it arrives with #23 (the standard modules are: math)
+2 | seed ./helpers
+  | ^~~~~~~~~~~~~~
+tests/lang/stdlib/error_seed.plum:3:1: error[E0301]: the module 'math' has no 'cube_root'
+3 | seed math { sqrt, cube_root }
+  | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+3 errors

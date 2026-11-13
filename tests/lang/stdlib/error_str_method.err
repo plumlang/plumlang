@@ -1,0 +1,10 @@
+tests/lang/stdlib/error_str_method.plum:2:6: error[E0415]: str has no method 'shout'
+2 | drop(name.shout())
+  |      ^~~~~~~~~~
+tests/lang/stdlib/error_str_method.plum:3:21: error[E0402]: 'width' expects int, found str
+3 | drop(name.pad_start("3"))
+  |                     ^~~
+tests/lang/stdlib/error_str_method.plum:5:6: error[E0415]: int has no field or method 'upper'
+5 | drop(n.upper())
+  |      ^~~~~~~
+3 errors
