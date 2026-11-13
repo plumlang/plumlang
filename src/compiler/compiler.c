@@ -6,6 +6,7 @@
 #include "compiler/chunk.h"
 #include "util/alloc.h"
 #include "util/array.h"
+#include "vm/methods.h"
 
 #include <string.h>
 
@@ -254,6 +255,10 @@ static void arithmetic(Compiler *c, PlumTokenKind tok, const PlumExpr *left, con
         op(c, PLUM_OP_CONCAT, line);
         return;
     }
+    if (tok == PLUM_TOK_PLUS && ty_is(lty, PLUM_TY_LIST)) {
+        op(c, PLUM_OP_CONCAT_LIST, line);
+        return;
+    }
     op(c, arith_op(tok, fl), line);
 }
 
@@ -321,7 +326,13 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
         return;
     }
     case PLUM_TOK_IN:
-        unsupported(c, e->span, "'in'", 20);
+        if (!ty_is(r->ty, PLUM_TY_LIST)) {
+            unsupported(c, e->span, "'in' on maps, sets and strings", 20);
+            return;
+        }
+        compile_as(c, l, r->ty->as.elem);
+        compile_expr(c, r);
+        op(c, PLUM_OP_CONTAINS, line);
         return;
     default:
         arithmetic(c, tok, l, l->ty, r, line);
@@ -407,6 +418,74 @@ static int builtin_id(const char *name) {
     return -1;
 }
 
+static void compile_list(Compiler *c, const PlumExpr *e) {
+    const PlumTy *elem = ty_is(e->ty, PLUM_TY_LIST) ? e->ty->as.elem : NULL;
+    if (e->as.list.count > 0xFFFF) {
+        plum_diag_error(c->diags, e->span, "E0602",
+                        "a list literal can hold at most 65535 items; build it in a loop");
+        return;
+    }
+    for (size_t i = 0; i < e->as.list.count; i++) {
+        compile_as(c, e->as.list.items[i], elem);
+    }
+    op1(c, PLUM_OP_BUILD_LIST, (uint16_t)e->as.list.count, e->span.line);
+}
+
+static void compile_index(Compiler *c, const PlumExpr *e) {
+    const PlumExpr *obj = e->as.index.object, *idx = e->as.index.index;
+    if (!ty_is(obj->ty, PLUM_TY_LIST)) {
+        unsupported(c, e->span, "indexing maps and strings", 20);
+        return;
+    }
+    compile_expr(c, obj);
+    if (idx->kind == PLUM_EXPR_RANGE) {
+        compile_expr(c, idx->as.range.low);
+        compile_expr(c, idx->as.range.high);
+        op1(c, PLUM_OP_SLICE, idx->as.range.inclusive, e->span.line);
+        return;
+    }
+    compile_expr(c, idx);
+    op(c, PLUM_OP_INDEX_LIST, e->span.line);
+}
+
+/* A variable a method can change in place, or NULL. */
+static PlumSymbol *place_of(Compiler *c, const PlumExpr *obj) {
+    if (obj->kind != PLUM_EXPR_NAME || obj->symbol == NULL || !obj->symbol->has_slot) {
+        return NULL;
+    }
+    PlumSymbol *sym = obj->symbol;
+    if (!sym->global && sym->function_depth != c->fs->depth) {
+        return NULL; /* a closure's variable */
+    }
+    return sym;
+}
+
+/* xs.method(args): in place on a variable, or on a temporary value. */
+static void compile_method(Compiler *c, const PlumExpr *e) {
+    const PlumExpr *callee = e->as.call.callee;
+    const PlumExpr *obj = callee->as.field.object;
+    const PlumTy *fty = callee->ty;
+    int m = plum_method_find(PLUM_RECEIVER_LIST, callee->as.field.name);
+    if (m < 0 || !ty_is(fty, PLUM_TY_FUNC) || callee->as.field.optional) {
+        unsupported(c, e->span, "this method", 24);
+        return;
+    }
+    uint32_t line = e->span.line;
+    uint16_t argc = (uint16_t)fty->as.func.param_count;
+    PlumSymbol *place = plum_method_mutates((PlumMethod)m) ? place_of(c, obj) : NULL;
+    if (place == NULL) {
+        compile_expr(c, obj);
+    }
+    compile_args(c, e, fty, NULL);
+    if (place == NULL) {
+        op2(c, PLUM_OP_METHOD, (uint16_t)m, argc, line);
+        return;
+    }
+    op2(c, place->global ? PLUM_OP_METHOD_GLOBAL : PLUM_OP_METHOD_LOCAL, (uint16_t)place->slot,
+        (uint16_t)m, line);
+    plum_chunk_write_u16(chunk(c), argc, line);
+}
+
 static void compile_call(Compiler *c, const PlumExpr *e) {
     const PlumExpr *callee = e->as.call.callee;
     PlumSymbol *sym = callee->kind == PLUM_EXPR_NAME ? callee->symbol : NULL;
@@ -429,7 +508,11 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
         return;
     }
     if (callee->kind == PLUM_EXPR_FIELD) {
-        unsupported(c, e->span, "methods", 22);
+        if (ty_is(callee->as.field.object->ty, PLUM_TY_LIST)) {
+            compile_method(c, e);
+        } else {
+            unsupported(c, e->span, "methods", 22);
+        }
         return;
     }
     const PlumTy *fty = callee->ty;
@@ -511,10 +594,14 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         unsupported(c, e->span, "trees, fields and methods", 22);
         return;
     case PLUM_EXPR_LIST:
-    case PLUM_EXPR_MAP:
+        compile_list(c, e);
+        return;
     case PLUM_EXPR_INDEX:
+        compile_index(c, e);
+        return;
+    case PLUM_EXPR_MAP:
     case PLUM_EXPR_RANGE:
-        unsupported(c, e->span, "lists, maps and ranges as values", 20);
+        unsupported(c, e->span, "maps and ranges as values", 20);
         return;
     case PLUM_EXPR_LAMBDA:
         unsupported(c, e->span, "lambdas", 19);
@@ -583,6 +670,45 @@ static void compile_while(Compiler *c, const PlumStmt *s) {
 }
 
 /*
+ * for x in items / for i, x in items.enumerate(): the list (a snapshot,
+ * since lists are values) and a position live in hidden slots; FOR_EACH
+ * puts the next item in the loop variable or leaves the loop.
+ */
+static void compile_for_each(Compiler *c, const PlumStmt *s) {
+    const PlumExpr *it = s->as.for_.iterable;
+    bool enumerate = it->kind == PLUM_EXPR_CALL && it->as.call.callee->kind == PLUM_EXPR_FIELD &&
+                     strcmp(it->as.call.callee->as.field.name, "enumerate") == 0;
+    const PlumExpr *source = enumerate ? it->as.call.callee->as.field.object : it;
+    if (!ty_is(source->ty, PLUM_TY_LIST)) {
+        unsupported(c, it->span, "loops over strings, maps and sets", 20);
+        return;
+    }
+    uint32_t line = s->span.line;
+    int saved = c->fs->next_slot;
+    uint16_t list = new_local(c, NULL, s->span);
+    new_local(c, NULL, s->span); /* list + 1: the position */
+    uint16_t var = new_local(c, s->symbol, s->span);
+    if (enumerate) {
+        new_local(c, s->symbol2, s->span); /* var + 1: the item */
+    }
+    compile_expr(c, source);
+    op1(c, PLUM_OP_SET_LOCAL, list, line);
+    emit_const(c, plum_int(0), s->span);
+    op1(c, PLUM_OP_SET_LOCAL, (uint16_t)(list + 1), line);
+
+    Loop loop;
+    begin_loop(c, &loop, false); /* continue goes back to FOR_EACH */
+    op2(c, enumerate ? PLUM_OP_FOR_EACH2 : PLUM_OP_FOR_EACH, list, var, line);
+    plum_chunk_write_u16(chunk(c), 0xFFFF, line);
+    size_t exit_at = chunk(c)->code.len - 2;
+    compile_block(c, s->as.for_.body);
+    emit_loop(c, loop.start, s->span);
+    patch_jump(c, exit_at, s->span);
+    end_loop(c, &loop, s->span);
+    c->fs->next_slot = saved;
+}
+
+/*
  * for i in a..b: i and a hidden end live in neighbouring slots.
  *
  *     i = a; end = b
@@ -594,7 +720,7 @@ static void compile_while(Compiler *c, const PlumStmt *s) {
 static void compile_for(Compiler *c, const PlumStmt *s) {
     const PlumExpr *it = s->as.for_.iterable;
     if (it->kind != PLUM_EXPR_RANGE) {
-        unsupported(c, it->span, "loops over lists, strings and maps", 20);
+        compile_for_each(c, s);
         return;
     }
     uint32_t line = s->span.line;
@@ -630,38 +756,81 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
     c->fs->next_slot = saved;
 }
 
+static PlumTokenKind compound_operator(PlumTokenKind tok);
+
+/*
+ * xs[i] = v and xs[i] op= v on a list variable. The index is computed once
+ * into a hidden slot; SET_INDEX takes the index and the new value.
+ */
+static void compile_index_assign(Compiler *c, const PlumStmt *s) {
+    const PlumExpr *target = s->as.assign.target;
+    const PlumExpr *obj = target->as.index.object;
+    PlumSymbol *place = place_of(c, obj);
+    if (!ty_is(obj->ty, PLUM_TY_LIST) || place == NULL ||
+        target->as.index.index->kind == PLUM_EXPR_RANGE) {
+        unsupported(c, target->span, "assigning into maps, nested lists and slices", 20);
+        return;
+    }
+    uint32_t line = s->span.line;
+    int saved = c->fs->next_slot;
+    uint16_t idx = new_local(c, NULL, s->span);
+    compile_expr(c, target->as.index.index);
+    op1(c, PLUM_OP_SET_LOCAL, idx, line);
+    op1(c, PLUM_OP_GET_LOCAL, idx, line);
+    if (s->as.assign.op == PLUM_TOK_EQ) {
+        compile_as(c, s->as.assign.value, target->ty);
+    } else {
+        load_symbol(c, place, obj->span);
+        op1(c, PLUM_OP_GET_LOCAL, idx, line);
+        op(c, PLUM_OP_INDEX_LIST, line);
+        arithmetic(c, compound_operator(s->as.assign.op), NULL, target->ty, s->as.assign.value,
+                   line);
+    }
+    op1(c, place->global ? PLUM_OP_SET_INDEX_GLOBAL : PLUM_OP_SET_INDEX_LOCAL,
+        (uint16_t)place->slot, line);
+    c->fs->next_slot = saved;
+}
+
+static PlumTokenKind compound_operator(PlumTokenKind tok) {
+    static const struct {
+        PlumTokenKind assign, bin;
+    } ops[] = {
+        {PLUM_TOK_PLUS_EQ, PLUM_TOK_PLUS},
+        {PLUM_TOK_MINUS_EQ, PLUM_TOK_MINUS},
+        {PLUM_TOK_STAR_EQ, PLUM_TOK_STAR},
+        {PLUM_TOK_SLASH_EQ, PLUM_TOK_SLASH},
+        {PLUM_TOK_SLASH_SLASH_EQ, PLUM_TOK_SLASH_SLASH},
+        {PLUM_TOK_PERCENT_EQ, PLUM_TOK_PERCENT},
+        {PLUM_TOK_STAR_STAR_EQ, PLUM_TOK_STAR_STAR},
+        {PLUM_TOK_AMP_EQ, PLUM_TOK_AMP},
+        {PLUM_TOK_PIPE_EQ, PLUM_TOK_PIPE},
+        {PLUM_TOK_CARET_EQ, PLUM_TOK_CARET},
+        {PLUM_TOK_LESS_LESS_EQ, PLUM_TOK_LESS_LESS},
+        {PLUM_TOK_GREATER_GREATER_EQ, PLUM_TOK_GREATER_GREATER},
+    };
+    for (size_t i = 0; i < sizeof ops / sizeof ops[0]; i++) {
+        if (ops[i].assign == tok) {
+            return ops[i].bin;
+        }
+    }
+    return PLUM_TOK_PLUS;
+}
+
 static void compile_assign(Compiler *c, const PlumStmt *s) {
     const PlumExpr *target = s->as.assign.target;
+    if (target->kind == PLUM_EXPR_INDEX) {
+        compile_index_assign(c, s);
+        return;
+    }
     if (target->kind != PLUM_EXPR_NAME) {
-        unsupported(c, target->span, "assigning to fields and items", 20);
+        unsupported(c, target->span, "assigning to fields", 22);
         return;
     }
     PlumTokenKind tok = s->as.assign.op;
     if (tok == PLUM_TOK_EQ) {
         compile_as(c, s->as.assign.value, target->ty);
     } else {
-        static const struct {
-            PlumTokenKind assign, bin;
-        } ops[] = {
-            {PLUM_TOK_PLUS_EQ, PLUM_TOK_PLUS},
-            {PLUM_TOK_MINUS_EQ, PLUM_TOK_MINUS},
-            {PLUM_TOK_STAR_EQ, PLUM_TOK_STAR},
-            {PLUM_TOK_SLASH_EQ, PLUM_TOK_SLASH},
-            {PLUM_TOK_SLASH_SLASH_EQ, PLUM_TOK_SLASH_SLASH},
-            {PLUM_TOK_PERCENT_EQ, PLUM_TOK_PERCENT},
-            {PLUM_TOK_STAR_STAR_EQ, PLUM_TOK_STAR_STAR},
-            {PLUM_TOK_AMP_EQ, PLUM_TOK_AMP},
-            {PLUM_TOK_PIPE_EQ, PLUM_TOK_PIPE},
-            {PLUM_TOK_CARET_EQ, PLUM_TOK_CARET},
-            {PLUM_TOK_LESS_LESS_EQ, PLUM_TOK_LESS_LESS},
-            {PLUM_TOK_GREATER_GREATER_EQ, PLUM_TOK_GREATER_GREATER},
-        };
-        PlumTokenKind bin = PLUM_TOK_PLUS;
-        for (size_t i = 0; i < sizeof ops / sizeof ops[0]; i++) {
-            if (ops[i].assign == tok) {
-                bin = ops[i].bin;
-            }
-        }
+        PlumTokenKind bin = compound_operator(tok);
         load_symbol(c, target->symbol, target->span);
         arithmetic(c, bin, NULL, target->ty, s->as.assign.value, s->span.line);
     }

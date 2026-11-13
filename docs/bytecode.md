@@ -112,20 +112,31 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 48 | `GE_STR` | 0 | a >= b by code point |
 | 49 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
 | 50 | `BUILD_STRING` | 1 | join the top [a] strings |
-| 51 | `EQ` | 0 | a == b, for any two values |
-| 52 | `NE` | 0 | a != b, for any two values |
-| 53 | `NOT` | 0 | not a |
-| 54 | `IS_NONE` | 0 | a == none |
-| 55 | `JUMP` | 1 | jump forward [a] bytes |
-| 56 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 57 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 58 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 59 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 60 | `LOOP` | 1 | jump back [a] bytes |
-| 61 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 62 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 63 | `CALL` | 1 | call the function under [a] arguments |
-| 64 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 65 | `RETURN` | 0 | return the top value |
-| 66 | `RETURN_NONE` | 0 | return none |
+| 51 | `BUILD_LIST` | 1 | a list of the top [a] values |
+| 52 | `INDEX_LIST` | 0 | list[index], or an index error |
+| 53 | `SLICE` | 1 | list[low..high] (..= if [a]) as a new list |
+| 54 | `CONTAINS` | 0 | item in collection |
+| 55 | `CONCAT_LIST` | 0 | a + b for lists |
+| 56 | `METHOD` | 2 | call method [a] with [b] arguments on the value under them |
+| 57 | `METHOD_LOCAL` | 3 | call method [b] with [c] arguments on local [a] in place |
+| 58 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
+| 59 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
+| 60 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
+| 61 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
+| 62 | `EQ` | 0 | a == b, for any two values |
+| 63 | `NE` | 0 | a != b, for any two values |
+| 64 | `NOT` | 0 | not a |
+| 65 | `IS_NONE` | 0 | a == none |
+| 66 | `JUMP` | 1 | jump forward [a] bytes |
+| 67 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 68 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 69 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 70 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 71 | `LOOP` | 1 | jump back [a] bytes |
+| 72 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 73 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
+| 74 | `CALL` | 1 | call the function under [a] arguments |
+| 75 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 76 | `RETURN` | 0 | return the top value |
+| 77 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->
