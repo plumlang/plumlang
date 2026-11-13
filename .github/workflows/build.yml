@@ -96,3 +96,17 @@ jobs:
       # Pinned so every contributor formats the same way: pip install clang-format==18.1.8
       - run: pipx install clang-format==18.1.8
       - run: make format-check
+
+  # Not a gate: shared runners are noisy. The job shows the numbers and
+  # checks Plumlang and Python print the same results.
+  bench:
+    name: benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: make
+      - run: python3 bench/run.py ./plum --runs 3 | tee -a "$GITHUB_STEP_SUMMARY"

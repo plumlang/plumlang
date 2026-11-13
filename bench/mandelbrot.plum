@@ -1,0 +1,21 @@
+# Float arithmetic: count points of a 400 x 400 grid in the Mandelbrot set.
+plant inside = 0
+for py in 0..400 {
+    plant y0 = py / 200.0 - 1.0
+    for px in 0..400 {
+        plant x0 = px / 160.0 - 2.0
+        plant x = 0.0
+        plant y = 0.0
+        plant i = 0
+        while i < 100 and x * x + y * y <= 4.0 {
+            plant t = x * x - y * y + x0
+            y = 2.0 * x * y + y0
+            x = t
+            i += 1
+        }
+        if i == 100 {
+            inside += 1
+        }
+    }
+}
+drop(inside)

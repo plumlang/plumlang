@@ -630,6 +630,12 @@ static bool execute(VM *vm) {
         case PLUM_OP_GE_INT:
             INT_BINARY(plum_bool(a >= b));
             break;
+        case PLUM_OP_EQ_INT:
+            INT_BINARY(plum_bool(a == b));
+            break;
+        case PLUM_OP_NE_INT:
+            INT_BINARY(plum_bool(a != b));
+            break;
 
         case PLUM_OP_ADD_FLOAT:
             FLOAT_BINARY(plum_float(a + b));
@@ -666,6 +672,12 @@ static bool execute(VM *vm) {
             break;
         case PLUM_OP_GE_FLOAT:
             FLOAT_BINARY(plum_bool(a >= b));
+            break;
+        case PLUM_OP_EQ_FLOAT:
+            FLOAT_BINARY(plum_bool(a == b));
+            break;
+        case PLUM_OP_NE_FLOAT:
+            FLOAT_BINARY(plum_bool(a != b));
             break;
         case PLUM_OP_INT_TO_FLOAT:
             push(vm, plum_float((double)pop(vm).as.i));
