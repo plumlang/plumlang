@@ -226,6 +226,15 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
     case PLUM_OBJ_CELL:
         put_plain(b, plum_as_cell(v)->value, quote_strings); /* never seen by programs */
         return;
+    case PLUM_OBJ_OBJECT:
+        /* to_str() (trait Show) arrives with methods; until then, the tree's name */
+        snprintf(tmp, sizeof tmp, "<%.150s>", plum_as_object(v)->tree->name);
+        put(b, tmp, strlen(tmp));
+        return;
+    case PLUM_OBJ_TREE_INFO:
+        snprintf(tmp, sizeof tmp, "<tree %.150s>", plum_as_tree_info(v)->name);
+        put(b, tmp, strlen(tmp));
+        return;
     case PLUM_OBJ_LIST: {
         PlumList *list = plum_as_list(v);
         put(b, "[", 1);

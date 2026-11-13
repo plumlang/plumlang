@@ -1,0 +1,20 @@
+# ?. reads a field of an object that may be none.
+tree Node {
+    value: int
+    next: Node? = none
+}
+
+plant list = Node(1, Node(2, Node(3)))
+drop(list.next?.next?.value)
+drop(list.next?.next?.next?.value)
+drop(list.next?.next?.next?.value ?? -1)
+
+plant total = 0
+plant at: Node? = list
+while at != none {
+    if plant here = at {
+        total += here.value
+        at = here.next
+    }
+}
+drop(total)

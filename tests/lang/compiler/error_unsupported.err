@@ -1,10 +1,7 @@
-tests/lang/compiler/error_unsupported.plum:6:1: warning[W0502]: 'p' is never used; remove it, or start its name with '_' to keep it
-6 | plant p = Point(1)
-  | ^~~~~~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:6:11: error[E0601]: creating tree objects: not supported by the compiler yet (it arrives with #22)
-6 | plant p = Point(1)
-  |           ^~~~~~~~
-tests/lang/compiler/error_unsupported.plum:7:1: error[E0601]: throw and try: not supported by the compiler yet (it arrives with #21)
-7 | throw ValueError("no")
+tests/lang/compiler/error_unsupported.plum:8:6: error[E0601]: methods: not supported by the compiler yet (it arrives with #22)
+8 | drop(p.get())
+  |      ^~~~~~~
+tests/lang/compiler/error_unsupported.plum:9:1: error[E0601]: throw and try: not supported by the compiler yet (it arrives with #21)
+9 | throw ValueError("no")
   | ^~~~~~~~~~~~~~~~~~~~~~
-2 errors and 1 warning
+2 errors

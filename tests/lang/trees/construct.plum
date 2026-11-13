@@ -1,0 +1,14 @@
+# Trees build objects field by field: by position, by name, or by default.
+tree Account {
+    owner: str
+    balance: float = 0.0
+    tags: list[str] = []
+}
+
+plant a = Account("Ada")
+drop(a.owner, a.balance, a.tags)
+plant b = Account("Bo", 12)          # an int widens to the float field
+drop(b.balance)
+plant c = Account(balance: 3.5, owner: "Cy")
+drop(c.owner, c.balance)
+drop(a, type_of(a))

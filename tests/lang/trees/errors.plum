@@ -1,0 +1,6 @@
+# The built-in error trees are trees with a message.
+plant e = ValueError("bad input")
+drop(e.message, type_of(e))
+drop(e is ValueError, e is Error, e is KeyError)
+plant plain = Error()
+drop("[{plain.message}]")

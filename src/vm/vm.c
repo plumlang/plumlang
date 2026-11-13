@@ -294,6 +294,10 @@ static const char *type_name(PlumValue v) {
         case PLUM_OBJ_CLOSURE:
         case PLUM_OBJ_CELL:
             return "branch";
+        case PLUM_OBJ_OBJECT:
+            return plum_as_object(v)->tree->name;
+        case PLUM_OBJ_TREE_INFO:
+            return "tree";
         case PLUM_OBJ_LIST:
             return "list";
         case PLUM_OBJ_MAP:
@@ -1365,6 +1369,44 @@ static bool execute(VM *vm) {
         case PLUM_OP_NOT:
             push(vm, plum_bool(!pop(vm).as.b));
             break;
+        case PLUM_OP_NEW_OBJECT: {
+            PlumTreeInfo *tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
+            uint16_t n = READ_U16();
+            PlumObject *o = plum_object_new(tree);
+            for (uint16_t i = 0; i < n && i < tree->field_count; i++) {
+                o->fields[i] = vm->stack[vm->top - n + i]; /* refs move */
+            }
+            vm->top -= n;
+            push(vm, plum_obj(&o->obj));
+            break;
+        }
+        case PLUM_OP_GET_FIELD: {
+            uint16_t i = READ_U16();
+            PlumValue v = pop(vm);
+            push(vm, plum_retain(plum_as_object(v)->fields[i]));
+            plum_release(v);
+            break;
+        }
+        case PLUM_OP_SET_FIELD: {
+            uint16_t i = READ_U16();
+            PlumValue value = pop(vm);
+            PlumValue v = pop(vm);
+            PlumObject *o = plum_as_object(v);
+            PlumValue old = o->fields[i];
+            o->fields[i] = value;
+            plum_release(old);
+            plum_release(v);
+            break;
+        }
+        case PLUM_OP_IS_TREE: {
+            PlumTreeInfo *tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
+            PlumValue v = pop(vm);
+            bool is = v.type == PLUM_VAL_OBJ && v.as.obj->type == PLUM_OBJ_OBJECT &&
+                      plum_tree_is(plum_as_object(v)->tree, tree);
+            push(vm, plum_bool(is));
+            plum_release(v);
+            break;
+        }
         case PLUM_OP_IS_NONE: {
             PlumValue v = pop(vm);
             push(vm, plum_bool(v.type == PLUM_VAL_NONE));
@@ -1401,6 +1443,13 @@ static bool execute(VM *vm) {
         case PLUM_OP_JUMP_IF_NOT_NONE_KEEP: {
             uint16_t d = READ_U16();
             if (peek(vm, 0)->type != PLUM_VAL_NONE) {
+                ip += d;
+            }
+            break;
+        }
+        case PLUM_OP_JUMP_IF_NONE_KEEP: {
+            uint16_t d = READ_U16();
+            if (peek(vm, 0)->type == PLUM_VAL_NONE) {
                 ip += d;
             }
             break;

@@ -104,6 +104,11 @@
     X(FOR_EACH, 3,                                                                               \
       "next item of local [a] (position in [a+1]) into local [b], or jump forward [c]")          \
     X(FOR_EACH2, 3, "next position and item of local [a] into locals [b], [b+1], or jump [c]")   \
+    /* Trees */                                                                                  \
+    X(NEW_OBJECT, 2, "an object of tree constant [a] from its [b] fields on the stack")          \
+    X(GET_FIELD, 1, "field [a] of the object on top")                                            \
+    X(SET_FIELD, 1, "object.field [a] = value (shared: every holder sees it)")                   \
+    X(IS_TREE, 1, "is the top value an object of tree constant [a] or one extending it")         \
     /* Every type */                                                                             \
     X(EQ, 0, "a == b, for any two values")                                                       \
     X(NE, 0, "a != b, for any two values")                                                       \
@@ -115,6 +120,7 @@
     X(JUMP_IF_FALSE_KEEP, 1, "jump forward [a] bytes if bad, keeping the value")                 \
     X(JUMP_IF_TRUE_KEEP, 1, "jump forward [a] bytes if good, keeping the value")                 \
     X(JUMP_IF_NOT_NONE_KEEP, 1, "jump forward [a] bytes unless none, keeping the value")         \
+    X(JUMP_IF_NONE_KEEP, 1, "jump forward [a] bytes if none, keeping the value")                 \
     X(LOOP, 1, "jump back [a] bytes")                                                            \
     X(FOR_RANGE, 3, "jump forward [c] if local [a] is past local [a+1] (<, or <= if [b])")       \
     X(FOR_NEXT, 3, "unless [b] and local [a] == local [a+1]: add 1, jump back [c]")              \

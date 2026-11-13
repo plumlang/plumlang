@@ -2,6 +2,8 @@
 # Correct programs (plum check accepts them) using Stage 5 features.
 tree Point {
     x: int
+    branch get() -> int => self.x
 }
 plant p = Point(1)
+drop(p.get())
 throw ValueError("no")
