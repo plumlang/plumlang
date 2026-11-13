@@ -69,79 +69,89 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 5 | `DUP` | 0 | push a copy of the top value |
 | 6 | `GET_LOCAL` | 1 | push local slot [a] |
 | 7 | `SET_LOCAL` | 1 | pop into local slot [a] |
-| 8 | `GET_GLOBAL` | 1 | push global slot [a] |
-| 9 | `SET_GLOBAL` | 1 | pop into global slot [a] |
-| 10 | `ADD_INT` | 0 | a + b |
-| 11 | `SUB_INT` | 0 | a - b |
-| 12 | `MUL_INT` | 0 | a * b |
-| 13 | `FLOORDIV_INT` | 0 | a // b |
-| 14 | `MOD_INT` | 0 | a % b, with the sign of b |
-| 15 | `POW_INT` | 0 | a ** b, b >= 0 |
-| 16 | `NEG_INT` | 0 | -a |
-| 17 | `BAND` | 0 | a & b |
-| 18 | `BOR` | 0 | a  |
-| 19 | `BXOR` | 0 | a ^ b |
-| 20 | `BNOT` | 0 | ~a |
-| 21 | `SHL` | 0 | a << b, 0 <= b <= 63 |
-| 22 | `SHR` | 0 | a >> b (arithmetic), 0 <= b <= 63 |
-| 23 | `LT_INT` | 0 | a < b |
-| 24 | `LE_INT` | 0 | a <= b |
-| 25 | `GT_INT` | 0 | a > b |
-| 26 | `GE_INT` | 0 | a >= b |
-| 27 | `EQ_INT` | 0 | a == b |
-| 28 | `NE_INT` | 0 | a != b |
-| 29 | `ADD_FLOAT` | 0 | a + b |
-| 30 | `SUB_FLOAT` | 0 | a - b |
-| 31 | `MUL_FLOAT` | 0 | a * b |
-| 32 | `DIV_FLOAT` | 0 | a / b |
-| 33 | `FLOORDIV_FLOAT` | 0 | floor(a / b) |
-| 34 | `MOD_FLOAT` | 0 | a % b, with the sign of b |
-| 35 | `POW_FLOAT` | 0 | a ** b |
-| 36 | `NEG_FLOAT` | 0 | -a |
-| 37 | `LT_FLOAT` | 0 | a < b |
-| 38 | `LE_FLOAT` | 0 | a <= b |
-| 39 | `GT_FLOAT` | 0 | a > b |
-| 40 | `GE_FLOAT` | 0 | a >= b |
-| 41 | `EQ_FLOAT` | 0 | a == b |
-| 42 | `NE_FLOAT` | 0 | a != b |
-| 43 | `INT_TO_FLOAT` | 0 | convert the top value |
-| 44 | `CONCAT` | 0 | a + b for strings |
-| 45 | `LT_STR` | 0 | a < b by code point |
-| 46 | `LE_STR` | 0 | a <= b by code point |
-| 47 | `GT_STR` | 0 | a > b by code point |
-| 48 | `GE_STR` | 0 | a >= b by code point |
-| 49 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
-| 50 | `BUILD_STRING` | 1 | join the top [a] strings |
-| 51 | `BUILD_MAP` | 1 | a map of the top [a] key, value pairs |
-| 52 | `INDEX_STR` | 0 | the character at str[index], or an index error |
-| 53 | `INDEX_MAP` | 0 | map[key], or a missing-key error |
-| 54 | `BUILD_LIST` | 1 | a list of the top [a] values |
-| 55 | `INDEX_LIST` | 0 | list[index], or an index error |
-| 56 | `SLICE` | 1 | list or str [low..high] (..= if [a]) as a new one |
-| 57 | `CONTAINS` | 0 | item in collection |
-| 58 | `CONCAT_LIST` | 0 | a + b for lists |
-| 59 | `METHOD` | 2 | call method [a] with [b] arguments on the value under them |
-| 60 | `METHOD_LOCAL` | 3 | call method [b] with [c] arguments on local [a] in place |
-| 61 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
-| 62 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
-| 63 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
-| 64 | `SET_PATH_LOCAL` | 2 | local [a], [b] keys down: set the item, copying shared levels |
-| 65 | `SET_PATH_GLOBAL` | 2 | global [a], [b] keys down: set the item, copying shared levels |
-| 66 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
-| 67 | `EQ` | 0 | a == b, for any two values |
-| 68 | `NE` | 0 | a != b, for any two values |
-| 69 | `NOT` | 0 | not a |
-| 70 | `IS_NONE` | 0 | a == none |
-| 71 | `JUMP` | 1 | jump forward [a] bytes |
-| 72 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 73 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 74 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 75 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 76 | `LOOP` | 1 | jump back [a] bytes |
-| 77 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 78 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 79 | `CALL` | 1 | call the function under [a] arguments |
-| 80 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 81 | `RETURN` | 0 | return the top value |
-| 82 | `RETURN_NONE` | 0 | return none |
+| 8 | `BOX_LOCAL` | 1 | put local [a] in a cell, for closures to share |
+| 9 | `GET_CELL` | 1 | push the value in local [a]'s cell |
+| 10 | `SET_CELL` | 1 | pop into local [a]'s cell |
+| 11 | `GET_CAPTURE` | 1 | push captured variable [a] of the running closure |
+| 12 | `SET_CAPTURE` | 1 | pop into captured variable [a] of the running closure |
+| 13 | `GET_SELF` | 0 | push the running function itself (a nested function calling itself) |
+| 14 | `MAKE_CLOSURE` | 1 | a closure of function constant [a], capturing what it lists |
+| 15 | `GET_GLOBAL` | 1 | push global slot [a] |
+| 16 | `SET_GLOBAL` | 1 | pop into global slot [a] |
+| 17 | `ADD_INT` | 0 | a + b |
+| 18 | `SUB_INT` | 0 | a - b |
+| 19 | `MUL_INT` | 0 | a * b |
+| 20 | `FLOORDIV_INT` | 0 | a // b |
+| 21 | `MOD_INT` | 0 | a % b, with the sign of b |
+| 22 | `POW_INT` | 0 | a ** b, b >= 0 |
+| 23 | `NEG_INT` | 0 | -a |
+| 24 | `BAND` | 0 | a & b |
+| 25 | `BOR` | 0 | a  |
+| 26 | `BXOR` | 0 | a ^ b |
+| 27 | `BNOT` | 0 | ~a |
+| 28 | `SHL` | 0 | a << b, 0 <= b <= 63 |
+| 29 | `SHR` | 0 | a >> b (arithmetic), 0 <= b <= 63 |
+| 30 | `LT_INT` | 0 | a < b |
+| 31 | `LE_INT` | 0 | a <= b |
+| 32 | `GT_INT` | 0 | a > b |
+| 33 | `GE_INT` | 0 | a >= b |
+| 34 | `EQ_INT` | 0 | a == b |
+| 35 | `NE_INT` | 0 | a != b |
+| 36 | `ADD_FLOAT` | 0 | a + b |
+| 37 | `SUB_FLOAT` | 0 | a - b |
+| 38 | `MUL_FLOAT` | 0 | a * b |
+| 39 | `DIV_FLOAT` | 0 | a / b |
+| 40 | `FLOORDIV_FLOAT` | 0 | floor(a / b) |
+| 41 | `MOD_FLOAT` | 0 | a % b, with the sign of b |
+| 42 | `POW_FLOAT` | 0 | a ** b |
+| 43 | `NEG_FLOAT` | 0 | -a |
+| 44 | `LT_FLOAT` | 0 | a < b |
+| 45 | `LE_FLOAT` | 0 | a <= b |
+| 46 | `GT_FLOAT` | 0 | a > b |
+| 47 | `GE_FLOAT` | 0 | a >= b |
+| 48 | `EQ_FLOAT` | 0 | a == b |
+| 49 | `NE_FLOAT` | 0 | a != b |
+| 50 | `INT_TO_FLOAT` | 0 | convert the top value |
+| 51 | `CONCAT` | 0 | a + b for strings |
+| 52 | `LT_STR` | 0 | a < b by code point |
+| 53 | `LE_STR` | 0 | a <= b by code point |
+| 54 | `GT_STR` | 0 | a > b by code point |
+| 55 | `GE_STR` | 0 | a >= b by code point |
+| 56 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
+| 57 | `BUILD_STRING` | 1 | join the top [a] strings |
+| 58 | `BUILD_MAP` | 1 | a map of the top [a] key, value pairs |
+| 59 | `INDEX_STR` | 0 | the character at str[index], or an index error |
+| 60 | `INDEX_MAP` | 0 | map[key], or a missing-key error |
+| 61 | `BUILD_LIST` | 1 | a list of the top [a] values |
+| 62 | `INDEX_LIST` | 0 | list[index], or an index error |
+| 63 | `SLICE` | 1 | list or str [low..high] (..= if [a]) as a new one |
+| 64 | `CONTAINS` | 0 | item in collection |
+| 65 | `CONCAT_LIST` | 0 | a + b for lists |
+| 66 | `METHOD` | 2 | call method [a] with [b] arguments on the value under them |
+| 67 | `METHOD_LOCAL` | 3 | call method [b] with [c] arguments on local [a] in place |
+| 68 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
+| 69 | `METHOD_CAPTURE` | 3 | call method [b] with [c] arguments on captured variable [a] in place |
+| 70 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
+| 71 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
+| 72 | `SET_INDEX_CAPTURE` | 1 | captured variable [a][index] = value, in place |
+| 73 | `SET_PATH_LOCAL` | 2 | local [a], [b] keys down: set the item, copying shared levels |
+| 74 | `SET_PATH_GLOBAL` | 2 | global [a], [b] keys down: set the item, copying shared levels |
+| 75 | `SET_PATH_CAPTURE` | 2 | captured variable [a], [b] keys down: set the item |
+| 76 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
+| 77 | `EQ` | 0 | a == b, for any two values |
+| 78 | `NE` | 0 | a != b, for any two values |
+| 79 | `NOT` | 0 | not a |
+| 80 | `IS_NONE` | 0 | a == none |
+| 81 | `JUMP` | 1 | jump forward [a] bytes |
+| 82 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 83 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 84 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 85 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 86 | `LOOP` | 1 | jump back [a] bytes |
+| 87 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 88 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
+| 89 | `CALL` | 1 | call the function under [a] arguments |
+| 90 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 91 | `RETURN` | 0 | return the top value |
+| 92 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

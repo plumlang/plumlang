@@ -1,6 +1,5 @@
 # command: dis
 # Correct programs (plum check accepts them) using Stage 5 features.
-plant double = (x: int) => x * 2
 tree Point {
     x: int
 }
