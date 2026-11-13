@@ -216,8 +216,15 @@ static void put_plain(Buf *b, PlumValue v, bool quote_strings) {
         return;
     }
     case PLUM_OBJ_FUNCTION:
-        snprintf(tmp, sizeof tmp, "<branch %.150s>", plum_as_function(v)->name);
+    case PLUM_OBJ_CLOSURE: {
+        const PlumFunction *fn =
+            v.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(v)->fn : plum_as_function(v);
+        snprintf(tmp, sizeof tmp, "<branch %.150s>", fn->name);
         put(b, tmp, strlen(tmp));
+        return;
+    }
+    case PLUM_OBJ_CELL:
+        put_plain(b, plum_as_cell(v)->value, quote_strings); /* never seen by programs */
         return;
     case PLUM_OBJ_LIST: {
         PlumList *list = plum_as_list(v);

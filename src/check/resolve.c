@@ -327,8 +327,9 @@ static void resolve_name(Resolver *r, PlumExpr *e) {
     }
     if (!sym->global && sym->function_depth < r->function_depth &&
         (sym->kind == PLUM_SYM_VAR || sym->kind == PLUM_SYM_CONST || sym->kind == PLUM_SYM_PARAM ||
-         sym->kind == PLUM_SYM_LOOP || sym->kind == PLUM_SYM_BINDING)) {
-        sym->captured = true; /* a closure uses a local of an outer function */
+         sym->kind == PLUM_SYM_LOOP || sym->kind == PLUM_SYM_BINDING ||
+         sym->kind == PLUM_SYM_FUNC)) { /* a nested function calling itself, too */
+        sym->captured = true;           /* a closure uses a local of an outer function */
     }
     sym->used = true;
     e->symbol = sym;

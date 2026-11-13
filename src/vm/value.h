@@ -26,7 +26,9 @@ typedef enum PlumObjType {
     PLUM_OBJ_STRING,
     PLUM_OBJ_FUNCTION,
     PLUM_OBJ_LIST,
-    PLUM_OBJ_MAP, /* maps and sets: vm/table.h */
+    PLUM_OBJ_MAP,     /* maps and sets: vm/table.h */
+    PLUM_OBJ_CELL,    /* a captured variable's box */
+    PLUM_OBJ_CLOSURE, /* a function with the cells it captured */
 } PlumObjType;
 
 /* The header every heap object starts with. */
@@ -68,13 +70,35 @@ typedef struct PlumList {
 
 typedef struct PlumChunk PlumChunk;
 
+/* Where a closure gets each captured variable when it is made. */
+typedef struct PlumCapture {
+    bool from_local; /* a cell in the making function's slot `index`, or */
+    uint16_t index;  /* that function's own capture `index` */
+} PlumCapture;
+
 typedef struct PlumFunction {
     PlumObj obj;
     const char *name; /* for stack traces; "<main>" for the top level */
     int arity;
-    int slot_count;   /* parameters + locals */
-    PlumChunk *chunk; /* owned */
+    int slot_count;        /* parameters + locals */
+    PlumChunk *chunk;      /* owned */
+    PlumCapture *captures; /* owned; what MAKE_CLOSURE captures */
+    int capture_count;
 } PlumFunction;
+
+/* A captured variable lives in a cell, so the function that declared it
+ * and every closure that captured it share it (spec 6.4). */
+typedef struct PlumCell {
+    PlumObj obj;
+    PlumValue value;
+} PlumCell;
+
+typedef struct PlumClosure {
+    PlumObj obj;
+    PlumFunction *fn; /* holds a reference */
+    int count;
+    PlumCell **cells; /* each holds a reference */
+} PlumClosure;
 
 static inline PlumValue plum_none(void) {
     PlumValue v;
@@ -124,6 +148,20 @@ static inline PlumFunction *plum_as_function(PlumValue v) {
     return (PlumFunction *)v.as.obj;
 }
 
+static inline PlumCell *plum_as_cell(PlumValue v) {
+    return (PlumCell *)v.as.obj;
+}
+
+static inline PlumClosure *plum_as_closure(PlumValue v) {
+    return (PlumClosure *)v.as.obj;
+}
+
+/* A function or closure value, either of which can be called. */
+static inline bool plum_is_callable(PlumValue v) {
+    return v.type == PLUM_VAL_OBJ &&
+           (v.as.obj->type == PLUM_OBJ_FUNCTION || v.as.obj->type == PLUM_OBJ_CLOSURE);
+}
+
 static inline PlumList *plum_as_list(PlumValue v) {
     return (PlumList *)v.as.obj;
 }
@@ -152,6 +190,11 @@ size_t plum_string_length(PlumString *s);
 size_t plum_string_offset(PlumString *s, size_t index);
 
 PlumFunction *plum_function_new(const char *name, int arity);
+
+/* A cell holding `v` (taking over its reference). */
+PlumCell *plum_cell_new(PlumValue v);
+/* A closure of `fn` with room for its captures, filled by the caller. */
+PlumClosure *plum_closure_new(PlumFunction *fn);
 
 /* An empty list with room for `cap` items, with one reference. */
 PlumList *plum_list_new(size_t cap);
