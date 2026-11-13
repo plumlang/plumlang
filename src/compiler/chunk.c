@@ -117,6 +117,7 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
         int n = plum_opcode_operands(op);
         uint16_t a = n >= 1 ? plum_chunk_read_u16(&chunk->code.items[at + 1]) : 0;
         uint16_t b = n >= 2 ? plum_chunk_read_u16(&chunk->code.items[at + 3]) : 0;
+        uint16_t c3 = n >= 3 ? plum_chunk_read_u16(&chunk->code.items[at + 5]) : 0;
         size_t next = at + 1 + 2 * (size_t)n;
         switch (op) {
         case PLUM_OP_CONST:
@@ -135,20 +136,25 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
         case PLUM_OP_JUMP_IF_FALSE:
         case PLUM_OP_JUMP_IF_FALSE_KEEP:
         case PLUM_OP_JUMP_IF_TRUE_KEEP:
+        case PLUM_OP_JUMP_IF_NOT_NONE_KEEP:
             fprintf(out, " %u  ; -> %04zu", a, next + a);
             break;
         case PLUM_OP_LOOP:
             fprintf(out, " %u  ; -> %04zu", a, next - a);
             break;
         case PLUM_OP_FOR_RANGE:
-            fprintf(out, " %u %u  ; %s", a, b, b ? "<=" : "<");
+            fprintf(out, " %u %u %u  ; local %u %s local %u, else -> %04zu", a, b, c3, a,
+                    b ? "<=" : "<", a + 1u, next + c3);
+            break;
+        case PLUM_OP_FOR_NEXT:
+            fprintf(out, " %u %u %u  ; -> %04zu", a, b, c3, next - c3);
             break;
         case PLUM_OP_CALL_BUILTIN:
             fprintf(out, " %s %u", plum_builtin_name((PlumBuiltin)a), b);
             break;
         default:
             for (int i = 0; i < n; i++) {
-                fprintf(out, " %u", i == 0 ? a : b);
+                fprintf(out, " %u", i == 0 ? a : i == 1 ? b : c3);
             }
             break;
         }
