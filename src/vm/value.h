@@ -27,8 +27,10 @@ typedef enum PlumObjType {
     PLUM_OBJ_FUNCTION,
     PLUM_OBJ_LIST,
     PLUM_OBJ_MAP,     /* maps and sets: vm/table.h */
-    PLUM_OBJ_CELL,    /* a captured variable's box */
-    PLUM_OBJ_CLOSURE, /* a function with the cells it captured */
+    PLUM_OBJ_CELL,      /* a captured variable's box */
+    PLUM_OBJ_CLOSURE,   /* a function with the cells it captured */
+    PLUM_OBJ_TREE_INFO, /* what the VM knows about a tree: name, parent, fields */
+    PLUM_OBJ_OBJECT,    /* an object of a tree */
 } PlumObjType;
 
 /* The header every heap object starts with. */
@@ -67,6 +69,25 @@ typedef struct PlumList {
     size_t cap;
     PlumValue *items;
 } PlumList;
+
+/*
+ * A tree at run time. Its objects store every field in one array, the
+ * parent's fields first, so a field's position is fixed at compile time.
+ */
+typedef struct PlumTreeInfo {
+    PlumObj obj;
+    const char *name;
+    struct PlumTreeInfo *parent; /* holds a reference, or NULL */
+    int field_count;             /* parents' fields included */
+    const char **field_names;    /* owned array; names are interned */
+} PlumTreeInfo;
+
+/* An object of a tree: shared, not copied (spec 8.3). */
+typedef struct PlumObject {
+    PlumObj obj;
+    PlumTreeInfo *tree; /* holds a reference */
+    PlumValue *fields;  /* tree->field_count values, just past the struct */
+} PlumObject;
 
 typedef struct PlumChunk PlumChunk;
 
@@ -162,6 +183,14 @@ static inline bool plum_is_callable(PlumValue v) {
            (v.as.obj->type == PLUM_OBJ_FUNCTION || v.as.obj->type == PLUM_OBJ_CLOSURE);
 }
 
+static inline PlumTreeInfo *plum_as_tree_info(PlumValue v) {
+    return (PlumTreeInfo *)v.as.obj;
+}
+
+static inline PlumObject *plum_as_object(PlumValue v) {
+    return (PlumObject *)v.as.obj;
+}
+
 static inline PlumList *plum_as_list(PlumValue v) {
     return (PlumList *)v.as.obj;
 }
@@ -190,6 +219,14 @@ size_t plum_string_length(PlumString *s);
 size_t plum_string_offset(PlumString *s, size_t index);
 
 PlumFunction *plum_function_new(const char *name, int arity);
+
+/* A tree's run-time info; `field_names` (interned) is copied. */
+PlumTreeInfo *plum_tree_info_new(const char *name, PlumTreeInfo *parent, int field_count,
+                                 const char *const *field_names);
+/* A new object of `tree`, its fields none until set. */
+PlumObject *plum_object_new(PlumTreeInfo *tree);
+/* Is `tree` `ancestor` or a tree that extends it? */
+bool plum_tree_is(const PlumTreeInfo *tree, const PlumTreeInfo *ancestor);
 
 /* A cell holding `v` (taking over its reference). */
 PlumCell *plum_cell_new(PlumValue v);

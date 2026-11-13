@@ -88,6 +88,48 @@ PlumList *plum_list_unique(PlumValue *slot) {
     return copy;
 }
 
+PlumTreeInfo *plum_tree_info_new(const char *name, PlumTreeInfo *parent, int field_count,
+                                 const char *const *field_names) {
+    PlumTreeInfo *info = plum_alloc_zeroed(1, sizeof *info);
+    info->obj.refcount = 1;
+    info->obj.type = PLUM_OBJ_TREE_INFO;
+    info->name = name;
+    info->parent = parent;
+    if (parent != NULL) {
+        parent->obj.refcount++;
+    }
+    info->field_count = field_count;
+    info->field_names = plum_alloc_zeroed(field_count > 0 ? (size_t)field_count : 1,
+                                          sizeof(const char *));
+    for (int i = 0; i < field_count; i++) {
+        info->field_names[i] = field_names[i];
+    }
+    return info;
+}
+
+PlumObject *plum_object_new(PlumTreeInfo *tree) {
+    size_t n = (size_t)tree->field_count;
+    PlumObject *o = plum_alloc(plum_add_size(sizeof *o, plum_mul_size(n, sizeof(PlumValue))));
+    o->obj.refcount = 1;
+    o->obj.type = PLUM_OBJ_OBJECT;
+    o->tree = tree;
+    tree->obj.refcount++;
+    o->fields = (PlumValue *)(o + 1);
+    for (size_t i = 0; i < n; i++) {
+        o->fields[i] = plum_none();
+    }
+    return o;
+}
+
+bool plum_tree_is(const PlumTreeInfo *tree, const PlumTreeInfo *ancestor) {
+    for (; tree != NULL; tree = tree->parent) {
+        if (tree == ancestor) {
+            return true;
+        }
+    }
+    return false;
+}
+
 PlumCell *plum_cell_new(PlumValue v) {
     PlumCell *cell = plum_alloc(sizeof *cell);
     cell->obj.refcount = 1;
@@ -130,6 +172,24 @@ static void free_object(PlumObj *obj) {
         plum_free(fn->chunk);
         plum_free(fn->captures);
         plum_free(fn);
+        return;
+    }
+    case PLUM_OBJ_TREE_INFO: {
+        PlumTreeInfo *info = (PlumTreeInfo *)obj;
+        if (info->parent != NULL) {
+            plum_release(plum_obj(&info->parent->obj));
+        }
+        plum_free(info->field_names);
+        plum_free(info);
+        return;
+    }
+    case PLUM_OBJ_OBJECT: {
+        PlumObject *o = (PlumObject *)obj;
+        for (int i = 0; i < o->tree->field_count; i++) {
+            plum_release(o->fields[i]);
+        }
+        plum_release(plum_obj(&o->tree->obj));
+        plum_free(o);
         return;
     }
     case PLUM_OBJ_CELL: {
