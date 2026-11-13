@@ -512,8 +512,15 @@ for i, name in names.enumerate() { drop("{i}: {name}") }
 for key, value in ages { drop("{key} is {value}") }
 ```
 
-The loop variable is a new constant on each iteration. Changing a
-collection while looping over it is a runtime error.
+The loop variable is a new constant on each iteration. A loop goes over
+the collection as it was when the loop started: since collections are
+values (section 11.1), changing the variable inside the loop changes the
+variable, not the loop.
+
+```plum
+plant xs = [1, 2]
+for x in xs { xs.push(x) }   # runs twice; xs is then [1, 2, 1, 2]
+```
 
 There is no C-style `for (init; condition; step)`; use a range or `while`.
 
