@@ -83,6 +83,12 @@
     X(METHOD_GLOBAL, 3, "call method [b] with [c] arguments on global [a] in place")           \
     X(SET_INDEX_LOCAL, 1, "local [a][index] = value, in place")                                \
     X(SET_INDEX_GLOBAL, 1, "global [a][index] = value, in place")                              \
+    X(SET_PATH_LOCAL, 2, "local [a], [b] keys down: set the item, copying shared levels")      \
+    X(SET_PATH_GLOBAL, 2, "global [a], [b] keys down: set the item, copying shared levels")    \
+    X(METHOD_PATH_LOCAL, 3,                                                                    \
+      "method [b] on the item [c / 256] keys into local [a], [c % 256] arguments")             \
+    X(METHOD_PATH_GLOBAL, 3,                                                                   \
+      "method [b] on the item [c / 256] keys into global [a], [c % 256] arguments")            \
     X(FOR_EACH, 3,                                                                             \
       "next item of local [a] (position in [a+1]) into local [b], or jump forward [c]")        \
     X(FOR_EACH2, 3, "next position and item of local [a] into locals [b], [b+1], or jump [c]") \
