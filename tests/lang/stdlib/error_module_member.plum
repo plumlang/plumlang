@@ -1,0 +1,3 @@
+seed math
+drop(math.sqroot(2.0))
+plant f = math.sqrt

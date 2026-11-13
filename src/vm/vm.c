@@ -2,6 +2,7 @@
 #include "vm/vm.h"
 
 #include "compiler/chunk.h"
+#include "stdlib/native.h"
 #include "util/alloc.h"
 #include "util/fmt.h"
 #include "util/random.h"
@@ -55,6 +56,7 @@ typedef struct VM {
     PlumTreeInfo *const *errors; /* the built-in error trees */
     int to_str;                  /* the method number of to_str */
     const PlumRunOptions *options;
+    uint64_t rng[4];                /* math.random: xoshiro256** */
     PLUM_ARRAY(PlumWeak *) tracked; /* --check-leaks: a weak box for every tree object */
     PlumTextHook text_hook;         /* objects become text through their to_str() */
 } VM;
@@ -800,6 +802,73 @@ static bool run_higher_order(VM *vm, PlumMethod m, PlumList *list, const PlumVal
     default:
         return false;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* What native functions (src/stdlib) can ask of the running program   */
+/* ------------------------------------------------------------------ */
+
+#define VM_OF(n) ((VM *)(void *)(n))
+
+bool plum_native_throw(PlumNative *n, PlumErrorKind kind, const char *fmt, ...) {
+    char message[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(message, sizeof message, fmt, args);
+    va_end(args);
+    runtime_error(VM_OF(n), kind, "%s", message);
+    return false;
+}
+
+FILE *plum_native_out(PlumNative *n) {
+    return VM_OF(n)->out;
+}
+
+FILE *plum_native_err(PlumNative *n) {
+    return VM_OF(n)->err;
+}
+
+PlumString *plum_native_text(PlumNative *n, PlumValue v) {
+    char error[256];
+    return plum_value_text_with(v, NULL, &VM_OF(n)->text_hook, error, sizeof error);
+}
+
+static uint64_t rotl(uint64_t x, int k) {
+    return (x << k) | (x >> (64 - k));
+}
+
+uint64_t plum_native_random(PlumNative *n) {
+    uint64_t *s = VM_OF(n)->rng;
+    uint64_t result = rotl(s[1] * 5, 7) * 9;
+    uint64_t t = s[1] << 17;
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
+    s[3] = rotl(s[3], 45);
+    return result;
+}
+
+/* Fill the generator's state from one number (splitmix64), so a seed
+ * gives the same numbers on every platform. */
+void plum_native_seed_random(PlumNative *n, uint64_t seed) {
+    uint64_t *s = VM_OF(n)->rng;
+    for (int i = 0; i < 4; i++) {
+        uint64_t z = (seed += 0x9E3779B97F4A7C15u);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9u;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBu;
+        s[i] = z ^ (z >> 31);
+    }
+}
+
+int plum_native_argc(PlumNative *n) {
+    return VM_OF(n)->options->argc;
+}
+
+const char *plum_native_arg(PlumNative *n, int i) {
+    const PlumRunOptions *o = VM_OF(n)->options;
+    return i >= 0 && i < o->argc ? o->argv[i] : "";
 }
 
 /* ------------------------------------------------------------------ */
@@ -1631,6 +1700,29 @@ static bool execute(VM *vm) {
             }
             break;
         }
+        case PLUM_OP_CALL_NATIVE: {
+            const PlumNativeFunction *fn = plum_native_by_id(READ_U16());
+            uint16_t argc = READ_U16();
+            /* A copy of the arguments: the function may run Plumlang code
+             * (to_str), which can move the stack. The stack keeps them alive. */
+            PlumValue local[8];
+            PlumValue *args = argc <= 8 ? local : plum_alloc_zeroed(argc, sizeof(PlumValue));
+            if (argc > 0) {
+                memcpy(args, &vm->stack[vm->top - argc], argc * sizeof(PlumValue));
+            }
+            PlumValue result = plum_none();
+            SAVE_IP();
+            bool ok = fn->fn((PlumNative *)(void *)vm, args, argc, &result);
+            if (args != local) {
+                plum_free(args);
+            }
+            if (!ok) {
+                goto thrown;
+            }
+            unwind_to(vm, vm->top - argc);
+            push(vm, result);
+            break;
+        }
         case PLUM_OP_IS_TRAIT: {
             const PlumString *trait = plum_as_string(chunk->constants.items[READ_U16()]);
             PlumValue v = pop(vm);
@@ -1914,6 +2006,9 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     push(vm, plum_retain(plum_obj(&program->main->obj)));
     vm->errors = program->errors;
     vm->options = options;
+    uint64_t key[2];
+    plum_random_key(key);
+    plum_native_seed_random((PlumNative *)(void *)vm, key[0] ^ key[1]);
     vm->to_str = program->to_str;
     vm->text_hook = (PlumTextHook){object_text, vm};
     vm->thrown = plum_none();

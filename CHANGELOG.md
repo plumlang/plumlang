@@ -27,6 +27,7 @@ Format for a new entry:
 - **Methods**: methods with `self`, `init`, overriding and `super`, traits with default methods, `x is Trait`, `to_str` for printing and `equals` for `==`; private `_names`; lists and maps in fields change in place. Checks for trait methods, override types, `init` and private names (E0420–E0424). Examples in `examples/` and a `dispatch` benchmark.
 - **Kinds and match**: kind values with and without contents, compared by value and printed as written; `match` on cases (binding their values), literals, ranges and root constants, as a statement or a value.
 - **Weak references**: `weak` fields that don't keep their object alive (E0425 for other types); `plum run --check-leaks` reports objects left in reference cycles.
+- **Standard library**: `seed math` (also `as` and `{ names }`) for standard modules; `math` (functions, constants, seedable random numbers), the methods of `str`, `io`, `os` (arguments, environment, running commands), `time` (clocks, sleep, dates) and `fs` (files and directories); `plum stdlib` lists them; docs in `docs/stdlib/`. Modules are C functions described by Plumlang signatures.
 - **Memory**: freeing a long chain of objects no longer recurses; callbacks nest at most 100 deep.
 - **Error codes**: every error has a code (`error[E0201]`) explained in `docs/errors.md`.
 - **Names**: `plum check` reports unknown names (with "did you mean"), duplicates, use before declaration and changes to constants; `plum run` checks first.

@@ -1,0 +1,20 @@
+# time: clocks, sleeping, and dates (in UTC, so the test runs anywhere).
+seed time
+
+plant t0 = time.clock()
+time.sleep(0.02)
+drop(time.clock() - t0 >= 0.015, time.now() > 1700000000.0)
+drop(time.format(0.0, utc: good), time.format(86400.0 * 365.0, "%d/%m/%Y", utc: good))
+drop(time.format(951782400.0, "%A %d %B %Y, day %j", utc: good))
+drop(time.parts(951782400.0, utc: good))
+drop(time.parts(time.now())["year"] >= 2024)
+try {
+    drop(time.format(0.0, "%Q"))
+} catch e: ValueError {
+    drop(e.message)
+}
+try {
+    time.sleep(-1.0)
+} catch e: ValueError {
+    drop(e.message)
+}

@@ -1,0 +1,5 @@
+plant name = "Ada"
+drop(name.shout())
+drop(name.pad_start("3"))
+plant n = 5
+drop(n.upper())

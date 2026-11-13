@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
 #include "check/resolve.h"
 
+#include "check/types.h"
+#include "stdlib/native.h"
+
 #include "util/alloc.h"
 #include "util/map.h"
 
@@ -57,6 +60,10 @@ const char *plum_symbol_kind_text(PlumSymbolKind kind) {
         return "a built-in function";
     case PLUM_SYM_BUILTIN_TYPE:
         return "a built-in type";
+    case PLUM_SYM_MODULE:
+        return "a module";
+    case PLUM_SYM_NATIVE:
+        return "a name from a module";
     }
     return "a name";
 }
@@ -269,6 +276,7 @@ static void resolve_type(Resolver *r, PlumType *type) {
 /* Expressions                                                         */
 /* ------------------------------------------------------------------ */
 
+static void resolve_seed(Resolver *r, PlumStmt *s);
 static void resolve_expr(Resolver *r, PlumExpr *e);
 static void resolve_stmt(Resolver *r, PlumStmt *s);
 static void resolve_body(Resolver *r, PlumStmt *block);
@@ -789,8 +797,7 @@ static void resolve_stmt(Resolver *r, PlumStmt *s) {
         }
         break;
     case PLUM_STMT_SEED:
-        plum_diag_error(r->diags, s->span, "E0308",
-                        "importing modules is not supported yet; it arrives with #23");
+        resolve_seed(r, s);
         break;
     }
 }
@@ -798,6 +805,69 @@ static void resolve_stmt(Resolver *r, PlumStmt *s) {
 /* ------------------------------------------------------------------ */
 /* Built-ins and the module                                            */
 /* ------------------------------------------------------------------ */
+
+/* The standard modules `seed` knows, for messages. */
+static void module_names(char *buf, size_t size) {
+    size_t len = 0;
+    buf[0] = '\0';
+    for (size_t i = 0; plum_native_module_at(i) != NULL; i++) {
+        const char *name = plum_native_module_at(i)->name;
+        if (strcmp(name, "str") == 0) {
+            continue; /* the methods of str, not a module to import */
+        }
+        int k = snprintf(buf + len, size - len, "%s%s", len > 0 ? ", " : "", name);
+        if (k < 0 || (size_t)k >= size - len) {
+            break;
+        }
+        len += (size_t)k;
+    }
+}
+
+/*
+ * seed math, seed math as m, seed math { sqrt, PI }: a standard module.
+ * Files (seed ./shapes) arrive with #23.
+ */
+static void resolve_seed(Resolver *r, PlumStmt *s) {
+    const char *path = s->as.seed.path;
+    const PlumNativeModule *m = strcmp(path, "str") == 0 ? NULL : plum_native_module(path);
+    if (m == NULL) {
+        char known[256];
+        module_names(known, sizeof known);
+        if (path[0] == '.') {
+            plum_diag_error(r->diags, s->span, "E0308",
+                            "importing files is not supported yet; it arrives with #23 (the "
+                            "standard modules are: %s)",
+                            known);
+        } else {
+            plum_diag_error(r->diags, s->span, "E0308",
+                            "there is no standard module '%s'; the modules are: %s", path, known);
+        }
+        return;
+    }
+    if (s->as.seed.name_count > 0) {
+        for (size_t i = 0; i < s->as.seed.name_count; i++) {
+            const char *name = s->as.seed.names[i];
+            if (plum_native_function(m, name) == NULL && plum_native_constant(m, name) == NULL) {
+                plum_diag_error(r->diags, s->span, "E0301", "the module '%s' has no '%s'", m->name,
+                                name);
+                continue;
+            }
+            PlumSymbol *sym = new_symbol(r, PLUM_SYM_NATIVE, name, s->span, s);
+            sym->used = true;
+            declare(r, sym);
+        }
+        return;
+    }
+    const char *name = s->as.seed.alias;
+    if (name == NULL) {
+        const char *dot = strrchr(path, '.');
+        name = plum_intern_cstr(r->names, dot != NULL ? dot + 1 : path);
+    }
+    PlumSymbol *sym = new_symbol(r, PLUM_SYM_MODULE, name, s->span, s);
+    sym->used = true;
+    declare(r, sym);
+    s->symbol = sym;
+}
 
 static void add_builtin(Resolver *r, PlumSymbolKind kind, const char *name) {
     PlumSpan none = {0, 0, 0, 0};
@@ -898,4 +968,54 @@ void plum_resolve(const PlumProgram *program, PlumArena *arena, PlumInterner *na
     pop(&r);
     pop(&r);
     plum_map_free(&r.cases);
+}
+
+/* ------------------------------------------------------------------ */
+/* Names of the standard library                                       */
+/* ------------------------------------------------------------------ */
+
+static const PlumNativeModule *module_of(const PlumSymbol *sym) {
+    return sym->decl != NULL && sym->decl->kind == PLUM_STMT_SEED
+               ? plum_native_module(sym->decl->as.seed.path)
+               : NULL;
+}
+
+const PlumNativeFunction *plum_callee_native(const PlumExpr *callee, bool *is_method) {
+    *is_method = false;
+    if (callee->kind == PLUM_EXPR_NAME && callee->symbol != NULL &&
+        callee->symbol->kind == PLUM_SYM_NATIVE) {
+        const PlumNativeModule *m = module_of(callee->symbol);
+        return m != NULL ? plum_native_function(m, callee->symbol->name) : NULL;
+    }
+    if (callee->kind != PLUM_EXPR_FIELD) {
+        return NULL;
+    }
+    const PlumExpr *obj = callee->as.field.object;
+    if (obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+        obj->symbol->kind == PLUM_SYM_MODULE) {
+        const PlumNativeModule *m = module_of(obj->symbol);
+        return m != NULL ? plum_native_function(m, callee->as.field.name) : NULL;
+    }
+    const PlumTy *t = obj->ty;
+    if (t != NULL && t->kind == PLUM_TY_OPTIONAL) {
+        t = t->as.elem;
+    }
+    if (t != NULL && t->kind == PLUM_TY_STR) {
+        *is_method = true;
+        return plum_native_function(&plum_module_str, callee->as.field.name);
+    }
+    return NULL;
+}
+
+const PlumNativeConstant *plum_expr_native_constant(const PlumExpr *e) {
+    if (e->kind == PLUM_EXPR_NAME && e->symbol != NULL && e->symbol->kind == PLUM_SYM_NATIVE) {
+        const PlumNativeModule *m = module_of(e->symbol);
+        return m != NULL ? plum_native_constant(m, e->symbol->name) : NULL;
+    }
+    if (e->kind == PLUM_EXPR_FIELD && e->as.field.object->kind == PLUM_EXPR_NAME &&
+        e->as.field.object->symbol != NULL && e->as.field.object->symbol->kind == PLUM_SYM_MODULE) {
+        const PlumNativeModule *m = module_of(e->as.field.object->symbol);
+        return m != NULL ? plum_native_constant(m, e->as.field.name) : NULL;
+    }
+    return NULL;
 }

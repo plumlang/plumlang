@@ -24,6 +24,7 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "plum/version.h"
+#include "stdlib/native.h"
 #include "util/arena.h"
 #include "util/fmt.h"
 #include "util/intern.h"
@@ -53,6 +54,7 @@ static void print_help(FILE *out) {
           "  plum tokens <file>          Print the tokens of a file (debugging)\n"
           "  plum ast <file>             Print the syntax tree of a file (debugging)\n"
           "  plum dis <file>             Print the compiled bytecode (debugging)\n"
+          "  plum stdlib [module]        List the standard library's functions\n"
           "  plum help                   Show this help\n"
           "\n"
           "Docs and source: https://github.com/plumlang/plumlang\n",
@@ -273,6 +275,64 @@ static int ends_with(const char *s, const char *suffix) {
     return n >= m && strcmp(s + n - m, suffix) == 0;
 }
 
+/* A module's reference: plain text, or the Markdown table docs/stdlib uses. */
+static void print_module(const PlumNativeModule *m, bool markdown) {
+    if (markdown) {
+        printf("| Name | Signature | What it does |\n|---|---|---|\n");
+        for (size_t i = 0; i < m->function_count; i++) {
+            const PlumNativeFunction *f = &m->functions[i];
+            printf("| `%s` | `%s%s` | %s |\n", f->name, f->name, f->signature, f->doc);
+        }
+        for (size_t i = 0; i < m->constant_count; i++) {
+            const PlumNativeConstant *k = &m->constants[i];
+            printf("| `%s` | `%s: %s` | %s |\n", k->name, k->name,
+                   k->kind == PLUM_NATIVE_INT ? "int" : "float", k->doc);
+        }
+        return;
+    }
+    printf("%s: %s\n", m->name, m->doc);
+    for (size_t i = 0; i < m->function_count; i++) {
+        const PlumNativeFunction *f = &m->functions[i];
+        char sig[160];
+        snprintf(sig, sizeof sig, "%s%s", f->name, f->signature);
+        printf("  %-48s %s\n", sig, f->doc);
+    }
+    for (size_t i = 0; i < m->constant_count; i++) {
+        const PlumNativeConstant *k = &m->constants[i];
+        char sig[96];
+        snprintf(sig, sizeof sig, "%s: %s", k->name, k->kind == PLUM_NATIVE_INT ? "int" : "float");
+        printf("  %-48s %s\n", sig, k->doc);
+    }
+}
+
+/* plum stdlib [--markdown] [module] */
+static int cmd_stdlib(int argc, char **argv) {
+    bool markdown = argc > 0 && strcmp(argv[0], "--markdown") == 0;
+    if (markdown) {
+        argc--;
+        argv++;
+    }
+    if (argc > 0) {
+        const PlumNativeModule *m = plum_native_module(argv[0]);
+        if (m == NULL) {
+            fprintf(stderr,
+                    "plum: error: there is no standard module '%s'\n"
+                    "  hint: plum stdlib lists them\n",
+                    argv[0]);
+            return PLUM_EXIT_USAGE;
+        }
+        print_module(m, markdown);
+        return PLUM_EXIT_OK;
+    }
+    for (size_t i = 0; plum_native_module_at(i) != NULL; i++) {
+        if (i > 0) {
+            putchar('\n');
+        }
+        print_module(plum_native_module_at(i), markdown);
+    }
+    return PLUM_EXIT_OK;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         print_help(stdout);
@@ -297,6 +357,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "dis") == 0) {
         return cmd_front("dis", STAGE_DIS, argc - 2, argv + 2, NULL);
+    }
+    if (strcmp(cmd, "stdlib") == 0) {
+        return cmd_stdlib(argc - 2, argv + 2);
     }
     if (strcmp(cmd, "check") == 0) {
         return cmd_front("check", STAGE_CHECK, argc - 2, argv + 2, NULL);

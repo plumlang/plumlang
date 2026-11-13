@@ -1,0 +1,7 @@
+good good
+1970-01-01 00:00:00 01/01/1971
+Tuesday 29 February 2000, day 060
+{"year": 2000, "month": 2, "day": 29, "hour": 0, "minute": 0, "second": 0, "weekday": 2, "yearday": 60}
+good
+format: '%Q' isn't a pattern this knows; use %Y %m %d %H %M %S %y %j %b %B %a %A %p %Z or %%
+sleep(-1): the seconds must be 0 to 10,000,000

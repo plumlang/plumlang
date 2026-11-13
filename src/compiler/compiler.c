@@ -4,11 +4,13 @@
 #include "check/resolve.h"
 #include "check/types.h"
 #include "compiler/chunk.h"
+#include "stdlib/native.h"
 #include "util/alloc.h"
 #include "util/array.h"
 #include "util/map.h"
 #include "vm/methods.h"
 
+#include <math.h>
 #include <string.h>
 
 #define NO_FORMAT 0xFFFF
@@ -506,9 +508,11 @@ static const PlumBranch *callee_decl(const PlumSymbol *sym) {
     return &sym->decl->as.branch;
 }
 
-/* Arguments in parameter order: positional, named, then defaults. */
-static void compile_args(Compiler *c, const PlumExpr *call, const PlumTy *fty,
-                         const PlumBranch *decl) {
+/* Arguments in parameter order: positional, named, then defaults. A
+ * parameter whose bit is set in `raw` (a native's num) takes its argument
+ * as it is, int or float. */
+static void compile_args_raw(Compiler *c, const PlumExpr *call, const PlumTy *fty,
+                             const PlumBranch *decl, uint64_t raw) {
     size_t n = fty->as.func.param_count;
     const PlumExpr *by_param[256] = {NULL};
     if (n > 255) {
@@ -534,7 +538,9 @@ static void compile_args(Compiler *c, const PlumExpr *call, const PlumTy *fty,
     }
     for (size_t k = 0; k < n; k++) {
         const PlumTy *want = fty->as.func.params[k].ty;
-        if (by_param[k] != NULL) {
+        if (by_param[k] != NULL && k < 64 && (raw >> k & 1)) {
+            compile_expr(c, by_param[k]);
+        } else if (by_param[k] != NULL) {
             compile_as(c, by_param[k], want);
         } else if (decl != NULL && decl->params[k].fallback != NULL) {
             compile_as(c, decl->params[k].fallback, want);
@@ -542,6 +548,50 @@ static void compile_args(Compiler *c, const PlumExpr *call, const PlumTy *fty,
             op(c, PLUM_OP_NONE, call->span.line); /* the checker reported it */
         }
     }
+}
+
+static void compile_args(Compiler *c, const PlumExpr *call, const PlumTy *fty,
+                         const PlumBranch *decl) {
+    compile_args_raw(c, call, fty, decl, 0);
+}
+
+/* math.sqrt(x), sqrt(x), text.upper(): a standard-library function. */
+static void compile_native_call(Compiler *c, const PlumExpr *e, const PlumNativeFunction *fn,
+                                bool method) {
+    const PlumExpr *callee = e->as.call.callee;
+    const PlumTy *fty = callee->ty;
+    if (fty != NULL && fty->kind == PLUM_TY_OPTIONAL) {
+        fty = fty->as.elem;
+    }
+    uint32_t line = e->span.line;
+    uint64_t raw = 0;
+    for (size_t k = 0; k < fty->as.func.param_count && k < 64; k++) {
+        if (plum_native_param_is_num(fn, k + (method ? 1 : 0))) {
+            raw |= (uint64_t)1 << k;
+        }
+    }
+    size_t skip = 0;
+    bool optional = method && callee->as.field.optional;
+    if (method) {
+        compile_expr(c, callee->as.field.object); /* self */
+        if (optional) {
+            skip = emit_jump(c, PLUM_OP_JUMP_IF_NONE_KEEP, line);
+        }
+    }
+    compile_args_raw(c, e, fty, NULL, raw);
+    uint16_t argc = (uint16_t)(fty->as.func.param_count + (method ? 1 : 0));
+    op2(c, PLUM_OP_CALL_NATIVE, (uint16_t)plum_native_id(fn), argc, line);
+    if (optional) {
+        patch_jump(c, skip, e->span);
+    }
+}
+
+/* math.PI, PI: a module's constant. */
+static void compile_native_constant(Compiler *c, const PlumNativeConstant *k, PlumSpan span) {
+    PlumValue v = k->kind == PLUM_NATIVE_INT     ? plum_int(k->i)
+                  : k->kind == PLUM_NATIVE_FLOAT ? plum_float(k->f)
+                                                 : plum_float(HUGE_VAL);
+    emit_const(c, v, span);
 }
 
 static int builtin_id(const char *name) {
@@ -733,6 +783,17 @@ static PlumSymbol *tree_of(const PlumTy *t) {
 /* obj.field and obj?.field */
 static void compile_field(Compiler *c, const PlumExpr *e) {
     const PlumExpr *obj = e->as.field.object;
+    const PlumNativeConstant *constant_of = plum_expr_native_constant(e);
+    if (constant_of != NULL) {
+        compile_native_constant(c, constant_of, e->span);
+        return;
+    }
+    if (obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+        obj->symbol->kind == PLUM_SYM_MODULE) {
+        unsupported(c, e->span, "a module's function as a value (call it, or wrap it in a lambda)",
+                    24);
+        return;
+    }
     PlumSymbol *tree = tree_of(obj->ty);
     int index = tree != NULL ? field_index(tree, e->as.field.name) : -1;
     PlumSymbol *kind = NULL;
@@ -1407,6 +1468,13 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
     PlumSymbol *sym = callee->kind == PLUM_EXPR_NAME ? callee->symbol : NULL;
     uint32_t line = e->span.line;
 
+    bool method = false;
+    const PlumNativeFunction *native = plum_callee_native(callee, &method);
+    if (native != NULL) {
+        compile_native_call(c, e, native, method);
+        return;
+    }
+
     if (sym != NULL && (sym->kind == PLUM_SYM_BUILTIN_FUNC || sym->kind == PLUM_SYM_BUILTIN_TYPE)) {
         int id = builtin_id(sym->name);
         if (id < 0) {
@@ -1506,9 +1574,20 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
     case PLUM_EXPR_NONE:
         op(c, PLUM_OP_NONE, line);
         return;
-    case PLUM_EXPR_NAME:
+    case PLUM_EXPR_NAME: {
+        const PlumNativeConstant *k = plum_expr_native_constant(e);
+        if (k != NULL) {
+            compile_native_constant(c, k, e->span);
+            return;
+        }
+        if (e->symbol != NULL && e->symbol->kind == PLUM_SYM_NATIVE) {
+            unsupported(c, e->span,
+                        "a module's function as a value (call it, or wrap it in a lambda)", 24);
+            return;
+        }
         load_symbol(c, e->symbol, e->span);
         return;
+    }
     case PLUM_EXPR_UNARY:
         compile_expr(c, e->as.unary.operand);
         switch (e->as.unary.op) {

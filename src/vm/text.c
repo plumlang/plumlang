@@ -12,6 +12,9 @@
 typedef PLUM_ARRAY(char) Buf;
 
 static void put(Buf *b, const char *s, size_t n) {
+    if (n == 0) {
+        return; /* an empty buffer has no items to copy into (memcpy with NULL is undefined) */
+    }
     plum_array_reserve(b, n);
     memcpy(b->items + b->len, s, n);
     b->len += n;

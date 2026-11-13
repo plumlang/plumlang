@@ -1,0 +1,8 @@
+1.4142135623730951 4.0 3.141592653589793 6.283185307179586
+5 2.5 9 9.5 -1
+2 3 3.0 3.14
+10 1.0 3.0 9223372036854775807
+good good
+good good bad
+sqrt(-1): a negative number has no square root
+floor(1e+300) doesn't fit in an int

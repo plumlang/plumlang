@@ -1,2 +1,2 @@
 # command: check
-seed math
+seed ./models/user

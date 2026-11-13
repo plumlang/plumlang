@@ -32,6 +32,8 @@ typedef enum PlumSymbolKind {
     PLUM_SYM_CASE,         /* a case of a kind */
     PLUM_SYM_BUILTIN_FUNC, /* drop, ask, len, ... */
     PLUM_SYM_BUILTIN_TYPE, /* int, str, list, ... (int, float, str, byte convert too) */
+    PLUM_SYM_MODULE,       /* seed math: the module; decl is the seed statement */
+    PLUM_SYM_NATIVE,       /* seed math { sqrt }: one of a module's functions or constants */
 } PlumSymbolKind;
 
 struct PlumSymbol {
@@ -59,5 +61,16 @@ void plum_resolve(const PlumProgram *program, PlumArena *arena, PlumInterner *na
 
 /* "a variable", "a function", "a tree", ... for messages. */
 const char *plum_symbol_kind_text(PlumSymbolKind kind);
+
+/*
+ * The standard-library function a call's callee names: math.sqrt, sqrt
+ * (from seed math { sqrt }), or a method of str (text.upper, once types
+ * are known). NULL otherwise. `is_method` says the receiver goes first.
+ */
+struct PlumNativeFunction;
+struct PlumNativeConstant;
+const struct PlumNativeFunction *plum_callee_native(const PlumExpr *callee, bool *is_method);
+/* The module constant an expression names (math.PI, or PI), or NULL. */
+const struct PlumNativeConstant *plum_expr_native_constant(const PlumExpr *e);
 
 #endif /* PLUM_CHECK_RESOLVE_H */

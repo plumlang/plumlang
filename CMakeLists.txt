@@ -79,6 +79,8 @@ if(PLUM_SH)
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME golden COMMAND ${PLUM_SH} tests/golden.sh $<TARGET_FILE:plum>
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  add_test(NAME stdlib-documented COMMAND ${PLUM_SH} tools/stdlib-docs.sh $<TARGET_FILE:plum> --check
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME examples COMMAND ${PLUM_SH} tests/golden.sh $<TARGET_FILE:plum> examples
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()

@@ -1,0 +1,10 @@
+# The methods of str.
+plant s = "  Hello, World  "
+drop(s.trim(), s.upper(), s.lower().trim_end(), "[{s.trim_start()}]")
+drop("a,b,,c".split(","), "  two words  ".split(), "x\ny\r\nz\n".lines())
+drop("plum".chars(), "héllo".reverse(), "abcabc".count("bc"), "abc".find("c"), "abc".find("z"))
+drop("banana".replace("an", "AN"), "ab".repeat(3), "7".pad_start(3, fill: "0"), "x".pad_end(3) + "|")
+drop("123".is_digit(), "abc".is_alpha(), " \t".is_space(), "".is_digit())
+drop("hello".starts_with("he"), "hello".ends_with("lo"), "hello".contains("ell"))
+plant maybe: str? = none
+drop(maybe?.upper(), int("42".trim()) + 1)

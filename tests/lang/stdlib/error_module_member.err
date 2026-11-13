@@ -1,0 +1,4 @@
+tests/lang/stdlib/error_module_member.plum:2:6: error[E0415]: the module 'math' has no 'sqroot'
+2 | drop(math.sqroot(2.0))
+  |      ^~~~~~~~~~~
+1 error
