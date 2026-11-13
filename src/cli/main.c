@@ -10,6 +10,7 @@
  *   plum tokens <file>       print the tokens of a file (for debugging)
  *   plum ast <file>          print the syntax tree of a file (for debugging)
  *   plum check <file>        report every error without running the program
+ *   plum dis <file>          print the compiled bytecode (for debugging)
  *
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
@@ -17,6 +18,8 @@
 #include "check/flow.h"
 #include "check/resolve.h"
 #include "check/typecheck.h"
+#include "compiler/chunk.h"
+#include "compiler/compiler.h"
 #include "diag/diag.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -47,6 +50,7 @@ static void print_help(FILE *out) {
           "  plum version                Show the version and build\n"
           "  plum tokens <file>          Print the tokens of a file (debugging)\n"
           "  plum ast <file>             Print the syntax tree of a file (debugging)\n"
+          "  plum dis <file>             Print the compiled bytecode (debugging)\n"
           "  plum help                   Show this help\n"
           "\n"
           "Docs and source: https://github.com/plumlang/plumlang\n",
@@ -119,6 +123,7 @@ typedef enum FrontStage {
     STAGE_TOKENS, /* plum tokens: print the tokens */
     STAGE_AST,    /* plum ast: print the syntax tree */
     STAGE_CHECK,  /* plum check, plum run: report errors only */
+    STAGE_DIS,    /* plum dis: compile and print the bytecode */
 } FrontStage;
 
 static int cmd_front(const char *name, FrontStage stage, int argc, char **argv);
@@ -219,6 +224,13 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
             if (diags.errors == 0) {
                 plum_check_flow(&program, &diags);
             }
+            if (diags.errors == 0 && stage == STAGE_DIS) {
+                PlumCompiled compiled = plum_compile(&program, &names, &diags);
+                if (compiled.main != NULL) {
+                    plum_disassemble(stdout, compiled.main);
+                    plum_release(plum_obj(&compiled.main->obj));
+                }
+            }
         }
     }
     fflush(stdout);
@@ -260,6 +272,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "ast") == 0) {
         return cmd_front("ast", STAGE_AST, argc - 2, argv + 2);
+    }
+    if (strcmp(cmd, "dis") == 0) {
+        return cmd_front("dis", STAGE_DIS, argc - 2, argv + 2);
     }
     if (strcmp(cmd, "check") == 0) {
         return cmd_front("check", STAGE_CHECK, argc - 2, argv + 2);

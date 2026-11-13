@@ -11,6 +11,7 @@ each one, with an example that causes it and the fix.
 | E04xx | Types |
 | E05xx | Control flow |
 | W05xx | Control-flow warnings (the program still runs) |
+| E06xx | Compiling to bytecode |
 
 Codes never change meaning. A retired code is marked retired, not reused.
 `make test` checks that every code in the compiler is documented here and
@@ -621,3 +622,18 @@ Code after a `return`, `throw`, `break` or `continue` that can never run.
 
 A variable that is declared but never used. Remove it, or start its name
 with `_` to say it is unused on purpose.
+
+## Compiling
+
+### E0601
+
+A feature the compiler can't turn into bytecode yet. The program is
+correct (`plum check` accepts it), but it can't run until the roadmap item
+named in the message lands: lists, maps and ranges as values (#20), errors
+(#21), trees and methods (#22), lambdas and closures (#19), tasks (#27).
+
+### E0602
+
+A limit of the bytecode format: a function with more than 65,535 constants
+or local variables, or a block or loop too long to jump over. Split the
+function into smaller ones.

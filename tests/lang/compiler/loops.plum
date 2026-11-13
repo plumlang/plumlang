@@ -1,0 +1,10 @@
+# command: dis
+# Range loops, inclusive ends, break, continue and while.
+for i in 0..=3 {
+    if i == 1 { continue }
+    if i == 3 { break }
+    drop(i)
+}
+for _ in 0..2 { drop("x") }
+plant n = 3
+while n > 0 { n -= 1 }

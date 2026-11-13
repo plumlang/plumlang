@@ -1,0 +1,45 @@
+== <main> (0 parameters, 0 slots) ==
+0000    4  CONST 0  ; <branch area>
+0003    |  SET_GLOBAL 0
+0006    5  CONST 1  ; <branch connect>
+0009    |  SET_GLOBAL 1
+0012    3  GET_GLOBAL 0
+0015    |  CONST 2  ; 2
+0018    |  INT_TO_FLOAT
+0019    |  CALL 1
+0022    |  GET_GLOBAL 1
+0025    |  CONST 3  ; "example.com"
+0028    5  CONST 4  ; 80
+0031    3  TRUE
+0032    |  CALL 3
+0035    |  CALL_BUILTIN drop 2
+0040    |  POP
+0041    5  RETURN_NONE
+
+== area (1 parameter, 1 slot) ==
+0000    4  CONST 0  ; 3.14
+0003    |  GET_LOCAL 0
+0006    |  MUL_FLOAT
+0007    |  GET_LOCAL 0
+0010    |  MUL_FLOAT
+0011    |  RETURN
+
+== connect (3 parameters, 3 slots) ==
+0000    6  GET_LOCAL 2
+0003    |  JUMP_IF_FALSE 22  ; -> 0028
+0006    7  GET_LOCAL 0
+0009    |  TO_STRING -
+0012    |  CONST 0  ; ":"
+0015    |  GET_LOCAL 1
+0018    |  TO_STRING -
+0021    |  CONST 1  ; " (secure)"
+0024    |  BUILD_STRING 4
+0027    |  RETURN
+0028    9  GET_LOCAL 0
+0031    |  TO_STRING -
+0034    |  CONST 0  ; ":"
+0037    |  GET_LOCAL 1
+0040    |  TO_STRING -
+0043    |  BUILD_STRING 3
+0046    |  RETURN
+0047    5  RETURN_NONE

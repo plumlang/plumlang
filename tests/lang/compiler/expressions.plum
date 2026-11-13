@@ -1,0 +1,9 @@
+# command: dis
+# Typed instructions, int-to-float widening, and string building.
+plant ratio: float = 3
+plant total = ratio * 2 + 1
+plant whole = 7 // 2
+plant half = 7 / 2
+plant big = 2 ** 10 > 1000 and not (1 >= 2.5)
+plant greeting = "Hi " + "there"
+drop("{total:.1} {whole}/{half} {big} {greeting}")

@@ -1,0 +1,10 @@
+# command: dis
+# Calls before declarations, defaults, named arguments, widening arguments.
+drop(area(2), connect("example.com", secure: good))
+branch area(r: float) -> float => 3.14 * r * r
+branch connect(host: str, port: int = 80, secure: bool = bad) -> str {
+    if secure {
+        return "{host}:{port} (secure)"
+    }
+    return "{host}:{port}"
+}
