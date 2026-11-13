@@ -1,0 +1,7 @@
+set([3, 1, 2, 5]) 4 good bad
+good bad set([3, 2, 5])
+3
+2
+5
+set good good
+set([3, 2, 5]) set([])

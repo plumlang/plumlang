@@ -1,0 +1,2 @@
+plant ages = {"ada": 36}
+drop(ages["bob"])

@@ -1,0 +1,13 @@
+# Insertion order, indexing, in, get, keys and values, printing.
+plant ages = {"ada": 36, "bob": 25}
+ages["cy"] = 40
+ages["ada"] += 1
+drop(ages, len(ages), ages["bob"], "bob" in ages, "zed" in ages)
+drop(ages.get("zed") ?? -1, ages.keys(), ages.values())
+for name, age in ages { drop("{name} is {age}") }
+for name in ages { drop(name) }
+plant empty: map[str, int] = {:}
+drop(empty, len(empty), type_of(empty), "{ages}")
+plant by_id = {3: "c", 1: "a"}
+by_id[2] = "b"
+drop(by_id, by_id[1], {1: "x"} == {1: "x"}, {"a": 1, "b": 2} == {"b": 2, "a": 1})
