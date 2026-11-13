@@ -1,0 +1,2 @@
+plant s = "abc"
+drop(s[1..9])

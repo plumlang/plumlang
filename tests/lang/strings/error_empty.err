@@ -1,0 +1,2 @@
+tests/lang/strings/error_empty.plum:2: runtime error: index 0 is out of range: the string is empty
+  in <main>, line 2

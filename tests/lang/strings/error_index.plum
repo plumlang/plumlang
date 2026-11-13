@@ -1,0 +1,2 @@
+plant s = "héllo"
+drop(s[5])
