@@ -1,0 +1,8 @@
+["hello, world", "line two"] ["a.txt", "b.txt"]
+good bad good bad
+["b.txt", "c.txt", "sub"]
+IOError reading <dir>/missing.txt
+IOError reading <dir>
+IOError reading 
+IOError: the directory isn't empty
+bad

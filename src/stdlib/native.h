@@ -113,5 +113,9 @@ static inline PlumValue plum_str_value(const char *s, size_t len) {
 /* The modules. */
 extern const PlumNativeModule plum_module_math;
 extern const PlumNativeModule plum_module_str;
+extern const PlumNativeModule plum_module_io;
+extern const PlumNativeModule plum_module_os;
+extern const PlumNativeModule plum_module_time;
+extern const PlumNativeModule plum_module_fs;
 
 #endif /* PLUM_STDLIB_NATIVE_H */

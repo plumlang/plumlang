@@ -12,6 +12,10 @@ seed math { sqrt, PI }     # sqrt(PI)
 |---|---|
 | [`math`](math.md) | constants and functions on numbers, and random numbers |
 | [`str`](str.md) | the methods of strings, always available without `seed` |
+| [`io`](io.md) | standard input, output and error |
+| [`os`](os.md) | the program's arguments, the environment and running commands |
+| [`time`](time.md) | clocks, sleeping and dates |
+| [`fs`](fs.md) | files and directories |
 
 `plum stdlib` lists every module's functions with their signatures, and
 `plum stdlib math` one module's. The reference table on each page is

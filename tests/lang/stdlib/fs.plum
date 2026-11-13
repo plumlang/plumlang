@@ -1,0 +1,34 @@
+# fs: files and directories, in a fresh directory under the temp dir.
+seed fs
+seed math
+
+plant dir = fs.temp_dir() + "/plum-fs-test-{math.random_int(0, 1000000000)}"
+fs.make_dir(dir)
+fs.make_dir(dir)
+fs.write(dir + "/b.txt", "hello")
+fs.append(dir + "/b.txt", ", world\nline two\n")
+fs.write(dir + "/a.txt", "")
+drop(fs.read(dir + "/b.txt").lines(), fs.list(dir))
+drop(fs.exists(dir + "/a.txt"), fs.exists(dir + "/nope"), fs.is_dir(dir), fs.is_dir(dir + "/a.txt"))
+fs.rename(dir + "/a.txt", dir + "/c.txt")
+fs.make_dir(dir + "/sub")
+drop(fs.list(dir))
+
+for path in [dir + "/missing.txt", dir, ""] {
+    try {
+        drop(fs.read(path))
+    } catch e: IOError {
+        drop("IOError reading", path.replace(dir, "<dir>"))
+    }
+}
+try {
+    fs.remove(dir)
+} catch e: IOError {
+    drop("IOError: the directory isn't empty")
+}
+
+for name in fs.list(dir) {
+    fs.remove(dir + "/" + name)
+}
+fs.remove(dir)
+drop(fs.exists(dir))

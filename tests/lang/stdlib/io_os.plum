@@ -1,0 +1,11 @@
+# io and os: output without drop's newline, input at its end, the environment.
+seed io
+seed os
+
+io.write("no newline;")
+io.write(" then one\n")
+io.flush()
+drop(io.read_line(), io.read_all() == "")
+drop(os.args(), os.env("PATH") != none, os.env("PLUM_SURELY_UNSET_VARIABLE"))
+drop(["linux", "macos", "windows", "unix"].contains(os.platform()), len(os.cwd()) > 0)
+drop(os.run("exit 3"), os.run("exit 0"))
