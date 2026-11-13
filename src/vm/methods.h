@@ -14,26 +14,33 @@
 
 #include <stdbool.h>
 
-#define PLUM_METHODS(X)                        \
-    X(LIST_PUSH, LIST, "push", true)           \
-    X(LIST_POP, LIST, "pop", true)             \
-    X(LIST_INSERT, LIST, "insert", true)       \
-    X(LIST_REMOVE_AT, LIST, "remove_at", true) \
-    X(LIST_CLEAR, LIST, "clear", true)         \
-    X(LIST_REVERSE, LIST, "reverse", true)     \
-    X(LIST_SORT, LIST, "sort", true)           \
-    X(LIST_CONTAINS, LIST, "contains", false)  \
-    X(LIST_INDEX_OF, LIST, "index_of", false)  \
-    X(LIST_SORTED, LIST, "sorted", false)      \
-    X(LIST_JOIN, LIST, "join", false)          \
-    X(MAP_GET, MAP, "get", false)              \
-    X(MAP_REMOVE, MAP, "remove", true)         \
-    X(MAP_KEYS, MAP, "keys", false)            \
-    X(MAP_VALUES, MAP, "values", false)        \
-    X(MAP_CLEAR, MAP, "clear", true)           \
-    X(SET_ADD, SET, "add", true)               \
-    X(SET_REMOVE, SET, "remove", true)         \
-    X(SET_CONTAINS, SET, "contains", false)    \
+#define PLUM_METHODS(X)                         \
+    X(LIST_PUSH, LIST, "push", true)            \
+    X(LIST_POP, LIST, "pop", true)              \
+    X(LIST_INSERT, LIST, "insert", true)        \
+    X(LIST_REMOVE_AT, LIST, "remove_at", true)  \
+    X(LIST_CLEAR, LIST, "clear", true)          \
+    X(LIST_REVERSE, LIST, "reverse", true)      \
+    X(LIST_SORT, LIST, "sort", true)            \
+    X(LIST_CONTAINS, LIST, "contains", false)   \
+    X(LIST_INDEX_OF, LIST, "index_of", false)   \
+    X(LIST_SORTED, LIST, "sorted", false)       \
+    X(LIST_JOIN, LIST, "join", false)           \
+    X(LIST_MAP, LIST, "map", false)             \
+    X(LIST_FILTER, LIST, "filter", false)       \
+    X(LIST_REDUCE, LIST, "reduce", false)       \
+    X(LIST_ANY, LIST, "any", false)             \
+    X(LIST_ALL, LIST, "all", false)             \
+    X(LIST_FIND, LIST, "find", false)           \
+    X(LIST_SORTED_BY, LIST, "sorted_by", false) \
+    X(MAP_GET, MAP, "get", false)               \
+    X(MAP_REMOVE, MAP, "remove", true)          \
+    X(MAP_KEYS, MAP, "keys", false)             \
+    X(MAP_VALUES, MAP, "values", false)         \
+    X(MAP_CLEAR, MAP, "clear", true)            \
+    X(SET_ADD, SET, "add", true)                \
+    X(SET_REMOVE, SET, "remove", true)          \
+    X(SET_CONTAINS, SET, "contains", false)     \
     X(SET_CLEAR, SET, "clear", true)
 
 typedef enum PlumMethod {
@@ -63,6 +70,10 @@ typedef enum PlumMethodReceiver {
  */
 bool plum_run_method(PlumMethod m, PlumValue *receiver, const PlumValue *args, int argc,
                      PlumValue *result, char *error, size_t error_size);
+
+/* Does method `m` call a function it is given (map, filter, ...)? The VM
+ * runs those itself, since they call back into Plumlang code. */
+bool plum_method_calls_back(PlumMethod m);
 
 /* The method `name` of `receiver`, or -1. */
 int plum_method_find(PlumMethodReceiver receiver, const char *name);
