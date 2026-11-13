@@ -46,6 +46,8 @@ struct PlumSymbol {
     bool captured;      /* a local used by a nested function or lambda */
     bool used;          /* referred to at least once */
     PlumTy *ty;         /* its type, filled in by the type checker */
+    int slot;           /* the compiler's local or global slot */
+    bool has_slot;      /* slot has been assigned */
 };
 
 /*
