@@ -1,0 +1,9 @@
+# x in a..b is a <= x < b; x in a..=b includes b.
+for age in [12, 13, 19, 20, -1] {
+    drop(age, age in 13..=19, age in 0..13)
+}
+plant hits = 0
+for n in 0..100 {
+    if n * n in 50..100 { hits += 1 }
+}
+drop(hits)

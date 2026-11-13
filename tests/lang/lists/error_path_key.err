@@ -1,0 +1,2 @@
+tests/lang/lists/error_path_key.plum:2: runtime error: the key "zed" is not in the map
+  in <main>, line 2
