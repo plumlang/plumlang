@@ -124,6 +124,10 @@
     X(LOOP, 1, "jump back [a] bytes")                                                            \
     X(FOR_RANGE, 3, "jump forward [c] if local [a] is past local [a+1] (<, or <= if [b])")       \
     X(FOR_NEXT, 3, "unless [b] and local [a] == local [a+1]: add 1, jump back [c]")              \
+    /* Errors */                                                                                 \
+    X(TRY, 1, "until END_TRY: on an error, unwind and jump forward [a] with the error pushed")   \
+    X(END_TRY, 1, "the last [a] tries are over")                                                 \
+    X(THROW, 0, "throw the error on top")                                                        \
     /* Calls */                                                                                  \
     X(CALL, 1, "call the function under [a] arguments")                                          \
     X(CALL_BUILTIN, 2, "call built-in [a] with [b] arguments")                                   \

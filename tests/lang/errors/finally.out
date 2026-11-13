@@ -1,0 +1,24 @@
+  finally 0
+returned
+  caught thrown
+  finally 1
+from catch
+  body done
+  finally 2
+fell through
+odd 1
+leaving 1
+leaving 2
+odd 3
+leaving 3
+leaving 4
+odd 5
+leaving 5
+leaving 6
+leaving 7
+cleanup
+outer: index 3 is out of range: the list has 1 item (0 to 0)
+inner
+outer
+7
+KeyError kept

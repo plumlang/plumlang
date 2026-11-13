@@ -6,4 +6,3 @@ tree Point {
 }
 plant p = Point(1)
 drop(p.get())
-throw ValueError("no")

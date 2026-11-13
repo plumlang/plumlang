@@ -193,7 +193,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
     PlumInterner names;
     PlumDiagList diags;
     PlumTokenList tokens = {0};
-    PlumCompiled compiled = {NULL, 0};
+    PlumCompiled compiled = {0};
     plum_arena_init(&arena);
     plum_interner_init(&names);
     plum_diag_init(&diags, &source);
@@ -236,8 +236,8 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
             fflush(stderr);
             status = plum_vm_run(&compiled, &source, stdout, stderr);
         }
-        plum_release(plum_obj(&compiled.main->obj));
     }
+    plum_compiled_free(&compiled);
 
     plum_array_free(&tokens);
     plum_diag_free(&diags);

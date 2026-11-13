@@ -1,2 +1,2 @@
-tests/lang/strings/error_index.plum:2: runtime error: index 5 is out of range: the string has 5 characters (0 to 4)
+tests/lang/strings/error_index.plum:2: IndexError: index 5 is out of range: the string has 5 characters (0 to 4)
   in <main>, line 2

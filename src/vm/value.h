@@ -228,6 +228,28 @@ PlumObject *plum_object_new(PlumTreeInfo *tree);
 /* Is `tree` `ancestor` or a tree that extends it? */
 bool plum_tree_is(const PlumTreeInfo *tree, const PlumTreeInfo *ancestor);
 
+/* The built-in error trees (spec 10.2). Each has a message; all extend Error. */
+#define PLUM_ERRORS(X)                    \
+    X(ERROR, "Error")                     \
+    X(VALUE, "ValueError")                \
+    X(PARSE, "ParseError")                \
+    X(INDEX, "IndexError")                \
+    X(KEY, "KeyError")                    \
+    X(OVERFLOW, "OverflowError")          \
+    X(ZERO_DIVISION, "ZeroDivisionError") \
+    X(IO, "IOError")                      \
+    X(NET, "NetError")                    \
+    X(ASSERT, "AssertError")
+
+typedef enum PlumErrorKind {
+#define PLUM_ERROR_ENUM(id, name) PLUM_ERROR_##id,
+    PLUM_ERRORS(PLUM_ERROR_ENUM)
+#undef PLUM_ERROR_ENUM
+        PLUM_ERROR_COUNT
+} PlumErrorKind;
+
+const char *plum_error_name(PlumErrorKind kind);
+
 /* A cell holding `v` (taking over its reference). */
 PlumCell *plum_cell_new(PlumValue v);
 /* A closure of `fn` with room for its captures, filled by the caller. */

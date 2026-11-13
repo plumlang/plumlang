@@ -1,2 +1,2 @@
-tests/lang/runtime/error_format.plum:1: runtime error: format 'x' needs an int
+tests/lang/runtime/error_format.plum:1: ValueError: format 'x' needs an int
   in <main>, line 1

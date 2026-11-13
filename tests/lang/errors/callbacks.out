@@ -1,0 +1,4 @@
+caught negative: -1
+[good, bad, good]
+deep: division by zero: 6 // 0
+[1, 2, 3]

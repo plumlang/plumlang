@@ -1,0 +1,64 @@
+# catch e: Type catches that tree and the trees that extend it, in order.
+tree NotFound : Error {
+    path: str
+}
+tree MissingConfig : NotFound {}
+
+branch load(path: str) -> str {
+    if path == "config" {
+        throw MissingConfig("no config", path)
+    }
+    if path == "" {
+        throw ValueError("empty path")
+    }
+    if path != "ok" {
+        throw NotFound("no such file", path)
+    }
+    return "text"
+}
+
+for p in ["ok", "a.txt", "config", ""] {
+    try {
+        drop(load(p))
+    } catch e: MissingConfig {
+        drop("config missing: {e.path}")
+    } catch e: NotFound {
+        drop("missing: {e.path} ({e.message})")
+    } catch e {
+        drop("{type_of(e)}: {e.message}")
+    }
+}
+
+# an error no catch here takes goes on to the next try out
+branch inner() {
+    try {
+        throw KeyError("k")
+    } catch e: ValueError {
+        drop("not here")
+    }
+}
+try {
+    inner()
+} catch e: KeyError {
+    drop("outer caught", e.message)
+}
+
+# the error is an ordinary object
+plant saved: Error? = none
+try {
+    throw IOError("disk full")
+} catch e {
+    saved = e
+}
+drop(saved?.message, saved is IOError)
+
+# a catch can throw; the next try out sees it
+try {
+    try {
+        throw ValueError("first")
+    } catch e {
+        throw ParseError("second, after {e.message}")
+    }
+} catch e: ParseError {
+    drop(e.message)
+}

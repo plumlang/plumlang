@@ -1,0 +1,7 @@
+# finally still runs when the error ends the program.
+try {
+    drop("working")
+    throw NetError("connection reset")
+} finally {
+    drop("closing")
+}

@@ -1,0 +1,7 @@
+text
+missing: a.txt (no such file)
+config missing: config
+ValueError: empty path
+outer caught k
+disk full good
+second, after first

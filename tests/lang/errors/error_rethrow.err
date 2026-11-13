@@ -1,0 +1,3 @@
+tests/lang/errors/error_rethrow.plum:2: ParseError: int("twelve"): not a whole number
+  in parse, line 2
+  in <main>, line 6

@@ -1,0 +1,77 @@
+# finally runs however the try ends.
+branch run(n: int) -> str {
+    try {
+        if n == 0 {
+            return "returned"
+        }
+        if n == 1 {
+            throw ValueError("thrown")
+        }
+        drop("  body done")
+    } catch e: ValueError {
+        drop("  caught", e.message)
+        return "from catch"
+    } finally {
+        drop("  finally", n)
+    }
+    return "fell through"
+}
+for n in 0..=2 {
+    drop(run(n))
+}
+
+# break and continue leave the try, running finally on the way
+plant i = 0
+while i < 10 {
+    i += 1
+    try {
+        if i % 2 == 0 {
+            continue
+        }
+        if i > 5 {
+            break
+        }
+        drop("odd", i)
+    } finally {
+        drop("leaving", i)
+    }
+}
+
+# an error nothing here catches still runs finally, then moves on
+branch risky() {
+    try {
+        drop([1][3])
+    } finally {
+        drop("cleanup")
+    }
+}
+try {
+    risky()
+} catch e: IndexError {
+    drop("outer:", e.message)
+}
+
+# nested finallies run innermost first on return
+branch layers() -> int {
+    try {
+        try {
+            return 7
+        } finally {
+            drop("inner")
+        }
+    } finally {
+        drop("outer")
+    }
+}
+drop(layers())
+
+# an error inside finally replaces the one in flight
+try {
+    try {
+        throw ValueError("lost")
+    } finally {
+        throw KeyError("kept")
+    }
+} catch e {
+    drop(type_of(e), e.message)
+}

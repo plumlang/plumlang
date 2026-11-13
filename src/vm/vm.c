@@ -21,6 +21,13 @@ typedef struct Frame {
     size_t base; /* index of slot 0 in the stack; the function itself sits at base - 1 */
 } Frame;
 
+/* A try in progress: where to go, and what to unwind to, on an error. */
+typedef struct Handler {
+    int frame_count;       /* the frames the try's function sits on */
+    size_t top;            /* the stack height when the try began */
+    const uint8_t *target; /* where the catches start, with the error pushed */
+} Handler;
+
 typedef struct VM {
     PlumValue *stack;
     size_t top;
@@ -36,6 +43,15 @@ typedef struct VM {
     bool stopped;     /* exit() was called */
     int stop_at;      /* execute() returns when a RETURN leaves this many frames */
     uint64_t seed[2]; /* the random key maps hash with */
+    Handler *handlers;
+    int handler_count;
+    int handler_cap;
+    PlumValue thrown;   /* the error being thrown, while unwinding */
+    PlumValue trace_of; /* the error `trace` was written for */
+    char *trace;        /* where it was thrown and the calls that led there */
+    size_t trace_len;
+    size_t trace_cap;
+    PlumTreeInfo *const *errors; /* the built-in error trees */
 } VM;
 
 /* ------------------------------------------------------------------ */
@@ -78,30 +94,104 @@ static uint32_t frame_line(const Frame *f) {
     return plum_chunk_line(f->fn->chunk, offset > 0 ? offset - 1 : 0);
 }
 
-/*
- * Report a runtime error: where it happened, then the calls that led
- * there, innermost first.
- */
 PLUM_PRINTF(2, 3)
-static void runtime_error(VM *vm, const char *fmt, ...) {
+static void trace_add(VM *vm, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    fflush(vm->out); /* the program's output so far comes before the error */
-    const Frame *top = &vm->frames[vm->frame_count - 1];
-    fprintf(vm->err, "%s:%u: runtime error: ", vm->source->path, (unsigned)frame_line(top));
-    vfprintf(vm->err, fmt, args);
-    fputc('\n', vm->err);
+    char line[1024];
+    int n = vsnprintf(line, sizeof line, fmt, args);
     va_end(args);
+    size_t len = n < 0 ? 0 : (size_t)n < sizeof line ? (size_t)n : sizeof line - 1;
+    if (vm->trace_len + len + 1 > vm->trace_cap) {
+        size_t cap = vm->trace_cap < 256 ? 256 : vm->trace_cap;
+        while (cap < vm->trace_len + len + 1) {
+            cap = plum_mul_size(cap, 2);
+        }
+        vm->trace = plum_realloc_array(vm->trace, cap, 1);
+        vm->trace_cap = cap;
+    }
+    memcpy(vm->trace + vm->trace_len, line, len);
+    vm->trace_len += len;
+    vm->trace[vm->trace_len] = '\0';
+}
+
+/*
+ * Throw `error` (an object of an error tree; the reference moves here).
+ * Where it was first thrown is written down now, while the calls that led
+ * there are still on the stack: if nothing catches it, that is what the
+ * program prints. Rethrowing the same error keeps the first place.
+ */
+static void throw_error(VM *vm, PlumValue error) {
+    plum_release(vm->thrown);
+    vm->thrown = error;
+    if (vm->trace_of.type == PLUM_VAL_OBJ && vm->trace_of.as.obj == error.as.obj) {
+        return;
+    }
+    plum_release(vm->trace_of);
+    vm->trace_of = plum_retain(error);
+    vm->trace_len = 0;
+    const PlumObject *o = plum_as_object(error);
+    const PlumString *message = plum_as_string(o->fields[0]); /* every error's first field */
+    const Frame *top = &vm->frames[vm->frame_count - 1];
+    trace_add(vm, "%s:%u: %s: %s\n", vm->source->path, (unsigned)frame_line(top), o->tree->name,
+              message->chars);
     /* Innermost calls first; a deep recursion shows its two ends. */
     for (int i = vm->frame_count - 1; i >= 0; i--) {
         int from_top = vm->frame_count - 1 - i;
         if (from_top == 10 && i > 2) {
             /* frames i down to 2 are skipped; 1 and 0 are shown */
-            fprintf(vm->err, "  ... %d more calls\n", i - 1);
+            trace_add(vm, "  ... %d more calls\n", i - 1);
             i = 1;
         }
         const Frame *f = &vm->frames[i];
-        fprintf(vm->err, "  in %s, line %u\n", f->fn->name, (unsigned)frame_line(f));
+        trace_add(vm, "  in %s, line %u\n", f->fn->name, (unsigned)frame_line(f));
+    }
+}
+
+/* Raise a built-in error of `kind` with a formatted message. */
+PLUM_PRINTF(3, 4)
+static void runtime_error(VM *vm, PlumErrorKind kind, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    char message[1024];
+    int n = vsnprintf(message, sizeof message, fmt, args);
+    va_end(args);
+    size_t len = n < 0 ? 0 : (size_t)n < sizeof message ? (size_t)n : sizeof message - 1;
+    PlumObject *o = plum_object_new(vm->errors[kind]);
+    o->fields[0] = plum_obj(&plum_string_new(message, len)->obj);
+    throw_error(vm, plum_obj(&o->obj));
+}
+
+/*
+ * After an error was thrown: unwind to the innermost try of this run of
+ * the loop and continue at its catches with the error pushed. False when
+ * no try here catches it (or exit() was called): execute() returns, and
+ * whoever started it carries on unwinding.
+ */
+static void unwind_to(VM *vm, size_t to);
+
+static bool catch_thrown(VM *vm) {
+    if (vm->stopped || vm->handler_count == 0) {
+        return false;
+    }
+    const Handler *h = &vm->handlers[vm->handler_count - 1];
+    if (h->frame_count <= vm->stop_at) {
+        return false; /* it belongs to code that called into this run */
+    }
+    vm->handler_count--;
+    vm->frame_count = h->frame_count;
+    unwind_to(vm, h->top);
+    push(vm, vm->thrown);
+    vm->thrown = plum_none();
+    vm->frames[vm->frame_count - 1].ip = h->target;
+    return true;
+}
+
+/* Print an error nothing caught; the program ends with exit code 1. */
+static void report_uncaught(VM *vm) {
+    fflush(vm->out); /* the program's output so far comes before the error */
+    if (vm->trace != NULL) {
+        fputs(vm->trace, vm->err);
     }
     vm->exit_code = 1;
 }
@@ -376,14 +466,16 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
             double f = v.as.f;
             if (isnan(f) || f >= 9223372036854775808.0 || f < -9223372036854775808.0) {
                 char buf[PLUM_FLOAT_BUF];
-                runtime_error(vm, "int(%s) doesn't fit in an int", plum_format_float(f, buf));
+                runtime_error(vm, PLUM_ERROR_OVERFLOW, "int(%s) doesn't fit in an int",
+                              plum_format_float(f, buf));
                 return false;
             }
             result = plum_int((int64_t)f); /* truncates toward zero */
         } else {
             int64_t i;
             if (!parse_int(plum_as_string(v), &i)) {
-                runtime_error(vm, "int(\"%s\"): not a whole number", plum_as_string(v)->chars);
+                runtime_error(vm, PLUM_ERROR_PARSE, "int(\"%s\"): not a whole number",
+                              plum_as_string(v)->chars);
                 return false;
             }
             result = plum_int(i);
@@ -399,7 +491,8 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         } else {
             double f;
             if (!parse_float(plum_as_string(v), &f)) {
-                runtime_error(vm, "float(\"%s\"): not a number", plum_as_string(v)->chars);
+                runtime_error(vm, PLUM_ERROR_PARSE, "float(\"%s\"): not a number",
+                              plum_as_string(v)->chars);
                 return false;
             }
             result = plum_float(f);
@@ -408,7 +501,7 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
     }
     case PLUM_BUILTIN_BYTE:
         if (args[0].as.i < 0 || args[0].as.i > 255) {
-            runtime_error(vm, "byte(%lld) is out of range; a byte is 0 to 255",
+            runtime_error(vm, PLUM_ERROR_VALUE, "byte(%lld) is out of range; a byte is 0 to 255",
                           (long long)args[0].as.i);
             return false;
         }
@@ -431,9 +524,10 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
     case PLUM_BUILTIN_ASSERT:
         if (!args[0].as.b) {
             if (argc > 1 && plum_as_string(args[1])->len > 0) {
-                runtime_error(vm, "assertion failed: %s", plum_as_string(args[1])->chars);
+                runtime_error(vm, PLUM_ERROR_ASSERT, "assertion failed: %s",
+                              plum_as_string(args[1])->chars);
             } else {
-                runtime_error(vm, "assertion failed");
+                runtime_error(vm, PLUM_ERROR_ASSERT, "assertion failed");
             }
             return false;
         }
@@ -468,9 +562,11 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
 static bool check_index(VM *vm, int64_t i, size_t len) {
     if (i < 0 || (uint64_t)i >= len) {
         if (len == 0) {
-            runtime_error(vm, "index %lld is out of range: the list is empty", (long long)i);
+            runtime_error(vm, PLUM_ERROR_INDEX, "index %lld is out of range: the list is empty",
+                          (long long)i);
         } else {
-            runtime_error(vm, "index %lld is out of range: the list has %zu item%s (0 to %zu)",
+            runtime_error(vm, PLUM_ERROR_INDEX,
+                          "index %lld is out of range: the list has %zu item%s (0 to %zu)",
                           (long long)i, len, len == 1 ? "" : "s", len - 1);
         }
         return false;
@@ -510,7 +606,8 @@ static PlumValue *walk_path(VM *vm, PlumValue *place, const PlumValue *keys, int
                 char error[16];
                 PlumString *k = plum_value_text(keys[d], NULL, error, sizeof error);
                 const char *q = plum_is_obj(keys[d], PLUM_OBJ_STRING) ? "\"" : "";
-                runtime_error(vm, "the key %s%s%s is not in the map", q, k->chars, q);
+                runtime_error(vm, PLUM_ERROR_KEY, "the key %s%s%s is not in the map", q, k->chars,
+                              q);
                 plum_release(plum_obj(&k->obj));
                 return NULL;
             }
@@ -669,7 +766,8 @@ static bool run_higher_order(VM *vm, PlumMethod m, PlumList *list, const PlumVal
 
 static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
     if (vm->frame_count == PLUM_MAX_FRAMES) {
-        runtime_error(vm, "too much recursion: more than %d calls deep", PLUM_MAX_FRAMES);
+        runtime_error(vm, PLUM_ERROR_ERROR, "too much recursion: more than %d calls deep",
+                      PLUM_MAX_FRAMES);
         return false;
     }
     Frame *f = &vm->frames[vm->frame_count++];
@@ -733,7 +831,7 @@ static bool execute(VM *vm) {
     do {                                \
         SAVE_IP();                      \
         runtime_error(vm, __VA_ARGS__); \
-        return false;                   \
+        goto thrown;                    \
     } while (0)
 #define INT_BINARY(expr)          \
     do {                          \
@@ -747,16 +845,16 @@ static bool execute(VM *vm) {
         double a = pop(vm).as.f; \
         push(vm, expr);          \
     } while (0)
-#define CHECKED(fn, symbol)                                                                    \
-    do {                                                                                       \
-        int64_t b = pop(vm).as.i;                                                              \
-        int64_t a = pop(vm).as.i;                                                              \
-        int64_t r;                                                                             \
-        if (fn(a, b, &r)) {                                                                    \
-            FAIL("integer overflow: %lld %s %lld doesn't fit in an int", (long long)a, symbol, \
-                 (long long)b);                                                                \
-        }                                                                                      \
-        push(vm, plum_int(r));                                                                 \
+#define CHECKED(fn, symbol)                                                                   \
+    do {                                                                                      \
+        int64_t b = pop(vm).as.i;                                                             \
+        int64_t a = pop(vm).as.i;                                                             \
+        int64_t r;                                                                            \
+        if (fn(a, b, &r)) {                                                                   \
+            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
+                 (long long)a, symbol, (long long)b);                                         \
+        }                                                                                     \
+        push(vm, plum_int(r));                                                                \
     } while (0)
 #define STR_COMPARE(test)                                              \
     do {                                                               \
@@ -866,10 +964,11 @@ static bool execute(VM *vm) {
             int64_t a = pop(vm).as.i;
             const char *sym = op == PLUM_OP_FLOORDIV_INT ? "//" : "%";
             if (b == 0) {
-                FAIL("division by zero: %lld %s 0", (long long)a, sym);
+                FAIL(PLUM_ERROR_ZERO_DIVISION, "division by zero: %lld %s 0", (long long)a, sym);
             }
             if (op == PLUM_OP_FLOORDIV_INT && a == INT64_MIN && b == -1) {
-                FAIL("integer overflow: %lld // -1 doesn't fit in an int", (long long)a);
+                FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld // -1 doesn't fit in an int",
+                     (long long)a);
             }
             push(vm, plum_int(op == PLUM_OP_FLOORDIV_INT ? floor_div(a, b) : floor_mod(a, b)));
             break;
@@ -879,13 +978,14 @@ static bool execute(VM *vm) {
             int64_t a = pop(vm).as.i;
             int64_t r;
             if (b < 0) {
-                FAIL("%lld ** %lld: an int power needs an exponent of 0 or more; use a float "
+                FAIL(PLUM_ERROR_VALUE,
+                     "%lld ** %lld: an int power needs an exponent of 0 or more; use a float "
                      "for fractions",
                      (long long)a, (long long)b);
             }
             if (pow_overflows(a, b, &r)) {
-                FAIL("integer overflow: %lld ** %lld doesn't fit in an int", (long long)a,
-                     (long long)b);
+                FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld ** %lld doesn't fit in an int",
+                     (long long)a, (long long)b);
             }
             push(vm, plum_int(r));
             break;
@@ -893,7 +993,8 @@ static bool execute(VM *vm) {
         case PLUM_OP_NEG_INT: {
             int64_t a = pop(vm).as.i;
             if (a == INT64_MIN) {
-                FAIL("integer overflow: -(%lld) doesn't fit in an int", (long long)a);
+                FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: -(%lld) doesn't fit in an int",
+                     (long long)a);
             }
             push(vm, plum_int(-a));
             break;
@@ -915,7 +1016,8 @@ static bool execute(VM *vm) {
             int64_t b = pop(vm).as.i;
             int64_t a = pop(vm).as.i;
             if (b < 0 || b > 63) {
-                FAIL("shift count %lld is out of range; it must be 0 to 63", (long long)b);
+                FAIL(PLUM_ERROR_VALUE, "shift count %lld is out of range; it must be 0 to 63",
+                     (long long)b);
             }
             push(vm, plum_int(op == PLUM_OP_SHL ? (int64_t)((uint64_t)a << b) : shift_right(a, b)));
             break;
@@ -1017,7 +1119,7 @@ static bool execute(VM *vm) {
             char error[256];
             PlumString *s = plum_value_text(*v, format, error, sizeof error);
             if (s == NULL) {
-                FAIL("%s", error);
+                FAIL(PLUM_ERROR_VALUE, "%s", error);
             }
             plum_release(*v);
             *v = plum_obj(&s->obj);
@@ -1060,9 +1162,11 @@ static bool execute(VM *vm) {
             if (i < 0 || (uint64_t)i >= n) {
                 plum_release(v);
                 if (n == 0) {
-                    FAIL("index %lld is out of range: the string is empty", (long long)i);
+                    FAIL(PLUM_ERROR_INDEX, "index %lld is out of range: the string is empty",
+                         (long long)i);
                 }
-                FAIL("index %lld is out of range: the string has %zu character%s (0 to %zu)",
+                FAIL(PLUM_ERROR_INDEX,
+                     "index %lld is out of range: the string has %zu character%s (0 to %zu)",
                      (long long)i, n, n == 1 ? "" : "s", n - 1);
             }
             size_t from = plum_string_offset(s, (size_t)i);
@@ -1082,13 +1186,13 @@ static bool execute(VM *vm) {
                 plum_release(m);
                 plum_release(key);
                 SAVE_IP();
-                runtime_error(vm,
+                runtime_error(vm, PLUM_ERROR_KEY,
                               "the key %s%s%s is not in the map; use .get(key) for a value "
                               "that may be missing",
                               plum_is_obj(key, PLUM_OBJ_STRING) ? "\"" : "", k->chars,
                               plum_is_obj(key, PLUM_OBJ_STRING) ? "\"" : "");
                 plum_release(plum_obj(&k->obj));
-                return false;
+                goto thrown;
             }
             push(vm, plum_retain(*found));
             plum_release(m);
@@ -1113,7 +1217,7 @@ static bool execute(VM *vm) {
             SAVE_IP(); /* so the error names this line */
             if (!check_index(vm, i, list->len)) {
                 plum_release(v);
-                return false;
+                goto thrown;
             }
             push(vm, plum_retain(list->items[i]));
             plum_release(v);
@@ -1129,9 +1233,9 @@ static bool execute(VM *vm) {
             int64_t end = inclusive ? hi + (hi < INT64_MAX) : hi;
             if (lo < 0 || lo > end || (uint64_t)end > size || (inclusive && hi == INT64_MAX)) {
                 plum_release(v);
-                FAIL("slice %lld..%s%lld is out of range for a %s of %zu %s%s", (long long)lo,
-                     inclusive ? "=" : "", (long long)hi, text ? "string" : "list", size,
-                     text ? "character" : "item", size == 1 ? "" : "s");
+                FAIL(PLUM_ERROR_INDEX, "slice %lld..%s%lld is out of range for a %s of %zu %s%s",
+                     (long long)lo, inclusive ? "=" : "", (long long)hi, text ? "string" : "list",
+                     size, text ? "character" : "item", size == 1 ? "" : "s");
             }
             PlumValue out;
             if (text) {
@@ -1207,7 +1311,7 @@ static bool execute(VM *vm) {
                 plum_release(args[0]);
                 plum_release(args[1]);
                 if (!done) {
-                    return false;
+                    goto thrown;
                 }
                 push(vm, result);
                 break;
@@ -1216,7 +1320,7 @@ static bool execute(VM *vm) {
                                       &result, error, sizeof error);
             unwind_to(vm, vm->top - argc - (op == PLUM_OP_METHOD ? 1 : 0));
             if (!ok) {
-                FAIL("%s", error);
+                FAIL(PLUM_ERROR_INDEX, "%s", error);
             }
             push(vm, result);
             break;
@@ -1238,7 +1342,7 @@ static bool execute(VM *vm) {
             SAVE_IP();                                /* so the error names this line */
             if (!check_index(vm, i, list->len)) {
                 plum_release(value);
-                return false;
+                goto thrown;
             }
             plum_release(list->items[i]);
             list->items[i] = value;
@@ -1258,7 +1362,7 @@ static bool execute(VM *vm) {
             PlumValue *container = walk_path(vm, root, keys, depth - 1);
             if (container == NULL) {
                 plum_release(value);
-                return false;
+                goto thrown;
             }
             PlumValue key = keys[depth - 1];
             if (plum_is_obj(*container, PLUM_OBJ_MAP)) {
@@ -1267,7 +1371,7 @@ static bool execute(VM *vm) {
                 PlumList *list = plum_list_unique(container);
                 if (!check_index(vm, key.as.i, list->len)) {
                     plum_release(value);
-                    return false;
+                    goto thrown;
                 }
                 plum_release(list->items[key.as.i]);
                 list->items[key.as.i] = value;
@@ -1289,7 +1393,7 @@ static bool execute(VM *vm) {
             SAVE_IP();
             PlumValue *receiver = walk_path(vm, root, keys, depth);
             if (receiver == NULL) {
-                return false;
+                goto thrown;
             }
             PlumValue result;
             char error[256];
@@ -1297,7 +1401,7 @@ static bool execute(VM *vm) {
                                       argc, &result, error, sizeof error);
             unwind_to(vm, vm->top - (size_t)argc - (size_t)depth);
             if (!ok) {
-                FAIL("%s", error);
+                FAIL(PLUM_ERROR_INDEX, "%s", error);
             }
             push(vm, result);
             break;
@@ -1490,7 +1594,7 @@ static bool execute(VM *vm) {
             PlumFunction *fn = closure != NULL ? closure->fn : plum_as_function(callee);
             SAVE_IP();
             if (!call(vm, fn, closure, argc)) {
-                return false;
+                goto thrown;
             }
             frame = &vm->frames[vm->frame_count - 1];
             ip = frame->ip;
@@ -1502,18 +1606,39 @@ static bool execute(VM *vm) {
             uint16_t argc = READ_U16();
             SAVE_IP();
             if (!call_builtin(vm, (PlumBuiltin)id, argc)) {
-                return false;
+                goto thrown;
             }
             if (vm->stopped) {
                 return true; /* exit() */
             }
             break;
         }
+        case PLUM_OP_TRY: {
+            uint16_t d = READ_U16();
+            if (vm->handler_count == vm->handler_cap) {
+                vm->handler_cap = vm->handler_cap < 8 ? 8 : vm->handler_cap * 2;
+                vm->handlers =
+                    plum_realloc_array(vm->handlers, (size_t)vm->handler_cap, sizeof(Handler));
+            }
+            vm->handlers[vm->handler_count++] = (Handler){vm->frame_count, vm->top, ip + d};
+            break;
+        }
+        case PLUM_OP_END_TRY:
+            vm->handler_count -= READ_U16();
+            break;
+        case PLUM_OP_THROW:
+            SAVE_IP();
+            throw_error(vm, pop(vm));
+            goto thrown;
         case PLUM_OP_RETURN:
         case PLUM_OP_RETURN_NONE: {
             PlumValue result = op == PLUM_OP_RETURN ? pop(vm) : plum_none();
             size_t base = frame->base;
             vm->frame_count--;
+            while (vm->handler_count > 0 &&
+                   vm->handlers[vm->handler_count - 1].frame_count > vm->frame_count) {
+                vm->handler_count--; /* tries the function returned out of */
+            }
             unwind_to(vm, base - 1); /* the slots and the function itself */
             push(vm, result);
             if (vm->frame_count == vm->stop_at) {
@@ -1526,8 +1651,18 @@ static bool execute(VM *vm) {
         }
         case PLUM_OPCODE_COUNT:
         default:
-            FAIL("internal error: unknown instruction %d", (int)op);
+            FAIL(PLUM_ERROR_ERROR, "internal error: unknown instruction %d", (int)op);
         }
+        continue;
+
+    thrown:
+        /* an error was thrown (or exit() called in a callback) */
+        if (!catch_thrown(vm)) {
+            return false;
+        }
+        frame = &vm->frames[vm->frame_count - 1];
+        ip = frame->ip;
+        chunk = frame->fn->chunk;
     }
 
 #undef READ_U16
@@ -1552,8 +1687,11 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out
 
     /* <main> sits at stack index 0, like any called function. */
     push(vm, plum_retain(plum_obj(&program->main->obj)));
-    if (call(vm, program->main, NULL, 0)) {
-        execute(vm);
+    vm->errors = program->errors;
+    vm->thrown = plum_none();
+    vm->trace_of = plum_none();
+    if (!(call(vm, program->main, NULL, 0) && execute(vm)) && !vm->stopped) {
+        report_uncaught(vm);
     }
     fflush(out);
 
@@ -1563,6 +1701,10 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out
     }
     int code = vm->exit_code;
     plum_free(vm->globals);
+    plum_release(vm->thrown);
+    plum_release(vm->trace_of);
+    plum_free(vm->trace);
+    plum_free(vm->handlers);
     plum_free(vm->stack);
     plum_free(vm);
     return code;

@@ -1,0 +1,30 @@
+# Errors cross map, filter and friends on their way to a try.
+branch check(x: int) -> bool {
+    if x < 0 {
+        throw ValueError("negative: {x}")
+    }
+    return x % 2 == 0
+}
+
+try {
+    drop([2, 4, -1, 6].filter(check))
+} catch e: ValueError {
+    drop("caught", e.message)
+}
+
+# a try inside the callback keeps the error there
+drop([2, -2, 4].map((x) => {
+    try {
+        return check(x)
+    } catch e {
+        return bad
+    }
+}))
+
+# deep: a callback that calls a callback
+try {
+    drop([[1, 2], [3, 0]].map((row) => row.map((x) => 6 // x)))
+} catch e: ZeroDivisionError {
+    drop("deep:", e.message)
+}
+drop([3, 1, 2].sorted_by((x) => x))

@@ -15,8 +15,16 @@
 #define MAX_SLOTS 0xFFFF
 
 /* An enclosing loop: where continue goes, and jumps to patch at its end. */
+/* A try statement being compiled: what leaving it early must undo. */
+typedef struct Try {
+    struct Try *outer;
+    int handlers;            /* TRY instructions still active: 0 to 2 */
+    const PlumStmt *finally; /* NULL without finally */
+} Try;
+
 typedef struct Loop {
     struct Loop *outer;
+    Try *tries;   /* the tries around the loop; break and continue leave the ones inside */
     bool is_for;  /* continue jumps forward to the step (for) or back (while) */
     size_t start; /* while: where continue loops back to */
     PLUM_ARRAY(size_t) breaks;
@@ -36,6 +44,7 @@ typedef struct FnState {
     int depth;     /* the resolver's function depth of its body */
     int next_slot; /* the next free local slot */
     Loop *loop;
+    Try *tries;                   /* innermost first */
     PLUM_ARRAY(Capture) captures; /* the outer variables this function uses */
     PlumSymbol *self;             /* a nested function's own name: GET_SELF, not a capture */
 } FnState;
@@ -569,6 +578,17 @@ static int field_index(const PlumSymbol *tree, const char *name) {
     return -1;
 }
 
+static PlumTreeInfo *tree_info(Compiler *c, PlumSymbol *tree);
+
+/* The info of a built-in error tree, by name. */
+static PlumTreeInfo *builtin_error_info(Compiler *c, const char *name) {
+    PlumSymbol sym;
+    memset(&sym, 0, sizeof sym);
+    sym.kind = PLUM_SYM_TREE;
+    sym.name = plum_intern_cstr(c->names, name);
+    return tree_info(c, &sym);
+}
+
 /* The one PlumTreeInfo for `tree` in this program, made with its parents. */
 static PlumTreeInfo *tree_info(Compiler *c, PlumSymbol *tree) {
     void *found = NULL;
@@ -579,9 +599,7 @@ static PlumTreeInfo *tree_info(Compiler *c, PlumSymbol *tree) {
     if (is_builtin_error(tree)) {
         if (strcmp(tree->name, "Error") != 0) {
             /* ValueError, KeyError, ... all extend Error */
-            PlumSymbol error_sym = *tree;
-            error_sym.name = plum_intern_cstr(c->names, "Error");
-            parent = tree_info(c, &error_sym);
+            parent = builtin_error_info(c, "Error");
         }
     } else if (parent_of(tree) != NULL) {
         parent = tree_info(c, parent_of(tree));
@@ -998,9 +1016,18 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
     case PLUM_EXPR_MATCH:
         unsupported(c, e->span, "match", 22);
         return;
-    case PLUM_EXPR_TRY:
-        unsupported(c, e->span, "try", 21);
+    case PLUM_EXPR_TRY: {
+        /* try expr: the value, or none if computing it throws */
+        size_t to_none = emit_jump(c, PLUM_OP_TRY, line);
+        compile_expr(c, e->as.inner);
+        op1(c, PLUM_OP_END_TRY, 1, line);
+        size_t to_end = emit_jump(c, PLUM_OP_JUMP, line);
+        patch_jump(c, to_none, e->span);
+        op(c, PLUM_OP_POP, line); /* the error */
+        op(c, PLUM_OP_NONE, line);
+        patch_jump(c, to_end, e->span);
         return;
+    }
     case PLUM_EXPR_SPAWN:
         unsupported(c, e->span, "spawn", 27);
         return;
@@ -1026,11 +1053,133 @@ static void compile_block(Compiler *c, const PlumStmt *block) {
     c->fs->next_slot = saved;
 }
 
+/* ------------------------------------------------------------------ */
+/* Errors                                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Leaving tries early (return, break, continue): end each try's handlers,
+ * then run its finally, innermost first, down to `until`. The handlers end
+ * first so an error in a finally isn't caught by its own try.
+ */
+static void leave_tries(Compiler *c, Try *until, uint32_t line) {
+    Try *saved = c->fs->tries;
+    for (Try *t = saved; t != until && t != NULL; t = t->outer) {
+        if (t->handlers > 0) {
+            op1(c, PLUM_OP_END_TRY, (uint16_t)t->handlers, line);
+        }
+        if (t->finally != NULL) {
+            c->fs->tries = t->outer; /* code in the finally is outside this try */
+            compile_block(c, t->finally);
+        }
+    }
+    c->fs->tries = saved;
+}
+
+/*
+ * try { body } catch e: A { } catch e { } finally { }
+ *
+ *       TRY to_finally          (with a finally)
+ *       TRY to_catches          (with catches)
+ *       body
+ *       END_TRY 1
+ *       JUMP after
+ *   to_catches:                 the error is on the stack
+ *       DUP, IS_TREE A, JUMP_IF_FALSE next ; SET_LOCAL e ; catch body ; JUMP after
+ *   next: ... a plain catch takes anything ...
+ *       THROW                   no catch matched: on to the next try out
+ *   after:
+ *       END_TRY 1               (with a finally)
+ *       finally
+ *       JUMP end
+ *   to_finally:                 an error got past the catches
+ *       SET_LOCAL hidden ; finally ; GET_LOCAL hidden ; THROW
+ *   end:
+ */
+static void compile_try(Compiler *c, const PlumStmt *s) {
+    uint32_t line = s->span.line;
+    const PlumStmt *finally = s->as.try_.finally;
+    size_t catches = s->as.try_.catch_count;
+    Try t = {c->fs->tries, 0, finally};
+    c->fs->tries = &t;
+
+    size_t to_finally = 0, to_catches = 0;
+    if (finally != NULL) {
+        to_finally = emit_jump(c, PLUM_OP_TRY, line);
+        t.handlers++;
+    }
+    if (catches > 0) {
+        to_catches = emit_jump(c, PLUM_OP_TRY, line);
+        t.handlers++;
+    }
+    compile_block(c, s->as.try_.body);
+
+    PLUM_ARRAY(size_t) after = {0};
+    if (catches > 0) {
+        op1(c, PLUM_OP_END_TRY, 1, line);
+        t.handlers--; /* the catches run outside their own try */
+        plum_array_push(&after, emit_jump(c, PLUM_OP_JUMP, line));
+        patch_jump(c, to_catches, s->span);
+        bool caught_all = false;
+        for (size_t i = 0; i < catches && !caught_all; i++) {
+            const PlumCatch *cat = &s->as.try_.catches[i];
+            uint32_t at = cat->span.line;
+            size_t next = 0;
+            PlumSymbol *tree = cat->type != NULL && cat->type->kind == PLUM_TYPE_NAME
+                                   ? cat->type->as.name.symbol
+                                   : NULL;
+            bool test =
+                tree != NULL && !(is_builtin_error(tree) && strcmp(tree->name, "Error") == 0);
+            if (test) {
+                op(c, PLUM_OP_DUP, at);
+                op1(c, PLUM_OP_IS_TREE, tree_constant(c, tree, cat->span), at);
+                next = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, at);
+            } else {
+                caught_all = true; /* the catches after this one can't be reached */
+            }
+            int saved = c->fs->next_slot;
+            uint16_t slot = new_local(c, cat->symbol, cat->span);
+            op1(c, PLUM_OP_SET_LOCAL, slot, at);
+            box_if_captured(c, cat->symbol, cat->span);
+            compile_block(c, cat->body);
+            c->fs->next_slot = saved;
+            plum_array_push(&after, emit_jump(c, PLUM_OP_JUMP, at));
+            if (test) {
+                patch_jump(c, next, cat->span);
+            }
+        }
+        if (!caught_all) {
+            op(c, PLUM_OP_THROW, line); /* not one of ours */
+        }
+    }
+    for (size_t i = 0; i < after.len; i++) {
+        patch_jump(c, after.items[i], s->span);
+    }
+    plum_array_free(&after);
+    c->fs->tries = t.outer;
+
+    if (finally != NULL) {
+        op1(c, PLUM_OP_END_TRY, 1, line);
+        compile_block(c, finally);
+        size_t to_end = emit_jump(c, PLUM_OP_JUMP, line);
+        patch_jump(c, to_finally, s->span);
+        int saved = c->fs->next_slot;
+        uint16_t hidden = new_local(c, NULL, s->span);
+        op1(c, PLUM_OP_SET_LOCAL, hidden, line);
+        compile_block(c, finally);
+        op1(c, PLUM_OP_GET_LOCAL, hidden, line);
+        op(c, PLUM_OP_THROW, line); /* on its way out, first place kept */
+        c->fs->next_slot = saved;
+        patch_jump(c, to_end, s->span);
+    }
+}
+
 static void begin_loop(Compiler *c, Loop *loop, bool is_for) {
     memset(loop, 0, sizeof *loop);
     loop->outer = c->fs->loop;
     loop->is_for = is_for;
     loop->start = chunk(c)->code.len;
+    loop->tries = c->fs->tries;
     c->fs->loop = loop;
 }
 
@@ -1405,6 +1554,7 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
         if (loop == NULL) {
             return; /* reported by the flow checks */
         }
+        leave_tries(c, loop->tries, line);
         if (s->kind == PLUM_STMT_CONTINUE && !loop->is_for) {
             emit_loop(c, loop->start, s->span);
             return;
@@ -1419,9 +1569,11 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
     }
     case PLUM_STMT_RETURN:
         if (s->as.expr == NULL) {
+            leave_tries(c, NULL, line);
             op(c, PLUM_OP_RETURN_NONE, line);
         } else {
             compile_as(c, s->as.expr, c->result);
+            leave_tries(c, NULL, line); /* the value waits on the stack */
             op(c, PLUM_OP_RETURN, line);
         }
         return;
@@ -1448,8 +1600,11 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
         return;
     }
     case PLUM_STMT_THROW:
+        compile_expr(c, s->as.expr);
+        op(c, PLUM_OP_THROW, line);
+        return;
     case PLUM_STMT_TRY:
-        unsupported(c, s->span, "throw and try", 21);
+        compile_try(c, s);
         return;
     case PLUM_STMT_TREE:
     case PLUM_STMT_TRAIT:
@@ -1562,6 +1717,11 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
     op(&c, PLUM_OP_RETURN_NONE,
        program->count > 0 ? program->stmts[program->count - 1]->span.line : 1);
 
+    PlumCompiled out = {main, c.global_count, {NULL}};
+    for (int k = 0; k < PLUM_ERROR_COUNT; k++) {
+        out.errors[k] = builtin_error_info(&c, plum_error_name((PlumErrorKind)k));
+        plum_retain(plum_obj(&out.errors[k]->obj));
+    }
     /* the constants that use a tree info hold it now */
     size_t cursor = 0;
     const PlumMapEntry *entry;
@@ -1569,10 +1729,22 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
         plum_release(plum_obj(&((PlumTreeInfo *)entry->value)->obj));
     }
     plum_map_free(&c.trees);
-    PlumCompiled out = {main, c.global_count};
     if (diags->errors != errors_before) {
         plum_release(plum_obj(&main->obj));
         out.main = NULL;
     }
     return out;
+}
+
+void plum_compiled_free(PlumCompiled *compiled) {
+    if (compiled->main != NULL) {
+        plum_release(plum_obj(&compiled->main->obj));
+        compiled->main = NULL;
+    }
+    for (int k = 0; k < PLUM_ERROR_COUNT; k++) {
+        if (compiled->errors[k] != NULL) {
+            plum_release(plum_obj(&compiled->errors[k]->obj));
+            compiled->errors[k] = NULL;
+        }
+    }
 }

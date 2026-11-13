@@ -1,2 +1,2 @@
-tests/lang/strings/error_slice.plum:2: runtime error: slice 1..9 is out of range for a string of 3 characters
+tests/lang/strings/error_slice.plum:2: IndexError: slice 1..9 is out of range for a string of 3 characters
   in <main>, line 2

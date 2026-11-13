@@ -1,2 +1,2 @@
-tests/lang/lists/error_path_index.plum:2: runtime error: index 4 is out of range: the list has 1 item (0 to 0)
+tests/lang/lists/error_path_index.plum:2: IndexError: index 4 is out of range: the list has 1 item (0 to 0)
   in <main>, line 2

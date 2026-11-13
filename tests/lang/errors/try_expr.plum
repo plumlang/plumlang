@@ -1,0 +1,23 @@
+# try expr: the value, or none if computing it throws.
+branch port(text: str) -> int => try int(text) ?? 8080
+drop(port("80"), port("eighty"))
+
+plant parsed = try float("2.5")
+drop(parsed)
+if plant n = try int("x") {
+    drop("never", n)
+} else {
+    drop("not a number")
+}
+
+plant m = {"a": 1}
+drop(try m["a"], try m["b"])
+drop(try [1, 2, 3][9] ?? -1)
+
+branch fails() -> int {
+    throw ValueError("no")
+}
+drop(try fails())
+
+# an error in a callback, caught around the call
+drop([4, 0, 2].map((x) => try (8 // x) ?? 0))

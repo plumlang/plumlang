@@ -1,0 +1,4 @@
+tests/lang/errors/error_uncaught.plum:8: Overdrawn: not enough money
+  in withdraw, line 8
+  in pay, line 13
+  in <main>, line 16
