@@ -40,9 +40,10 @@ typedef struct VM {
     FILE *out;
     FILE *err;
     int exit_code;
-    bool stopped;     /* exit() was called */
-    int stop_at;      /* execute() returns when a RETURN leaves this many frames */
-    uint64_t seed[2]; /* the random key maps hash with */
+    bool stopped;       /* exit() was called */
+    int stop_at;        /* execute() returns when a RETURN leaves this many frames */
+    int callback_depth; /* nested call_value()s */
+    uint64_t seed[2];   /* the random key maps hash with */
     Handler *handlers;
     int handler_count;
     int handler_cap;
@@ -658,6 +659,13 @@ static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc);
  * or exit() returns false, the error already reported.
  */
 static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, PlumValue *out) {
+    if (vm->callback_depth == PLUM_MAX_CALLBACK_DEPTH) {
+        runtime_error(vm, PLUM_ERROR_ERROR,
+                      "too much recursion: more than %d calls nested inside to_str, map and "
+                      "other callbacks",
+                      PLUM_MAX_CALLBACK_DEPTH);
+        return false;
+    }
     push(vm, plum_retain(fn));
     grow(vm, vm->top + (size_t)argc);
     for (int i = 0; i < argc; i++) {
@@ -667,7 +675,9 @@ static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, Pl
     PlumFunction *f = closure != NULL ? closure->fn : plum_as_function(fn);
     int saved = vm->stop_at;
     vm->stop_at = vm->frame_count;
+    vm->callback_depth++;
     bool ok = call(vm, f, closure, argc) && execute(vm) && !vm->stopped;
+    vm->callback_depth--;
     vm->stop_at = saved;
     if (!ok) {
         return false;

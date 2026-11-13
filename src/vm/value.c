@@ -170,7 +170,48 @@ PlumFunction *plum_function_new(const char *name, int arity) {
     return fn;
 }
 
-static void free_object(PlumObj *obj) {
+/*
+ * Objects freed by one release, waiting for their own references to be let
+ * go. Freeing works through this list instead of recursing, so a long chain
+ * (a linked list of a million nodes) can't run the C stack out.
+ */
+typedef struct Pending {
+    PlumObj *local[32];
+    PlumObj **items;
+    size_t len;
+    size_t cap;
+} Pending;
+
+static void pending_push(Pending *p, PlumObj *obj) {
+    if (p->len == p->cap) {
+        size_t cap = p->cap * 2;
+        if (p->items == p->local) {
+            PlumObj **heap = plum_alloc_zeroed(cap, sizeof(PlumObj *));
+            memcpy(heap, p->local, p->len * sizeof(PlumObj *));
+            p->items = heap;
+        } else {
+            p->items = plum_realloc_array(p->items, cap, sizeof(PlumObj *));
+        }
+        p->cap = cap;
+    }
+    p->items[p->len++] = obj;
+}
+
+/* Let go of one reference; an object nothing holds joins the list. */
+static void drop_ref(Pending *p, PlumValue v) {
+    if (v.type == PLUM_VAL_OBJ && --v.as.obj->refcount == 0) {
+        pending_push(p, v.as.obj);
+    }
+}
+
+static void drop_obj(Pending *p, PlumObj *obj) {
+    if (obj != NULL && --obj->refcount == 0) {
+        pending_push(p, obj);
+    }
+}
+
+/* Free one object, handing what it held to the list. */
+static void free_object(PlumObj *obj, Pending *p) {
     switch ((PlumObjType)obj->type) {
     case PLUM_OBJ_STRING:
         plum_free(obj);
@@ -185,9 +226,7 @@ static void free_object(PlumObj *obj) {
     }
     case PLUM_OBJ_TREE_INFO: {
         PlumTreeInfo *info = (PlumTreeInfo *)obj;
-        if (info->parent != NULL) {
-            plum_release(plum_obj(&info->parent->obj));
-        }
+        drop_obj(p, info->parent != NULL ? &info->parent->obj : NULL);
         plum_free(info->field_names);
         plum_free(info->methods);
         plum_free(info->traits);
@@ -197,48 +236,65 @@ static void free_object(PlumObj *obj) {
     case PLUM_OBJ_OBJECT: {
         PlumObject *o = (PlumObject *)obj;
         for (int i = 0; i < o->tree->field_count; i++) {
-            plum_release(o->fields[i]);
+            drop_ref(p, o->fields[i]);
         }
-        plum_release(plum_obj(&o->tree->obj));
+        drop_obj(p, &o->tree->obj);
         plum_free(o);
         return;
     }
     case PLUM_OBJ_CELL: {
         PlumCell *cell = (PlumCell *)obj;
-        plum_release(cell->value);
+        drop_ref(p, cell->value);
         plum_free(cell);
         return;
     }
     case PLUM_OBJ_CLOSURE: {
         PlumClosure *c = (PlumClosure *)obj;
         for (int i = 0; i < c->count; i++) {
-            if (c->cells[i] != NULL) {
-                plum_release(plum_obj(&c->cells[i]->obj));
-            }
+            drop_obj(p, c->cells[i] != NULL ? &c->cells[i]->obj : NULL);
         }
         plum_free(c->cells);
-        plum_release(plum_obj(&c->fn->obj));
+        drop_obj(p, &c->fn->obj);
         plum_free(c);
         return;
     }
     case PLUM_OBJ_LIST: {
         PlumList *list = (PlumList *)obj;
         for (size_t i = 0; i < list->len; i++) {
-            plum_release(list->items[i]);
+            drop_ref(p, list->items[i]);
         }
         plum_free(list->items);
         plum_free(list);
         return;
     }
-    case PLUM_OBJ_MAP:
-        plum_table_free((PlumTable *)obj);
+    case PLUM_OBJ_MAP: {
+        PlumTable *t = (PlumTable *)obj;
+        for (size_t i = 0; i < t->used; i++) {
+            drop_ref(p, t->entries[i].key);
+            drop_ref(p, t->entries[i].value);
+        }
+        t->used = 0;
+        t->count = 0;
+        plum_table_free(t);
         return;
+    }
     }
 }
 
 void plum_release(PlumValue v) {
-    if (v.type == PLUM_VAL_OBJ && --v.as.obj->refcount == 0) {
-        free_object(v.as.obj);
+    if (v.type != PLUM_VAL_OBJ || --v.as.obj->refcount != 0) {
+        return;
+    }
+    Pending p;
+    p.items = p.local;
+    p.len = 0;
+    p.cap = sizeof p.local / sizeof p.local[0];
+    pending_push(&p, v.as.obj);
+    while (p.len > 0) {
+        free_object(p.items[--p.len], &p);
+    }
+    if (p.items != p.local) {
+        plum_free(p.items);
     }
 }
 
