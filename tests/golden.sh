@@ -21,6 +21,7 @@
 #   UPDATE=1 sh tests/golden.sh ./plum    rewrite NAME.out / NAME.err from
 #                                         the actual output (not pending ones)
 #
+# Programs read an empty standard input, so ask() sees the end of input.
 # Carriage returns are ignored when comparing, for Windows builds.
 
 PLUM=${1:-./plum}
@@ -87,7 +88,7 @@ for test in $(find "$DIR" -name '*.plum' | sort); do
     if [ -n "$exit_line" ]; then
         want_exit=$exit_line
     fi
-    run_plum "${subcommand:-run}" "$test" >"$tmp/out" 2>"$tmp/err"
+    run_plum "${subcommand:-run}" "$test" >"$tmp/out" 2>"$tmp/err" </dev/null
     got_exit=$?
     tr -d '\r' <"$tmp/$stream" >"$tmp/actual"
     tr -d '\r' <"$expect" >"$tmp/expected"

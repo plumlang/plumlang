@@ -85,7 +85,14 @@ static void runtime_error(VM *vm, const char *fmt, ...) {
     vfprintf(vm->err, fmt, args);
     fputc('\n', vm->err);
     va_end(args);
+    /* Innermost calls first; a deep recursion shows its two ends. */
     for (int i = vm->frame_count - 1; i >= 0; i--) {
+        int from_top = vm->frame_count - 1 - i;
+        if (from_top == 10 && i > 2) {
+            /* frames i down to 2 are skipped; 1 and 0 are shown */
+            fprintf(vm->err, "  ... %d more calls\n", i - 1);
+            i = 1;
+        }
         const Frame *f = &vm->frames[i];
         fprintf(vm->err, "  in %s, line %u\n", f->fn->name, (unsigned)frame_line(f));
     }
