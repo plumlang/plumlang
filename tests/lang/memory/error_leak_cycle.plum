@@ -1,0 +1,14 @@
+# command: run --check-leaks
+# Objects that refer to each other stay alive; the leak check names them.
+tree Person {
+    name: str
+    friend: Person? = none
+}
+plant ada = Person("Ada")
+plant bo = Person("Bo", ada)
+ada.friend = bo
+for i in 0..2 {
+    plant loop_ = Person("self")
+    loop_.friend = loop_
+}
+drop("done")

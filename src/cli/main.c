@@ -46,6 +46,7 @@ static void print_help(FILE *out) {
           "\n"
           "Usage:\n"
           "  plum run <file> [args...]   Run a Plumlang program\n"
+          "    --check-leaks             ...and report objects left alive in cycles\n"
           "  plum <file.plum> [args...]  Same as `plum run`\n"
           "  plum check <file>           Report every error without running\n"
           "  plum version                Show the version and build\n"
@@ -128,17 +129,35 @@ typedef enum FrontStage {
     STAGE_RUN,    /* plum run: compile and run */
 } FrontStage;
 
-static int cmd_front(const char *name, FrontStage stage, int argc, char **argv);
+static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
+                     const PlumRunOptions *options);
 
 static int cmd_run(int argc, char **argv) {
+    PlumRunOptions options = {0, NULL, false};
+    /* Options for plum itself come before the file. */
+    while (argc > 0 && argv[0][0] == '-' && argv[0][1] == '-') {
+        if (strcmp(argv[0], "--check-leaks") == 0) {
+            options.check_leaks = true;
+        } else {
+            fprintf(stderr,
+                    "plum: error: unknown option '%s'\n"
+                    "  hint: plum run [--check-leaks] hello.plum [args...]\n",
+                    argv[0]);
+            return PLUM_EXIT_USAGE;
+        }
+        argc--;
+        argv++;
+    }
     if (argc < 1) {
         fputs("plum: error: `plum run` needs a file to run\n"
               "  hint: plum run hello.plum\n",
               stderr);
         return PLUM_EXIT_USAGE;
     }
-    /* Arguments after the file are for the program (os.args, #24). */
-    return cmd_front("run", STAGE_RUN, 1, argv);
+    /* Arguments after the file are the program's own (os.args). */
+    options.argc = argc;
+    options.argv = argv;
+    return cmd_front("run", STAGE_RUN, 1, argv, &options);
 }
 
 static void print_token(const PlumToken *tok) {
@@ -171,7 +190,8 @@ static void print_token(const PlumToken *tok) {
 }
 
 /* plum tokens, ast, check, dis and run: the pipeline up to `stage`. */
-static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) {
+static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
+                     const PlumRunOptions *options) {
     if (argc != 1) {
         fprintf(stderr,
                 "plum: error: `plum %s` needs one file\n"
@@ -234,7 +254,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
     if (compiled.main != NULL) {
         if (stage == STAGE_RUN && status == PLUM_EXIT_OK) {
             fflush(stderr);
-            status = plum_vm_run(&compiled, &source, stdout, stderr);
+            status = plum_vm_run(&compiled, &source, options, stdout, stderr);
         }
     }
     plum_compiled_free(&compiled);
@@ -270,16 +290,16 @@ int main(int argc, char **argv) {
         return PLUM_EXIT_OK;
     }
     if (strcmp(cmd, "tokens") == 0) {
-        return cmd_front("tokens", STAGE_TOKENS, argc - 2, argv + 2);
+        return cmd_front("tokens", STAGE_TOKENS, argc - 2, argv + 2, NULL);
     }
     if (strcmp(cmd, "ast") == 0) {
-        return cmd_front("ast", STAGE_AST, argc - 2, argv + 2);
+        return cmd_front("ast", STAGE_AST, argc - 2, argv + 2, NULL);
     }
     if (strcmp(cmd, "dis") == 0) {
-        return cmd_front("dis", STAGE_DIS, argc - 2, argv + 2);
+        return cmd_front("dis", STAGE_DIS, argc - 2, argv + 2, NULL);
     }
     if (strcmp(cmd, "check") == 0) {
-        return cmd_front("check", STAGE_CHECK, argc - 2, argv + 2);
+        return cmd_front("check", STAGE_CHECK, argc - 2, argv + 2, NULL);
     }
     if (strcmp(cmd, "run") == 0) {
         return cmd_run(argc - 2, argv + 2);

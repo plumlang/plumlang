@@ -1,0 +1,12 @@
+# command: run --check-leaks
+# exit: 0
+# With weak back-references, a tree of nodes frees completely.
+tree Node {
+    children: list[Node] = []
+    parent: weak Node? = none
+}
+plant top = Node()
+for i in 0..3 {
+    top.children.push(Node(parent: top))
+}
+drop(len(top.children))

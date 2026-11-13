@@ -1,0 +1,34 @@
+# A weak field doesn't keep its object alive, and reads none once it's gone.
+tree Node {
+    name: str
+    children: list[Node] = []
+    parent: weak Node? = none
+
+    branch add(child: Node) {
+        child.parent = self
+        self.children.push(child)
+    }
+    branch path() -> str {
+        if plant p = self.parent {
+            return p.path() + "/" + self.name
+        }
+        return self.name
+    }
+}
+
+plant top = Node("top")
+plant mid = Node("mid")
+top.add(mid)
+plant leaf = Node("leaf")
+mid.add(leaf)
+drop(leaf.path(), leaf.parent?.name, top.parent?.name)
+
+# the parent goes away when nothing else holds it
+plant child = Node("child", parent: Node("short-lived"))
+drop(child.parent?.name)
+
+plant keeper = Node("kept")
+plant other = Node("other", parent: keeper)
+drop(other.parent?.name)
+keeper = Node("replacement")
+drop(other.parent?.name)

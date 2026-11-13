@@ -2308,6 +2308,16 @@ void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *
         } else if (s->kind == PLUM_STMT_TREE || s->kind == PLUM_STMT_TRAIT) {
             for (size_t k = 0; k < s->as.tree.field_count; k++) {
                 PlumField *f = &s->as.tree.fields[k];
+                PlumTy *ft = from_syntax(&c, f->type);
+                if (f->weak && !plum_ty_is_loose(ft) &&
+                    !(ft->kind == PLUM_TY_OPTIONAL &&
+                      (ft->as.elem->kind == PLUM_TY_TREE || ft->as.elem->kind == PLUM_TY_TRAIT))) {
+                    char a[TYBUF];
+                    plum_diag_error(c.diags, f->span, "E0425",
+                                    "a weak field holds an object that may be gone, so its type "
+                                    "is an optional tree, like 'weak Node?'; this is %s",
+                                    tx(ft, a));
+                }
                 if (f->fallback != NULL) {
                     expect_type(&c, f->fallback, from_syntax(&c, f->type));
                 }

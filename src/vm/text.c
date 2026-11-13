@@ -258,6 +258,9 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
         put(b, tmp, strlen(tmp));
         return true;
     }
+    case PLUM_OBJ_WEAK: /* never seen by programs: reading one gives its object */
+        put(b, "<weak>", 6);
+        return true;
     case PLUM_OBJ_TREE_INFO:
         snprintf(tmp, sizeof tmp, "<tree %.150s>", plum_as_tree_info(v)->name);
         put(b, tmp, strlen(tmp));

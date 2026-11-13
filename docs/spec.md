@@ -948,8 +948,20 @@ tree Node {
 }
 ```
 
-In debug builds (`plum run --check-leaks`), objects still alive in a cycle
-when the program ends are reported with the line that created them.
+`weak` goes on a field whose type is an optional tree or trait (E0425).
+Assigning an object to a weak field doesn't keep it alive; reading the
+field gives the object while something else holds it, and `none` after.
+
+`plum run --check-leaks program.plum` reports, when the program ends, the
+tree objects still alive because they are in a cycle, by tree and the line
+that made them, and exits with code 1 if there are any:
+
+```text
+leak check: 2 objects are still alive in reference cycles:
+  1 Pair, made on line 29
+  1 Pair, made on line 30
+  hint: make one direction of each cycle weak, like 'parent: weak Node? = none'
+```
 
 ### 11.4 What the runtime guarantees
 

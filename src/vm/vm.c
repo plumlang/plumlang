@@ -54,7 +54,9 @@ typedef struct VM {
     size_t trace_cap;
     PlumTreeInfo *const *errors; /* the built-in error trees */
     int to_str;                  /* the method number of to_str */
-    PlumTextHook text_hook;      /* objects become text through their to_str() */
+    const PlumRunOptions *options;
+    PLUM_ARRAY(PlumWeak *) tracked; /* --check-leaks: a weak box for every tree object */
+    PlumTextHook text_hook;         /* objects become text through their to_str() */
 } VM;
 
 /* ------------------------------------------------------------------ */
@@ -393,6 +395,8 @@ static const char *type_name(PlumValue v) {
         }
         case PLUM_OBJ_TREE_INFO:
             return "tree";
+        case PLUM_OBJ_WEAK:
+            return "weak";
         case PLUM_OBJ_LIST:
             return "list";
         case PLUM_OBJ_MAP:
@@ -1571,6 +1575,12 @@ static bool execute(VM *vm) {
                 o->fields[i] = vm->stack[vm->top - n + i]; /* refs move */
             }
             vm->top -= n;
+            if (vm->options->check_leaks && tree->kind == NULL) {
+                SAVE_IP();
+                PlumWeak *w = plum_weak_of(o);
+                w->line = frame_line(frame);
+                plum_array_push(&vm->tracked, w);
+            }
             push(vm, plum_obj(&o->obj));
             break;
         }
@@ -1599,6 +1609,26 @@ static bool execute(VM *vm) {
                       plum_tree_is(plum_as_object(v)->tree, tree);
             push(vm, plum_bool(is));
             plum_release(v);
+            break;
+        }
+        case PLUM_OP_WEAK: {
+            PlumValue *v = peek(vm, 0);
+            if (v->type == PLUM_VAL_OBJ) {
+                PlumWeak *w = plum_weak_of(plum_as_object(*v));
+                plum_release(*v);
+                *v = plum_obj(&w->obj);
+            }
+            break;
+        }
+        case PLUM_OP_UNWEAK: {
+            PlumValue *v = peek(vm, 0);
+            if (v->type == PLUM_VAL_OBJ) {
+                PlumObject *target = ((PlumWeak *)v->as.obj)->target;
+                PlumValue strong =
+                    target != NULL ? plum_retain(plum_obj(&target->obj)) : plum_none();
+                plum_release(*v);
+                *v = strong;
+            }
             break;
         }
         case PLUM_OP_IS_TRAIT: {
@@ -1803,7 +1833,74 @@ static bool execute(VM *vm) {
 #undef STR_COMPARE
 }
 
-int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out, FILE *err) {
+/*
+ * --check-leaks, once the program's own references are gone: report the
+ * tree objects still alive (they keep each other alive in cycles), by tree
+ * and the line that made them. Then break those cycles, so the memory is
+ * really given back. Returns the number of objects found.
+ */
+static size_t check_leaks(VM *vm) {
+    typedef struct Group {
+        const char *tree;
+        uint32_t line;
+        size_t count;
+    } Group;
+    PLUM_ARRAY(Group) groups = {0};
+    PLUM_ARRAY(PlumObject *) alive = {0};
+    for (size_t i = 0; i < vm->tracked.len; i++) {
+        PlumObject *o = vm->tracked.items[i]->target;
+        if (o == NULL) {
+            continue;
+        }
+        plum_array_push(&alive, o);
+        bool found = false;
+        for (size_t g = 0; g < groups.len && !found; g++) {
+            if (groups.items[g].tree == o->tree->name &&
+                groups.items[g].line == vm->tracked.items[i]->line) {
+                groups.items[g].count++;
+                found = true;
+            }
+        }
+        if (!found) {
+            Group g = {o->tree->name, vm->tracked.items[i]->line, 1};
+            plum_array_push(&groups, g);
+        }
+    }
+    if (alive.len == 0) {
+        fprintf(vm->err, "leak check: every object was freed\n");
+    } else {
+        fprintf(vm->err, "leak check: %zu object%s still alive in reference cycles:\n", alive.len,
+                alive.len == 1 ? " is" : "s are");
+        for (size_t g = 0; g < groups.len; g++) {
+            fprintf(vm->err, "  %zu %s, made on line %u\n", groups.items[g].count,
+                    groups.items[g].tree, (unsigned)groups.items[g].line);
+        }
+        fprintf(vm->err, "  hint: make one direction of each cycle weak, like 'parent: weak "
+                         "Node? = none'\n");
+    }
+    /* Break the cycles: every leaked object lets go of its fields. */
+    for (size_t i = 0; i < alive.len; i++) {
+        alive.items[i]->obj.refcount++; /* held while its fields go */
+    }
+    for (size_t i = 0; i < alive.len; i++) {
+        PlumObject *o = alive.items[i];
+        for (int f = 0; f < o->tree->field_count; f++) {
+            PlumValue v = o->fields[f];
+            o->fields[f] = plum_none();
+            plum_release(v);
+        }
+    }
+    for (size_t i = 0; i < alive.len; i++) {
+        plum_release(plum_obj(&alive.items[i]->obj));
+    }
+    size_t n = alive.len;
+    plum_array_free(&alive);
+    plum_array_free(&groups);
+    return n;
+}
+
+int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
+                const PlumRunOptions *options, FILE *out, FILE *err) {
     VM *vm = plum_alloc_zeroed(1, sizeof *vm);
     vm->source = source;
     vm->out = out;
@@ -1816,6 +1913,7 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out
     /* <main> sits at stack index 0, like any called function. */
     push(vm, plum_retain(plum_obj(&program->main->obj)));
     vm->errors = program->errors;
+    vm->options = options;
     vm->to_str = program->to_str;
     vm->text_hook = (PlumTextHook){object_text, vm};
     vm->thrown = plum_none();
@@ -1829,10 +1927,20 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out
     for (int i = 0; i < vm->global_count; i++) {
         plum_release(vm->globals[i]);
     }
-    int code = vm->exit_code;
-    plum_free(vm->globals);
     plum_release(vm->thrown);
     plum_release(vm->trace_of);
+    int code = vm->exit_code;
+    if (options->check_leaks) {
+        fflush(out);
+        if (check_leaks(vm) > 0 && code == 0) {
+            code = 1;
+        }
+    }
+    for (size_t i = 0; i < vm->tracked.len; i++) {
+        plum_release(plum_obj(&vm->tracked.items[i]->obj));
+    }
+    plum_array_free(&vm->tracked);
+    plum_free(vm->globals);
     plum_free(vm->trace);
     plum_free(vm->handlers);
     plum_free(vm->stack);

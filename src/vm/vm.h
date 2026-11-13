@@ -23,11 +23,21 @@
  * with Windows' 1 MB stack. */
 #define PLUM_MAX_CALLBACK_DEPTH 100
 
+/* How to run a program. */
+typedef struct PlumRunOptions {
+    int argc; /* the program's own arguments (os.args) */
+    char **argv;
+    /* Report tree objects still alive in reference cycles when the program
+     * ends (spec 11.3), then free them. */
+    bool check_leaks;
+} PlumRunOptions;
+
 /*
  * Run a compiled program. Output from drop goes to `out`, errors to `err`.
- * Returns the exit code: 0, 1 after a runtime error, or the code given to
- * exit().
+ * Returns the exit code: 0, 1 after a runtime error (or a leak found by
+ * the leak check), or the code given to exit().
  */
-int plum_vm_run(const PlumCompiled *program, const PlumSource *source, FILE *out, FILE *err);
+int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
+                const PlumRunOptions *options, FILE *out, FILE *err);
 
 #endif /* PLUM_VM_VM_H */
