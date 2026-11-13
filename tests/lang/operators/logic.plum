@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # From the prototype's test_logic.plum, with and/or/not.
 drop("--- EDGE TEST 1: AND FALSE CASE ---")
 if good and bad {

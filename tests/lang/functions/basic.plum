@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # From the prototype's func.plum, which printed 25.0.
 branch get_age() -> int {
     return 25

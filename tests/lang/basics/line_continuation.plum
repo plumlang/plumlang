@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # A statement continues inside brackets and after a binary operator.
 plant total = 1 +
     2 +

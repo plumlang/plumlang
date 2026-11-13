@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # From the prototype's index.plum and main.plum. Integers stay integers:
 # the prototype printed 20.0 and 8.0 here.
 drop(10 + 10)

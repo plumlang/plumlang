@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # From the prototype's v0.10-compound-assignment.plum. a /= 3 would make
 # a float, which an int variable cannot hold, so this uses //=.
 plant a = 10

@@ -1,4 +1,3 @@
-# pending: needs the compiler and VM (#16)
 # From the prototype's v0.8.plum.
 if 10 > 5 {
     drop("TEST 1: PASS")
