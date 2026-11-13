@@ -1,0 +1,59 @@
+# A small bank: trees with methods, inheritance, errors and to_str.
+
+tree InsufficientFunds : Error {
+    short_by: float
+}
+
+tree Account {
+    owner: str
+    balance: float = 0.0
+    history: list[str] = []
+
+    branch deposit(amount: float) {
+        if amount <= 0 {
+            throw ValueError("a deposit must be positive, not {amount}")
+        }
+        self.balance += amount
+        self.history.push("+{amount:.2}")
+    }
+
+    branch withdraw(amount: float) {
+        if amount > self.balance {
+            throw InsufficientFunds("{self.owner} is short", amount - self.balance)
+        }
+        self.balance -= amount
+        self.history.push("-{amount:.2}")
+    }
+
+    branch month_end() {}
+
+    branch to_str() -> str => "{self.owner}: {self.balance:.2}"
+}
+
+tree Savings : Account {
+    rate: float = 0.01
+
+    branch month_end() {
+        plant interest = self.balance * self.rate
+        self.deposit(interest)
+    }
+
+    branch to_str() -> str => super.to_str() + " (savings at {self.rate * 100:.1}%)"
+}
+
+plant accounts: list[Account] = [Account("Ada", 100.0), Savings("Grace", 1000.0, rate: 0.02)]
+
+for acct in accounts {
+    acct.deposit(50)
+    try {
+        acct.withdraw(500)
+    } catch e: InsufficientFunds {
+        drop("refused: {e.message} by {e.short_by:.2}")
+    }
+    acct.month_end()
+}
+
+for acct in accounts {
+    drop(acct)
+    drop("  history:", acct.history.join(" "))
+}

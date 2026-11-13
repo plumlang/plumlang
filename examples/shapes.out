@@ -1,0 +1,6 @@
+circle: area 3.14, perimeter 6.28
+rect: area 8.00, perimeter 12.00
+square: area 9.00, perimeter 12.00
+biggest: square
+total area: 20.14
+rects: ["rect", "square"]

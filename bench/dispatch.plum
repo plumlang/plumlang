@@ -1,0 +1,37 @@
+# Method calls through a trait: 3 million area() calls on 3 kinds of shape,
+# plus a method that changes its object.
+trait Shape {
+    branch area() -> float
+}
+tree Circle : Shape {
+    r: float
+    branch area() -> float => 3.0 * self.r * self.r
+}
+tree Rect : Shape {
+    w: float
+    h: float
+    branch area() -> float => self.w * self.h
+}
+tree Square : Rect {
+    branch init(side: float) {
+        self.w = side
+        self.h = side
+    }
+}
+tree Tally {
+    total: float = 0.0
+    count: int = 0
+    branch add(x: float) {
+        self.total += x
+        self.count += 1
+    }
+}
+
+plant shapes: list[Shape] = [Circle(1.0), Rect(2.0, 3.0), Square(2.0)]
+plant tally = Tally()
+for i in 0..1000000 {
+    for s in shapes {
+        tally.add(s.area())
+    }
+}
+drop("{tally.count} {tally.total:.1}")

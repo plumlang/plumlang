@@ -85,6 +85,7 @@ test: all $(UNIT_BIN)
 	@sh tests/errors-documented.sh
 	@sh tests/bytecode-documented.sh
 	@sh tests/golden.sh $(PLUM)
+	@sh tests/golden.sh $(PLUM) examples
 
 # Regenerate the instruction table in docs/bytecode.md from opcodes.h.
 bytecode-doc:
@@ -100,6 +101,7 @@ bytecode-doc:
 # Rewrite the golden expectations from actual output (review the diff!).
 golden-update: all
 	@UPDATE=1 sh tests/golden.sh $(PLUM)
+	@UPDATE=1 sh tests/golden.sh $(PLUM) examples
 
 C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)
 

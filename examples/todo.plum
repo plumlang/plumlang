@@ -1,0 +1,54 @@
+# A to-do list: objects are shared, lists inside them change in place,
+# and equals decides what == means.
+
+tree Task {
+    title: str
+    done: bool = bad
+
+    branch equals(other: Task) -> bool => self.title == other.title
+    branch to_str() -> str => "[{if self.done { "x" } else { " " }}] {self.title}"
+}
+
+tree TodoList {
+    name: str
+    tasks: list[Task] = []
+
+    branch add(title: str) -> bool {
+        plant task = Task(title)
+        if self.tasks.any((t) => t == task) {
+            return bad
+        }
+        self.tasks.push(task)
+        return good
+    }
+
+    branch finish(title: str) {
+        if plant task = self.tasks.find((t) => t.title == title) {
+            task.done = good
+        } else {
+            throw KeyError("no task called '{title}'")
+        }
+    }
+
+    branch left() -> int => len(self.tasks.filter((t) => not t.done))
+
+    branch to_str() -> str {
+        plant lines = ["{self.name} ({self.left()} left)"]
+        for t in self.tasks {
+            lines.push("  {t}")
+        }
+        return lines.join("\n")
+    }
+}
+
+plant home = TodoList("Home")
+home.add("water the plants")
+home.add("fix the fence")
+drop(home.add("water the plants"))
+home.finish("water the plants")
+try {
+    home.finish("paint the shed")
+} catch e: KeyError {
+    drop(e.message)
+}
+drop(home)

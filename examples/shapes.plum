@@ -1,0 +1,44 @@
+# Traits: any tree that promises Shape's methods can be used as a Shape.
+
+trait Shape {
+    branch area() -> float
+    branch perimeter() -> float
+    branch name() -> str => "shape"
+    branch summary() -> str => "{self.name()}: area {self.area():.2}, perimeter {self.perimeter():.2}"
+}
+
+root PI = 3.14159
+
+tree Circle : Shape {
+    radius: float
+    branch area() -> float => PI * self.radius ** 2
+    branch perimeter() -> float => 2.0 * PI * self.radius
+    branch name() -> str => "circle"
+}
+
+tree Rect : Shape {
+    width: float
+    height: float
+    branch area() -> float => self.width * self.height
+    branch perimeter() -> float => 2.0 * (self.width + self.height)
+    branch name() -> str => "rect"
+}
+
+tree Square : Rect {
+    branch init(side: float) {
+        self.width = side
+        self.height = side
+    }
+    branch name() -> str => "square"
+}
+
+plant shapes: list[Shape] = [Circle(1.0), Rect(2.0, 4.0), Square(3.0)]
+for s in shapes {
+    drop(s.summary())
+}
+
+plant biggest = shapes.sorted_by((s) => s.area())[len(shapes) - 1]
+drop("biggest:", biggest.name())
+plant total = shapes.map((s) => s.area()).reduce((a, b) => a + b, 0.0)
+drop("total area: {total:.2}")
+drop("rects:", shapes.filter((s) => s is Rect).map((s) => s.name()))
