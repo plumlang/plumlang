@@ -31,6 +31,10 @@ const char *plum_method_name(PlumMethod m) {
     return (unsigned)m < PLUM_METHOD_COUNT ? methods[m].name : "?";
 }
 
+bool plum_method_calls_back(PlumMethod m) {
+    return m >= PLUM_METHOD_LIST_MAP && m <= PLUM_METHOD_LIST_SORTED_BY;
+}
+
 bool plum_method_mutates(PlumMethod m) {
     return (unsigned)m < PLUM_METHOD_COUNT && methods[m].mutates;
 }

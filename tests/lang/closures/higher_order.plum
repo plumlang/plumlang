@@ -1,0 +1,12 @@
+# map, filter, reduce, any, all, find and sorted_by take functions.
+plant numbers = [5, 3, 8, 1, 4]
+drop(numbers.filter((n) => n % 2 == 0))
+drop(numbers.map((n) => n * n), numbers.map((n) => "#{n}"))
+drop(numbers.reduce((total, n) => total + n, 0), numbers.reduce((s, n) => s + str(n), ""))
+drop(numbers.any((n) => n > 7), numbers.all((n) => n > 0), numbers.find((n) => n > 4), numbers.find((n) => n > 99))
+plant words = ["pear", "fig", "banana"]
+drop(words.sorted_by((w) => len(w)), words.sorted_by((w) => w))
+plant limit = 4
+drop(numbers.filter((n) => n > limit).map((n) => n * 10))
+branch total_len(ws: list[str]) -> int => ws.map((w) => len(w)).reduce((a, b) => a + b, 0)
+drop(total_len(words))

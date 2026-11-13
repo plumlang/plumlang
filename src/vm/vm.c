@@ -34,6 +34,7 @@ typedef struct VM {
     FILE *err;
     int exit_code;
     bool stopped;     /* exit() was called */
+    int stop_at;      /* execute() returns when a RETURN leaves this many frames */
     uint64_t seed[2]; /* the random key maps hash with */
 } VM;
 
@@ -85,6 +86,7 @@ PLUM_PRINTF(2, 3)
 static void runtime_error(VM *vm, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
+    fflush(vm->out); /* the program's output so far comes before the error */
     const Frame *top = &vm->frames[vm->frame_count - 1];
     fprintf(vm->err, "%s:%u: runtime error: ", vm->source->path, (unsigned)frame_line(top));
     vfprintf(vm->err, fmt, args);
@@ -518,6 +520,143 @@ static PlumValue *walk_path(VM *vm, PlumValue *place, const PlumValue *keys, int
         }
     }
     return place;
+}
+
+static bool execute(VM *vm);
+static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc);
+
+/*
+ * Call a Plumlang function from native code (map, filter, ...): run the
+ * loop until that call returns. Arguments are borrowed. On a runtime error
+ * or exit() returns false, the error already reported.
+ */
+static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, PlumValue *out) {
+    push(vm, plum_retain(fn));
+    grow(vm, vm->top + (size_t)argc);
+    for (int i = 0; i < argc; i++) {
+        push(vm, plum_retain(args[i]));
+    }
+    PlumClosure *closure = fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn) : NULL;
+    PlumFunction *f = closure != NULL ? closure->fn : plum_as_function(fn);
+    int saved = vm->stop_at;
+    vm->stop_at = vm->frame_count;
+    bool ok = call(vm, f, closure, argc) && execute(vm) && !vm->stopped;
+    vm->stop_at = saved;
+    if (!ok) {
+        return false;
+    }
+    *out = pop(vm);
+    return true;
+}
+
+/*
+ * map, filter, reduce, any, all, find and sorted_by. They hold their own
+ * references to the list and the function: a callback may grow the stack,
+ * so nothing here points into it across a call.
+ */
+static bool run_higher_order(VM *vm, PlumMethod m, PlumList *list, const PlumValue *args,
+                             PlumValue *result) {
+    PlumValue fn = args[0];
+    PlumValue r;
+    switch (m) {
+    case PLUM_METHOD_LIST_MAP:
+    case PLUM_METHOD_LIST_FILTER: {
+        PlumList *out = plum_list_new(m == PLUM_METHOD_LIST_MAP ? list->len : 0);
+        for (size_t i = 0; i < list->len; i++) {
+            if (!call_value(vm, fn, &list->items[i], 1, &r)) {
+                plum_release(plum_obj(&out->obj));
+                return false;
+            }
+            if (m == PLUM_METHOD_LIST_MAP) {
+                plum_list_push(out, r);
+            } else if (r.as.b) {
+                plum_list_push(out, plum_retain(list->items[i]));
+            }
+        }
+        *result = plum_obj(&out->obj);
+        return true;
+    }
+    case PLUM_METHOD_LIST_REDUCE: {
+        PlumValue total = plum_retain(args[1]);
+        for (size_t i = 0; i < list->len; i++) {
+            PlumValue pair[2] = {total, list->items[i]};
+            bool ok = call_value(vm, fn, pair, 2, &r);
+            plum_release(total);
+            if (!ok) {
+                return false;
+            }
+            total = r;
+        }
+        *result = total;
+        return true;
+    }
+    case PLUM_METHOD_LIST_ANY:
+    case PLUM_METHOD_LIST_ALL:
+    case PLUM_METHOD_LIST_FIND: {
+        bool want = m != PLUM_METHOD_LIST_ALL; /* stop at the first item that is (not) a match */
+        for (size_t i = 0; i < list->len; i++) {
+            if (!call_value(vm, fn, &list->items[i], 1, &r)) {
+                return false;
+            }
+            if (r.as.b == want) {
+                *result = m == PLUM_METHOD_LIST_FIND ? plum_retain(list->items[i])
+                                                     : plum_bool(m == PLUM_METHOD_LIST_ANY);
+                return true;
+            }
+        }
+        *result = m == PLUM_METHOD_LIST_FIND ? plum_none() : plum_bool(m == PLUM_METHOD_LIST_ALL);
+        return true;
+    }
+    case PLUM_METHOD_LIST_SORTED_BY: {
+        /* the key of every item first, then a stable sort of (key, item) */
+        size_t n = list->len;
+        PlumList *keys = plum_list_new(n);
+        for (size_t i = 0; i < n; i++) {
+            if (!call_value(vm, fn, &list->items[i], 1, &r)) {
+                plum_release(plum_obj(&keys->obj));
+                return false;
+            }
+            plum_list_push(keys, r);
+        }
+        size_t *order = plum_alloc_zeroed(n > 0 ? n : 1, sizeof(size_t));
+        size_t *tmp = plum_alloc_zeroed(n > 0 ? n : 1, sizeof(size_t));
+        for (size_t i = 0; i < n; i++) {
+            order[i] = i;
+        }
+        /* bottom-up merge sort of positions by key: stable */
+        for (size_t width = 1; width < n; width *= 2) {
+            for (size_t lo = 0; lo < n; lo += 2 * width) {
+                size_t mid = lo + width < n ? lo + width : n;
+                size_t hi = lo + 2 * width < n ? lo + 2 * width : n;
+                size_t i = lo, j = mid, k = lo;
+                while (i < mid && j < hi) {
+                    tmp[k++] =
+                        plum_compare_values(keys->items[order[i]], keys->items[order[j]]) <= 0
+                            ? order[i++]
+                            : order[j++];
+                }
+                while (i < mid) {
+                    tmp[k++] = order[i++];
+                }
+                while (j < hi) {
+                    tmp[k++] = order[j++];
+                }
+            }
+            memcpy(order, tmp, n * sizeof(size_t));
+        }
+        PlumList *out = plum_list_new(n);
+        for (size_t i = 0; i < n; i++) {
+            plum_list_push(out, plum_retain(list->items[order[i]]));
+        }
+        plum_free(order);
+        plum_free(tmp);
+        plum_release(plum_obj(&keys->obj));
+        *result = plum_obj(&out->obj);
+        return true;
+    }
+    default:
+        return false;
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1049,6 +1188,26 @@ static bool execute(VM *vm) {
                                PLACE_KIND(op, PLUM_OP_METHOD_LOCAL, PLUM_OP_METHOD_GLOBAL), slot);
             PlumValue result;
             char error[256];
+            if (plum_method_calls_back((PlumMethod)m)) {
+                /* own references to everything, then off the stack: the
+                 * callbacks may move it */
+                PlumValue list = plum_retain(*receiver);
+                PlumValue args[2] = {plum_none(), plum_none()};
+                for (uint16_t i = 0; i < argc && i < 2; i++) {
+                    args[i] = plum_retain(vm->stack[vm->top - argc + i]);
+                }
+                unwind_to(vm, vm->top - argc - (op == PLUM_OP_METHOD ? 1 : 0));
+                SAVE_IP();
+                bool done = run_higher_order(vm, (PlumMethod)m, plum_as_list(list), args, &result);
+                plum_release(list);
+                plum_release(args[0]);
+                plum_release(args[1]);
+                if (!done) {
+                    return false;
+                }
+                push(vm, result);
+                break;
+            }
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - argc], argc,
                                       &result, error, sizeof error);
             unwind_to(vm, vm->top - argc - (op == PLUM_OP_METHOD ? 1 : 0));
@@ -1306,13 +1465,11 @@ static bool execute(VM *vm) {
             PlumValue result = op == PLUM_OP_RETURN ? pop(vm) : plum_none();
             size_t base = frame->base;
             vm->frame_count--;
-            if (vm->frame_count == 0) {
-                plum_release(result);
-                unwind_to(vm, 0);
-                return true;
-            }
             unwind_to(vm, base - 1); /* the slots and the function itself */
             push(vm, result);
+            if (vm->frame_count == vm->stop_at) {
+                return true; /* back to whoever started this run */
+            }
             frame = &vm->frames[vm->frame_count - 1];
             ip = frame->ip;
             chunk = frame->fn->chunk;

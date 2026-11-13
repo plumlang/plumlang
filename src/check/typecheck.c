@@ -375,6 +375,16 @@ static PlumTy *list_method(Checker *c, PlumExpr *e, PlumTy *list, const char *na
             return NULL;
         }
         return method_type(c, c->t.str, "separator", c->t.str, true, NULL, NULL);
+    case PLUM_METHOD_LIST_FILTER:
+    case PLUM_METHOD_LIST_ANY:
+    case PLUM_METHOD_LIST_ALL:
+    case PLUM_METHOD_LIST_FIND: {
+        PlumTy *test = method_type(c, c->t.boolean, "item", elem, false, NULL, NULL);
+        PlumTy *result = m == PLUM_METHOD_LIST_FILTER ? list
+                         : m == PLUM_METHOD_LIST_FIND ? plum_ty_wrap(&c->t, PLUM_TY_OPTIONAL, elem)
+                                                      : c->t.boolean;
+        return method_type(c, result, "test", test, false, NULL, NULL);
+    }
     default:
         break;
     }
@@ -742,10 +752,107 @@ static PlumTy *call_constructor(Checker *c, PlumExpr *call, PlumSymbol *tree) {
     return object;
 }
 
+/*
+ * map, reduce and sorted_by on a list: their result depends on the
+ * function given, so they are checked here. Returns NULL for any other call.
+ */
+static PlumTy *check_higher_order(Checker *c, PlumExpr *e) {
+    PlumExpr *callee = e->as.call.callee;
+    if (callee->kind != PLUM_EXPR_FIELD || callee->as.field.optional) {
+        return NULL;
+    }
+    const char *name = callee->as.field.name;
+    bool map = strcmp(name, "map") == 0, reduce = strcmp(name, "reduce") == 0,
+         sorted_by = strcmp(name, "sorted_by") == 0;
+    if (!map && !reduce && !sorted_by) {
+        return NULL;
+    }
+    PlumTy *list = check_expr(c, callee->as.field.object, NULL);
+    if (list->kind != PLUM_TY_LIST) {
+        return NULL; /* reported (or not a list): the general path takes over */
+    }
+    PlumTy *elem = list->as.elem;
+    size_t want = reduce ? 2 : 1;
+    char a[TYBUF], b[TYBUF];
+    if (e->as.call.arg_count != want) {
+        plum_diag_error(c->diags, e->span, "E0406", "%s() takes %zu argument%s", name, want,
+                        want == 1 ? "" : "s");
+        return c->t.error;
+    }
+    for (size_t i = 0; i < want; i++) {
+        if (e->as.call.args[i].name != NULL) {
+            plum_diag_error(c->diags, e->as.call.args[i].span, "E0407",
+                            "%s() takes its arguments in order, without names", name);
+        }
+    }
+    PlumExpr *fn = e->as.call.args[0].value;
+    PlumTy *acc = NULL;
+    if (reduce) {
+        /* reduce(f, initial): the initial value's type is what f returns */
+        acc = check_expr(c, e->as.call.args[1].value, NULL);
+    }
+    PlumTy *want_fn = reduce ? method_type(c, acc, "total", acc, false, "item", elem)
+                             : method_type(c, c->t.unknown, "item", elem, false, NULL, NULL);
+    PlumTy *f = check_expr(c, fn, want_fn);
+    PlumTy *result = c->t.unknown;
+    if (!plum_ty_is_loose(f)) {
+        if (f->kind != PLUM_TY_FUNC) {
+            plum_diag_error(c->diags, fn->span, "E0402", "%s() needs a function, found %s", name,
+                            tx(f, a));
+            return c->t.error;
+        }
+        size_t params = f->as.func.param_count;
+        if (params != (reduce ? 2u : 1u)) {
+            plum_diag_error(c->diags, fn->span, "E0402",
+                            "%s() needs a function of %s, but this one takes %zu parameter%s", name,
+                            reduce ? "two values, (total, item)" : "one item", params,
+                            params == 1 ? "" : "s");
+            return c->t.error;
+        }
+        /* an annotated parameter must take the list's items */
+        PlumTy *item_param = f->as.func.params[params - 1].ty;
+        if (!plum_ty_assignable(elem, item_param)) {
+            plum_diag_error(c->diags, fn->span, "E0402",
+                            "%s()'s function takes %s, but the list holds %s", name,
+                            tx(item_param, a), tx(elem, b));
+            return c->t.error;
+        }
+        result = f->as.func.result;
+    }
+    PlumTy *out;
+    if (map) {
+        out = plum_ty_wrap(&c->t, PLUM_TY_LIST, result);
+    } else if (reduce) {
+        if (!plum_ty_assignable(result, acc)) {
+            plum_diag_error(c->diags, fn->span, "E0402",
+                            "reduce()'s function must return %s, like its initial value, but "
+                            "returns %s",
+                            tx(acc, a), tx(result, b));
+        }
+        out = acc;
+    } else {
+        if (!plum_ty_is_loose(result) && !plum_ty_is_numeric(result) &&
+            result->kind != PLUM_TY_STR) {
+            plum_diag_error(c->diags, fn->span, "E0415",
+                            "sorted_by() orders by numbers or strings, but this key gives %s",
+                            tx(result, a));
+        }
+        out = list;
+    }
+    /* The compiler reads the call's parameter count from the callee's type. */
+    callee->ty = reduce ? method_type(c, out, "f", f, false, "initial", acc)
+                        : method_type(c, out, "f", f, false, NULL, NULL);
+    return out;
+}
+
 static PlumTy *check_call(Checker *c, PlumExpr *e) {
     PlumExpr *callee = e->as.call.callee;
     PlumSymbol *sym = callee->kind == PLUM_EXPR_NAME ? callee->symbol : NULL;
     char a[TYBUF];
+    PlumTy *higher = check_higher_order(c, e);
+    if (higher != NULL) {
+        return higher;
+    }
 
     if (sym != NULL) {
         switch (sym->kind) {
