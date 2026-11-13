@@ -1,0 +1,63 @@
+# Kinds: cases with and without values, matched by case and by value.
+kind Direction { North, East, South, West }
+
+kind Shape {
+    Circle(radius: float)
+    Rect(width: float, height: float)
+}
+
+branch area(s: Shape) -> float => match s {
+    Circle(r) => 3.14159 * r ** 2
+    Rect(w, h) => w * h
+}
+
+plant heading = Direction.North
+drop(heading, type_of(heading), heading == Direction.North, heading == Direction.South)
+plant shapes = [Shape.Circle(1.0), Shape.Rect(2.0, 3.0)]
+for s in shapes {
+    drop(s, area(s))
+}
+drop(Shape.Rect(2.0, 3.0) == Shape.Rect(2.0, 3.0), Shape.Rect(2.0, 3.0) == Shape.Rect(3.0, 2.0))
+
+branch turn(d: Direction) -> Direction => match d {
+    North => Direction.East
+    East => Direction.South
+    South => Direction.West
+    West => Direction.North
+}
+plant d = Direction.West
+for i in 0..3 {
+    d = turn(d)
+    drop(d)
+}
+
+branch describe(n: int) -> str => match n {
+    0 => "zero"
+    1, 2, 3 => "a few"
+    4..10 => "several"
+    10..=99 => "many"
+    else => "lots"
+}
+for n in [0, 2, 7, 10, 99, 100, -1] {
+    drop(n, describe(n))
+}
+
+root STOP = "halt"
+for command in ["start", "halt", "stop", "dance"] {
+    match command {
+        "start" => drop("starting")
+        "stop", STOP => {
+            drop("stopping")
+        }
+        else => drop("unknown: {command}")
+    }
+}
+drop(match 1 > 0 {
+    good => "yes"
+    bad => "no"
+})
+plant fs = [Shape.Circle(2.0)].map((s) => match s {
+    Circle(r) => (x: float) => x * r
+    Rect(_, h) => (x: float) => x + h
+})
+drop(fs[0](10.0))

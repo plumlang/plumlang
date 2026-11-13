@@ -1,0 +1,33 @@
+# match on ints, strings, floats, bools, ranges and root constants.
+root LIMIT = 100
+branch size(n: int) -> str => match n {
+    0 => "none"
+    1..10 => "small"
+    10..LIMIT => "medium"
+    LIMIT => "exactly the limit"
+    else => "large"
+}
+for n in [0, 5, 10, 99, 100, 1000] {
+    drop(n, size(n))
+}
+
+branch grade(score: float) -> str => match score {
+    100.0 => "perfect"
+    50.0 => "just"
+    else => "other"
+}
+drop(grade(100.0), grade(50.0), grade(10))
+
+# the first arm that fits wins; a match with no value can use return
+branch first_vowel(word: str) -> int {
+    for i in 0..len(word) {
+        match word[i] {
+            "a", "e", "i", "o", "u" => {
+                return i
+            }
+            else => {}
+        }
+    }
+    return -1
+}
+drop(first_vowel("rhythm"), first_vowel("plum"))

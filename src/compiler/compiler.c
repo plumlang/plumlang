@@ -77,6 +77,9 @@ static void compile_stmt(Compiler *c, const PlumStmt *s);
 static uint16_t method_id(Compiler *c, const char *name);
 static const PlumBranch *method_decl(const PlumSymbol *decl, const char *name, int depth);
 static void compile_method_body(Compiler *c, PlumFunction *fn, const PlumBranch *m);
+static const PlumCase *named_case(const PlumExpr *callee, PlumSymbol **kind);
+static void compile_case_value(Compiler *c, const PlumExpr *e, const PlumExpr *callee,
+                               PlumSymbol *kind, const PlumCase *cs);
 
 /* ------------------------------------------------------------------ */
 /* Emitting                                                            */
@@ -721,9 +724,14 @@ static void compile_field(Compiler *c, const PlumExpr *e) {
     const PlumExpr *obj = e->as.field.object;
     PlumSymbol *tree = tree_of(obj->ty);
     int index = tree != NULL ? field_index(tree, e->as.field.name) : -1;
-    if (index < 0 && obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
-        obj->symbol->kind == PLUM_SYM_KIND) {
-        unsupported(c, e->span, "kinds", 22);
+    PlumSymbol *kind = NULL;
+    const PlumCase *cs = index < 0 ? named_case(e, &kind) : NULL;
+    if (cs != NULL && cs->param_count == 0) {
+        compile_case_value(c, NULL, e, kind, cs); /* Direction.North */
+        return;
+    }
+    if (cs != NULL) {
+        unsupported(c, e->span, "a kind case with values as a function (call it)", 22);
         return;
     }
     if (index < 0) {
@@ -934,7 +942,10 @@ static void compile_invoke(Compiler *c, const PlumExpr *e) {
     PlumSymbol *decl = object_decl(obj->ty);
     const PlumTy *fty = unwrap_optional(callee->ty);
     if (decl == NULL || !ty_is(fty, PLUM_TY_FUNC)) {
-        unsupported(c, e->span, "this method", 22);
+        const PlumTy *rt = unwrap_optional(obj->ty);
+        bool task = ty_is(rt, PLUM_TY_TASK) || ty_is(rt, PLUM_TY_CHANNEL);
+        unsupported(c, e->span, task ? "methods of tasks and channels" : "methods of this type",
+                    task ? 27 : 24);
         return;
     }
     uint32_t line = e->span.line;
@@ -974,6 +985,202 @@ static void compile_init_call(Compiler *c, const PlumExpr *e, PlumSymbol *tree,
     plum_chunk_write_u16(chunk(c), (uint16_t)init->param_count, line);
     op(c, PLUM_OP_POP, line);
     op1(c, PLUM_OP_GET_LOCAL, obj, line);
+    c->fs->next_slot = saved;
+}
+
+/* ------------------------------------------------------------------ */
+/* Kinds and match                                                     */
+/* ------------------------------------------------------------------ */
+
+/* The info of case `cs` of `kind` ("Shape.Circle"), made once per program. */
+static PlumTreeInfo *case_info(Compiler *c, const PlumSymbol *kind, const PlumCase *cs) {
+    char name[160];
+    snprintf(name, sizeof name, "%s.%s", kind->name, cs->name);
+    const char *interned = plum_intern_cstr(c->names, name);
+    void *found = NULL;
+    if (plum_map_get(&c->trees, interned, strlen(interned), &found)) {
+        return found;
+    }
+    const char *names[MAX_FIELDS];
+    int n = 0;
+    for (size_t i = 0; i < cs->param_count && n < MAX_FIELDS; i++) {
+        names[n++] = cs->params[i].name;
+    }
+    PlumTreeInfo *info = plum_tree_info_new(interned, NULL, n, names);
+    info->kind = kind->name;
+    plum_map_set(&c->trees, interned, strlen(interned), info);
+    return info;
+}
+
+static const PlumCase *kind_case(const PlumSymbol *kind, const char *name) {
+    const PlumStmt *s = kind->decl;
+    for (size_t i = 0; s != NULL && i < s->as.kind.case_count; i++) {
+        if (strcmp(s->as.kind.cases[i].name, name) == 0) {
+            return &s->as.kind.cases[i];
+        }
+    }
+    return NULL;
+}
+
+static uint16_t case_constant(Compiler *c, const PlumSymbol *kind, const PlumCase *cs,
+                              PlumSpan span) {
+    PlumTreeInfo *info = case_info(c, kind, cs);
+    return constant(c, plum_retain(plum_obj(&info->obj)), span);
+}
+
+/* Kind.Case or Kind.Case(values): NULL unless `callee` names a case. */
+static const PlumCase *named_case(const PlumExpr *callee, PlumSymbol **kind) {
+    if (callee->kind != PLUM_EXPR_FIELD) {
+        return NULL;
+    }
+    const PlumExpr *obj = callee->as.field.object;
+    if (obj->kind != PLUM_EXPR_NAME || obj->symbol == NULL || obj->symbol->kind != PLUM_SYM_KIND) {
+        return NULL;
+    }
+    *kind = obj->symbol;
+    return kind_case(obj->symbol, callee->as.field.name);
+}
+
+/* Shape.Circle(1.0): a kind value with its contents in order. */
+static void compile_case_value(Compiler *c, const PlumExpr *e, const PlumExpr *callee,
+                               PlumSymbol *kind, const PlumCase *cs) {
+    uint16_t n = 0;
+    if (e != NULL) {
+        compile_args(c, e, callee->ty, NULL);
+        n = (uint16_t)cs->param_count;
+    }
+    op2(c, PLUM_OP_NEW_OBJECT, case_constant(c, kind, cs, callee->span), n, callee->span.line);
+}
+
+/* The case a pattern names (North, Circle(r), Direction.North), or NULL. */
+static const PlumCase *pattern_case(const PlumExpr *p, PlumSymbol **kind) {
+    const PlumSymbol *cs = p->kind == PLUM_EXPR_NAME   ? p->symbol
+                           : p->kind == PLUM_EXPR_CALL ? p->as.call.callee->symbol
+                                                       : NULL;
+    if (cs != NULL && cs->kind == PLUM_SYM_CASE) {
+        *kind = cs->owner;
+        return kind_case(cs->owner, cs->name);
+    }
+    if (p->kind == PLUM_EXPR_FIELD) {
+        return named_case(p, kind);
+    }
+    return NULL;
+}
+
+/*
+ * One pattern against the subject in local `subject`: jumps to `fail` (to
+ * be patched) when it doesn't fit; when it does, binds the case's values.
+ * Returns false for a pattern that always fits (_).
+ */
+static bool compile_pattern(Compiler *c, const PlumExpr *p, uint16_t subject, size_t *fail) {
+    uint32_t line = p->span.line;
+    if (p->kind == PLUM_EXPR_WILDCARD) {
+        return false;
+    }
+    PlumSymbol *kind = NULL;
+    const PlumCase *cs = pattern_case(p, &kind);
+    if (cs != NULL) {
+        op1(c, PLUM_OP_GET_LOCAL, subject, line);
+        op1(c, PLUM_OP_IS_TREE, case_constant(c, kind, cs, p->span), line);
+        *fail = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line);
+        for (size_t i = 0; p->kind == PLUM_EXPR_CALL && i < p->as.call.arg_count; i++) {
+            const PlumExpr *bind = p->as.call.args[i].value;
+            if (bind->kind != PLUM_EXPR_NAME || bind->symbol == NULL) {
+                continue; /* _ */
+            }
+            op1(c, PLUM_OP_GET_LOCAL, subject, line);
+            op1(c, PLUM_OP_GET_FIELD, (uint16_t)i, line);
+            op1(c, PLUM_OP_SET_LOCAL, new_local(c, bind->symbol, bind->span), line);
+            box_if_captured(c, bind->symbol, bind->span);
+        }
+        return true;
+    }
+    if (p->kind == PLUM_EXPR_RANGE) {
+        /* low <= subject < high (or <= high) */
+        op1(c, PLUM_OP_GET_LOCAL, subject, line);
+        compile_expr(c, p->as.range.low);
+        op(c, PLUM_OP_GE_INT, line);
+        size_t low_fail = emit_jump(c, PLUM_OP_JUMP_IF_FALSE_KEEP, line);
+        op(c, PLUM_OP_POP, line);
+        op1(c, PLUM_OP_GET_LOCAL, subject, line);
+        compile_expr(c, p->as.range.high);
+        op(c, p->as.range.inclusive ? PLUM_OP_LE_INT : PLUM_OP_LT_INT, line);
+        patch_jump(c, low_fail, p->span);
+        *fail = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line);
+        return true;
+    }
+    /* a literal or a root constant: equal values */
+    op1(c, PLUM_OP_GET_LOCAL, subject, line);
+    compile_expr(c, p);
+    op(c, PLUM_OP_EQ, line);
+    *fail = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line);
+    return true;
+}
+
+/*
+ * match subject { patterns => body ... else => body }
+ *
+ * The subject goes in a hidden local. Each arm tries its patterns in
+ * order; the first that fits binds its names and runs the arm. A match
+ * used as a value leaves the arm's value; otherwise it leaves none.
+ */
+static void compile_match(Compiler *c, const PlumExpr *e) {
+    uint32_t line = e->span.line;
+    int saved = c->fs->next_slot;
+    uint16_t subject = new_local(c, NULL, e->span);
+    compile_expr(c, e->as.match.subject);
+    op1(c, PLUM_OP_SET_LOCAL, subject, line);
+    bool value = e->ty != NULL && e->ty->kind != PLUM_TY_NONE;
+    PLUM_ARRAY(size_t) to_end = {0};
+    for (size_t i = 0; i < e->as.match.arm_count; i++) {
+        const PlumMatchArm *arm = &e->as.match.arms[i];
+        int arm_slots = c->fs->next_slot;
+        PLUM_ARRAY(size_t) to_body = {0};
+        size_t next_arm = 0;
+        bool always = arm->pattern_count == 0; /* else */
+        for (size_t k = 0; k < arm->pattern_count && !always; k++) {
+            size_t fail = 0;
+            if (!compile_pattern(c, arm->patterns[k], subject, &fail)) {
+                always = true;
+                break;
+            }
+            if (k + 1 < arm->pattern_count) {
+                plum_array_push(&to_body, emit_jump(c, PLUM_OP_JUMP, line));
+                patch_jump(c, fail, arm->span); /* on to the next pattern */
+            } else {
+                next_arm = fail;
+            }
+        }
+        if (always && next_arm != 0) {
+            /* `a, _ =>`: the wildcard catches what the earlier patterns missed */
+            plum_array_push(&to_body, emit_jump(c, PLUM_OP_JUMP, line));
+            patch_jump(c, next_arm, arm->span);
+            next_arm = 0;
+        }
+        for (size_t k = 0; k < to_body.len; k++) {
+            patch_jump(c, to_body.items[k], arm->span);
+        }
+        plum_array_free(&to_body);
+        if (value) {
+            compile_as(c, arm->body->as.expr, e->ty);
+        } else {
+            compile_stmt(c, arm->body);
+            op(c, PLUM_OP_NONE, line);
+        }
+        c->fs->next_slot = arm_slots;
+        plum_array_push(&to_end, emit_jump(c, PLUM_OP_JUMP, line));
+        if (next_arm != 0) {
+            patch_jump(c, next_arm, arm->span);
+        }
+        if (always) {
+            break; /* arms after it can't be reached */
+        }
+    }
+    op(c, PLUM_OP_NONE, line); /* no arm fit: only where the checker allows it */
+    for (size_t k = 0; k < to_end.len; k++) {
+        patch_jump(c, to_end.items[k], e->span);
+    }
+    plum_array_free(&to_end);
     c->fs->next_slot = saved;
 }
 
@@ -1207,8 +1414,10 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
         }
         return;
     }
-    if (sym != NULL && sym->kind == PLUM_SYM_KIND) {
-        unsupported(c, e->span, "kinds", 22);
+    PlumSymbol *kind = NULL;
+    const PlumCase *cs = named_case(callee, &kind);
+    if (cs != NULL) {
+        compile_case_value(c, e, callee, kind, cs);
         return;
     }
     if (callee->kind == PLUM_EXPR_FIELD) {
@@ -1364,7 +1573,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         compile_lambda(c, e);
         return;
     case PLUM_EXPR_MATCH:
-        unsupported(c, e->span, "match", 22);
+        compile_match(c, e);
         return;
     case PLUM_EXPR_TRY: {
         /* try expr: the value, or none if computing it throws */

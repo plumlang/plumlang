@@ -387,8 +387,10 @@ static const char *type_name(PlumValue v) {
         case PLUM_OBJ_CLOSURE:
         case PLUM_OBJ_CELL:
             return "branch";
-        case PLUM_OBJ_OBJECT:
-            return plum_as_object(v)->tree->name;
+        case PLUM_OBJ_OBJECT: {
+            const PlumTreeInfo *tree = plum_as_object(v)->tree;
+            return tree->kind != NULL ? tree->kind : tree->name;
+        }
         case PLUM_OBJ_TREE_INFO:
             return "tree";
         case PLUM_OBJ_LIST:

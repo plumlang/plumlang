@@ -25,6 +25,7 @@ Format for a new entry:
 - **Parser**: statements and declarations (functions, trees, traits, kinds, seed, try, match), recovering after errors without losing the next line.
 - **Errors**: each error shows the source line with the mistake underlined, in colour on a terminal (`NO_COLOR` / `FORCE_COLOR`), and a count at the end.
 - **Methods**: methods with `self`, `init`, overriding and `super`, traits with default methods, `x is Trait`, `to_str` for printing and `equals` for `==`; private `_names`; lists and maps in fields change in place. Checks for trait methods, override types, `init` and private names (E0420–E0424). Examples in `examples/` and a `dispatch` benchmark.
+- **Kinds and match**: kind values with and without contents, compared by value and printed as written; `match` on cases (binding their values), literals, ranges and root constants, as a statement or a value.
 - **Memory**: freeing a long chain of objects no longer recurses; callbacks nest at most 100 deep.
 - **Error codes**: every error has a code (`error[E0201]`) explained in `docs/errors.md`.
 - **Names**: `plum check` reports unknown names (with "did you mean"), duplicates, use before declaration and changes to constants; `plum run` checks first.

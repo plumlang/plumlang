@@ -1,10 +1,7 @@
-tests/lang/compiler/error_unsupported.plum:4:1: warning[W0502]: 'd' is never used; remove it, or start its name with '_' to keep it
-4 | plant d = Direction.North
-  | ^~~~~~~~~~~~~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:4:11: error[E0601]: kinds: not supported by the compiler yet (it arrives with #22)
-4 | plant d = Direction.North
-  |           ^~~~~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:5:6: error[E0601]: match: not supported by the compiler yet (it arrives with #22)
-5 | drop(match 3 {
-  |      ^~~~~~~~~
-2 errors and 1 warning
+tests/lang/compiler/error_unsupported.plum:4:11: error[E0601]: spawn: not supported by the compiler yet (it arrives with #27)
+4 | plant t = spawn work()
+  |           ^~~~~~~~~~~~
+tests/lang/compiler/error_unsupported.plum:5:6: error[E0601]: methods of tasks and channels: not supported by the compiler yet (it arrives with #27)
+5 | drop(t.wait())
+  |      ^~~~~~~~
+2 errors

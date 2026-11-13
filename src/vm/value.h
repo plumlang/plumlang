@@ -86,6 +86,9 @@ typedef struct PlumTreeInfo {
     int method_count;
     const char **traits; /* every trait its objects have, by interned name */
     int trait_count;
+    /* A kind's case ("Shape.Circle") instead of a tree: its objects are
+     * values, compared by case and contents. NULL for a tree. */
+    const char *kind;
 } PlumTreeInfo;
 
 /* An object of a tree: shared, not copied (spec 8.3). */

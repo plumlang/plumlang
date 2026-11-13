@@ -340,6 +340,19 @@ bool plum_values_equal(PlumValue a, PlumValue b) {
         if (a.as.obj->type == PLUM_OBJ_MAP && b.as.obj->type == PLUM_OBJ_MAP) {
             return plum_tables_equal(plum_as_table(a), plum_as_table(b));
         }
+        if (a.as.obj->type == PLUM_OBJ_OBJECT && b.as.obj->type == PLUM_OBJ_OBJECT) {
+            /* kind values: the same case with equal contents; tree objects: identity */
+            const PlumObject *x = plum_as_object(a), *y = plum_as_object(b);
+            if (x->tree->kind == NULL || x->tree != y->tree) {
+                return false;
+            }
+            for (int i = 0; i < x->tree->field_count; i++) {
+                if (!plum_values_equal(x->fields[i], y->fields[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
         return false;
     }
     return false;
