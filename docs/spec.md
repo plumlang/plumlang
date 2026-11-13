@@ -776,6 +776,11 @@ plant heading = Direction.North
 
 `match` on a kind must cover every case.
 
+A kind's values are values like numbers and strings: two are equal when
+they are the same case with equal contents (`Shape.Rect(2.0, 3.0) ==
+Shape.Rect(2.0, 3.0)`), and they print as written: `Direction.North`,
+`Shape.Circle(1.0)`. `type_of` gives the kind's name.
+
 ## 9. Modules (Stage 5)
 
 ### 9.1 Files are modules

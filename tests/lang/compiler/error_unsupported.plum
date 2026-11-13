@@ -1,8 +1,5 @@
 # command: dis
 # Correct programs (plum check accepts them) using Stage 5 features.
-kind Direction { North, South }
-plant d = Direction.North
-drop(match 3 {
-    1 => "one"
-    else => "many"
-})
+branch work() -> int => 1
+plant t = spawn work()
+drop(t.wait())

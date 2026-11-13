@@ -236,7 +236,25 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
             plum_release(plum_obj(&text->obj));
             return true;
         }
-        snprintf(tmp, sizeof tmp, "<%.150s>", plum_as_object(v)->tree->name);
+        const PlumObject *o = plum_as_object(v);
+        if (o->tree->kind != NULL) {
+            /* a kind value prints as written: Direction.North, Shape.Circle(1.0) */
+            put(b, o->tree->name, strlen(o->tree->name));
+            if (o->tree->field_count > 0) {
+                put(b, "(", 1);
+                for (int i = 0; i < o->tree->field_count; i++) {
+                    if (i > 0) {
+                        put(b, ", ", 2);
+                    }
+                    if (!put_plain(b, o->fields[i], true, hook)) {
+                        return false;
+                    }
+                }
+                put(b, ")", 1);
+            }
+            return true;
+        }
+        snprintf(tmp, sizeof tmp, "<%.150s>", o->tree->name);
         put(b, tmp, strlen(tmp));
         return true;
     }

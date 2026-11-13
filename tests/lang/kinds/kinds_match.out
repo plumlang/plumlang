@@ -1,0 +1,20 @@
+Direction.North Direction good bad
+Shape.Circle(1.0) 3.14159
+Shape.Rect(2.0, 3.0) 6.0
+good bad
+Direction.North
+Direction.East
+Direction.South
+0 zero
+2 a few
+7 several
+10 many
+99 many
+100 lots
+-1 lots
+starting
+stopping
+stopping
+unknown: dance
+yes
+20.0

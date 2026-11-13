@@ -1,0 +1,40 @@
+# Kind values are values: equal when the case and contents are equal.
+kind Token {
+    Number(value: int)
+    Word(text: str)
+    End
+}
+
+plant tokens = [Token.Number(1), Token.Word("hi"), Token.Number(7), Token.End]
+drop(tokens)
+drop(tokens.contains(Token.Word("hi")), tokens.index_of(Token.End))
+drop(Token.Number(1) != Token.Number(2), type_of(Token.End))
+
+plant counts: map[str, int] = {:}
+for t in tokens {
+    plant key = match t {
+        Number(_) => "number"
+        Word(_) => "word"
+        End => "end"
+    }
+    counts[key] = (counts.get(key) ?? 0) + 1
+}
+drop(counts)
+
+# a kind inside a tree, and a match that runs statements
+tree Lexer {
+    seen: list[Token] = []
+    branch feed(t: Token) {
+        match t {
+            End => {
+                drop("done after {len(self.seen)} tokens")
+            }
+            else => self.seen.push(t)
+        }
+    }
+}
+plant lx = Lexer()
+for t in tokens {
+    lx.feed(t)
+}
+drop(lx.seen)

@@ -1,0 +1,6 @@
+[Token.Number(1), Token.Word("hi"), Token.Number(7), Token.End]
+good 3
+good Token
+{"number": 2, "word": 1, "end": 1}
+done after 3 tokens
+[Token.Number(1), Token.Word("hi"), Token.Number(7)]
