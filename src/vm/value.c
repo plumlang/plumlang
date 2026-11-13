@@ -16,7 +16,33 @@ PlumString *plum_string_alloc(size_t len) {
     s->len = len;
     s->chars = (char *)(s + 1);
     s->chars[len] = '\0';
+    s->char_count = 0;
+    s->counted = false;
     return s;
+}
+
+size_t plum_string_length(PlumString *s) {
+    if (!s->counted) {
+        s->char_count = plum_utf8_length(s->chars, s->len);
+        s->counted = true;
+    }
+    return s->char_count;
+}
+
+size_t plum_string_offset(PlumString *s, size_t index) {
+    if (plum_string_length(s) == s->len) {
+        return index; /* ASCII */
+    }
+    size_t seen = 0, i = 0;
+    for (; i < s->len; i++) {
+        if (((unsigned char)s->chars[i] & 0xC0) != 0x80) {
+            if (seen == index) {
+                return i;
+            }
+            seen++;
+        }
+    }
+    return i;
 }
 
 PlumString *plum_string_new(const char *chars, size_t len) {

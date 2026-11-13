@@ -71,10 +71,11 @@
     X(BUILD_STRING, 1, "join the top [a] strings")                                             \
     /* Lists */                                                                                \
     X(BUILD_MAP, 1, "a map of the top [a] key, value pairs")                                   \
+    X(INDEX_STR, 0, "the character at str[index], or an index error")                          \
     X(INDEX_MAP, 0, "map[key], or a missing-key error")                                        \
     X(BUILD_LIST, 1, "a list of the top [a] values")                                           \
     X(INDEX_LIST, 0, "list[index], or an index error")                                         \
-    X(SLICE, 1, "list[low..high] (..= if [a]) as a new list")                                  \
+    X(SLICE, 1, "list or str [low..high] (..= if [a]) as a new one")                           \
     X(CONTAINS, 0, "item in collection")                                                       \
     X(CONCAT_LIST, 0, "a + b for lists")                                                       \
     X(METHOD, 2, "call method [a] with [b] arguments on the value under them")                 \

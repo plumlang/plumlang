@@ -113,32 +113,33 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 49 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
 | 50 | `BUILD_STRING` | 1 | join the top [a] strings |
 | 51 | `BUILD_MAP` | 1 | a map of the top [a] key, value pairs |
-| 52 | `INDEX_MAP` | 0 | map[key], or a missing-key error |
-| 53 | `BUILD_LIST` | 1 | a list of the top [a] values |
-| 54 | `INDEX_LIST` | 0 | list[index], or an index error |
-| 55 | `SLICE` | 1 | list[low..high] (..= if [a]) as a new list |
-| 56 | `CONTAINS` | 0 | item in collection |
-| 57 | `CONCAT_LIST` | 0 | a + b for lists |
-| 58 | `METHOD` | 2 | call method [a] with [b] arguments on the value under them |
-| 59 | `METHOD_LOCAL` | 3 | call method [b] with [c] arguments on local [a] in place |
-| 60 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
-| 61 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
-| 62 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
-| 63 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
-| 64 | `EQ` | 0 | a == b, for any two values |
-| 65 | `NE` | 0 | a != b, for any two values |
-| 66 | `NOT` | 0 | not a |
-| 67 | `IS_NONE` | 0 | a == none |
-| 68 | `JUMP` | 1 | jump forward [a] bytes |
-| 69 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 70 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 71 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 72 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 73 | `LOOP` | 1 | jump back [a] bytes |
-| 74 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 75 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 76 | `CALL` | 1 | call the function under [a] arguments |
-| 77 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 78 | `RETURN` | 0 | return the top value |
-| 79 | `RETURN_NONE` | 0 | return none |
+| 52 | `INDEX_STR` | 0 | the character at str[index], or an index error |
+| 53 | `INDEX_MAP` | 0 | map[key], or a missing-key error |
+| 54 | `BUILD_LIST` | 1 | a list of the top [a] values |
+| 55 | `INDEX_LIST` | 0 | list[index], or an index error |
+| 56 | `SLICE` | 1 | list or str [low..high] (..= if [a]) as a new one |
+| 57 | `CONTAINS` | 0 | item in collection |
+| 58 | `CONCAT_LIST` | 0 | a + b for lists |
+| 59 | `METHOD` | 2 | call method [a] with [b] arguments on the value under them |
+| 60 | `METHOD_LOCAL` | 3 | call method [b] with [c] arguments on local [a] in place |
+| 61 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
+| 62 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
+| 63 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
+| 64 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
+| 65 | `EQ` | 0 | a == b, for any two values |
+| 66 | `NE` | 0 | a != b, for any two values |
+| 67 | `NOT` | 0 | not a |
+| 68 | `IS_NONE` | 0 | a == none |
+| 69 | `JUMP` | 1 | jump forward [a] bytes |
+| 70 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 71 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 72 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 73 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 74 | `LOOP` | 1 | jump back [a] bytes |
+| 75 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 76 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
+| 77 | `CALL` | 1 | call the function under [a] arguments |
+| 78 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 79 | `RETURN` | 0 | return the top value |
+| 80 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

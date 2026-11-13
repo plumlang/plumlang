@@ -1,6 +1,6 @@
 # command: dis
 # Correct programs (plum check accepts them) using Stage 5 features.
-plant first = "plum"[0]
+plant r = 0..5
 plant double = (x: int) => x * 2
 tree Point {
     x: int

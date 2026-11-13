@@ -50,6 +50,8 @@ typedef struct PlumString {
     PlumObj obj;
     size_t len;
     char *chars;
+    size_t char_count; /* characters (code points); valid once `counted` */
+    bool counted;
 } PlumString;
 
 /*
@@ -141,6 +143,13 @@ void plum_release(PlumValue v);
 PlumString *plum_string_new(const char *s, size_t len);
 /* A new string of `len` bytes for the caller to fill; chars[len] is NUL. */
 PlumString *plum_string_alloc(size_t len);
+
+/* The number of characters in `s`, counted once and remembered. A string
+ * with as many characters as bytes is ASCII, so indexing it is direct. */
+size_t plum_string_length(PlumString *s);
+
+/* The byte offset of character `index` (which may equal the length). */
+size_t plum_string_offset(PlumString *s, size_t index);
 
 PlumFunction *plum_function_new(const char *name, int arity);
 
