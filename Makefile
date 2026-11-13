@@ -44,6 +44,7 @@ endif
 
 CFLAGS  += $(STD) $(WARN) $(OPT) $(INCLUDE) $(DEFS) -MMD -MP
 LDFLAGS += $(LDSAN)
+LDLIBS  += -lm
 
 BUILD   := build/$(MODE)
 # Everything but the command-line front end is the library the unit tests
@@ -68,10 +69,10 @@ all release debug sanitize: $(BIN)
 	@echo "built $(PLUM) ($(MODE))"
 
 $(BIN): $(LIB_OBJS) $(CLI_OBJS)
-	$(CC) $^ $(LDFLAGS) -o $@
+	$(CC) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 $(UNIT_BIN): $(LIB_OBJS) $(UNIT_OBJS)
-	$(CC) $^ $(LDFLAGS) -o $@
+	$(CC) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
