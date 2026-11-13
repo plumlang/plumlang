@@ -6,12 +6,12 @@
 0012    |  FOR_RANGE 0 1 42  ; local 0 <= local 1, else -> 0061
 0019    4  GET_LOCAL 0
 0022    |  CONST 2  ; 1
-0025    |  EQ
+0025    |  EQ_INT
 0026    |  JUMP_IF_FALSE 3  ; -> 0032
 0029    |  JUMP 22  ; -> 0054
 0032    5  GET_LOCAL 0
 0035    |  CONST 1  ; 3
-0038    |  EQ
+0038    |  EQ_INT
 0039    |  JUMP_IF_FALSE 3  ; -> 0045
 0042    |  JUMP 16  ; -> 0061
 0045    6  GET_LOCAL 0

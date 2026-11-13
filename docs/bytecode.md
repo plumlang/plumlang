@@ -88,40 +88,44 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 24 | `LE_INT` | 0 | a <= b |
 | 25 | `GT_INT` | 0 | a > b |
 | 26 | `GE_INT` | 0 | a >= b |
-| 27 | `ADD_FLOAT` | 0 | a + b |
-| 28 | `SUB_FLOAT` | 0 | a - b |
-| 29 | `MUL_FLOAT` | 0 | a * b |
-| 30 | `DIV_FLOAT` | 0 | a / b |
-| 31 | `FLOORDIV_FLOAT` | 0 | floor(a / b) |
-| 32 | `MOD_FLOAT` | 0 | a % b, with the sign of b |
-| 33 | `POW_FLOAT` | 0 | a ** b |
-| 34 | `NEG_FLOAT` | 0 | -a |
-| 35 | `LT_FLOAT` | 0 | a < b |
-| 36 | `LE_FLOAT` | 0 | a <= b |
-| 37 | `GT_FLOAT` | 0 | a > b |
-| 38 | `GE_FLOAT` | 0 | a >= b |
-| 39 | `INT_TO_FLOAT` | 0 | convert the top value |
-| 40 | `CONCAT` | 0 | a + b for strings |
-| 41 | `LT_STR` | 0 | a < b by code point |
-| 42 | `LE_STR` | 0 | a <= b by code point |
-| 43 | `GT_STR` | 0 | a > b by code point |
-| 44 | `GE_STR` | 0 | a >= b by code point |
-| 45 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
-| 46 | `BUILD_STRING` | 1 | join the top [a] strings |
-| 47 | `EQ` | 0 | a == b |
-| 48 | `NE` | 0 | a != b |
-| 49 | `NOT` | 0 | not a |
-| 50 | `IS_NONE` | 0 | a == none |
-| 51 | `JUMP` | 1 | jump forward [a] bytes |
-| 52 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 53 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 54 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 55 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 56 | `LOOP` | 1 | jump back [a] bytes |
-| 57 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 58 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
-| 59 | `CALL` | 1 | call the function under [a] arguments |
-| 60 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 61 | `RETURN` | 0 | return the top value |
-| 62 | `RETURN_NONE` | 0 | return none |
+| 27 | `EQ_INT` | 0 | a == b |
+| 28 | `NE_INT` | 0 | a != b |
+| 29 | `ADD_FLOAT` | 0 | a + b |
+| 30 | `SUB_FLOAT` | 0 | a - b |
+| 31 | `MUL_FLOAT` | 0 | a * b |
+| 32 | `DIV_FLOAT` | 0 | a / b |
+| 33 | `FLOORDIV_FLOAT` | 0 | floor(a / b) |
+| 34 | `MOD_FLOAT` | 0 | a % b, with the sign of b |
+| 35 | `POW_FLOAT` | 0 | a ** b |
+| 36 | `NEG_FLOAT` | 0 | -a |
+| 37 | `LT_FLOAT` | 0 | a < b |
+| 38 | `LE_FLOAT` | 0 | a <= b |
+| 39 | `GT_FLOAT` | 0 | a > b |
+| 40 | `GE_FLOAT` | 0 | a >= b |
+| 41 | `EQ_FLOAT` | 0 | a == b |
+| 42 | `NE_FLOAT` | 0 | a != b |
+| 43 | `INT_TO_FLOAT` | 0 | convert the top value |
+| 44 | `CONCAT` | 0 | a + b for strings |
+| 45 | `LT_STR` | 0 | a < b by code point |
+| 46 | `LE_STR` | 0 | a <= b by code point |
+| 47 | `GT_STR` | 0 | a > b by code point |
+| 48 | `GE_STR` | 0 | a >= b by code point |
+| 49 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
+| 50 | `BUILD_STRING` | 1 | join the top [a] strings |
+| 51 | `EQ` | 0 | a == b, for any two values |
+| 52 | `NE` | 0 | a != b, for any two values |
+| 53 | `NOT` | 0 | not a |
+| 54 | `IS_NONE` | 0 | a == none |
+| 55 | `JUMP` | 1 | jump forward [a] bytes |
+| 56 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 57 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 58 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 59 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 60 | `LOOP` | 1 | jump back [a] bytes |
+| 61 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 62 | `FOR_NEXT` | 3 | unless [b] and local [a] == local [a+1]: add 1, jump back [c] |
+| 63 | `CALL` | 1 | call the function under [a] arguments |
+| 64 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 65 | `RETURN` | 0 | return the top value |
+| 66 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

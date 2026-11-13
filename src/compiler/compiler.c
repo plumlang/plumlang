@@ -282,11 +282,26 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
         return;
     }
     case PLUM_TOK_EQ_EQ:
-    case PLUM_TOK_BANG_EQ:
+    case PLUM_TOK_BANG_EQ: {
+        /* Numbers compare with a typed instruction; anything else, generically. */
+        bool eq = tok == PLUM_TOK_EQ_EQ;
+        bool ints = int_like(l->ty) && int_like(r->ty);
+        bool floats = !ints && (int_like(l->ty) || ty_is(l->ty, PLUM_TY_FLOAT)) &&
+                      (int_like(r->ty) || ty_is(r->ty, PLUM_TY_FLOAT));
         compile_expr(c, l);
+        if (floats && int_like(l->ty)) {
+            op(c, PLUM_OP_INT_TO_FLOAT, line);
+        }
         compile_expr(c, r);
-        op(c, tok == PLUM_TOK_EQ_EQ ? PLUM_OP_EQ : PLUM_OP_NE, line);
+        if (floats && int_like(r->ty)) {
+            op(c, PLUM_OP_INT_TO_FLOAT, line);
+        }
+        PlumOpcode o = ints     ? (eq ? PLUM_OP_EQ_INT : PLUM_OP_NE_INT)
+                       : floats ? (eq ? PLUM_OP_EQ_FLOAT : PLUM_OP_NE_FLOAT)
+                                : (eq ? PLUM_OP_EQ : PLUM_OP_NE);
+        op(c, o, line);
         return;
+    }
     case PLUM_TOK_LESS:
     case PLUM_TOK_LESS_EQ:
     case PLUM_TOK_GREATER:

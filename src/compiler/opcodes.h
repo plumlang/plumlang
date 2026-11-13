@@ -43,6 +43,8 @@
     X(LE_INT, 0, "a <= b")                                                                 \
     X(GT_INT, 0, "a > b")                                                                  \
     X(GE_INT, 0, "a >= b")                                                                 \
+    X(EQ_INT, 0, "a == b")                                                                 \
+    X(NE_INT, 0, "a != b")                                                                 \
     /* Floats: IEEE 754 */                                                                 \
     X(ADD_FLOAT, 0, "a + b")                                                               \
     X(SUB_FLOAT, 0, "a - b")                                                               \
@@ -56,6 +58,8 @@
     X(LE_FLOAT, 0, "a <= b")                                                               \
     X(GT_FLOAT, 0, "a > b")                                                                \
     X(GE_FLOAT, 0, "a >= b")                                                               \
+    X(EQ_FLOAT, 0, "a == b")                                                               \
+    X(NE_FLOAT, 0, "a != b")                                                               \
     X(INT_TO_FLOAT, 0, "convert the top value")                                            \
     /* Strings */                                                                          \
     X(CONCAT, 0, "a + b for strings")                                                      \
@@ -66,8 +70,8 @@
     X(TO_STRING, 1, "text of the top value, with format constant [a] (0xFFFF: none)")      \
     X(BUILD_STRING, 1, "join the top [a] strings")                                         \
     /* Every type */                                                                       \
-    X(EQ, 0, "a == b")                                                                     \
-    X(NE, 0, "a != b")                                                                     \
+    X(EQ, 0, "a == b, for any two values")                                                 \
+    X(NE, 0, "a != b, for any two values")                                                 \
     X(NOT, 0, "not a")                                                                     \
     X(IS_NONE, 0, "a == none")                                                             \
     /* Control flow: jumps are relative to the next instruction */                         \
