@@ -802,9 +802,9 @@ static bool execute(VM *vm) {
             int64_t i = pop(vm).as.i;
             PlumValue v = pop(vm);
             PlumList *list = plum_as_list(v);
+            SAVE_IP(); /* so the error names this line */
             if (!check_index(vm, i, list->len)) {
                 plum_release(v);
-                SAVE_IP();
                 return false;
             }
             push(vm, plum_retain(list->items[i]));
@@ -877,9 +877,9 @@ static bool execute(VM *vm) {
             int64_t i = pop(vm).as.i;
             PlumValue *place = op == PLUM_OP_SET_INDEX_LOCAL ? &SLOT(slot) : &vm->globals[slot];
             PlumList *list = plum_list_unique(place); /* copy first if shared */
+            SAVE_IP();                                /* so the error names this line */
             if (!check_index(vm, i, list->len)) {
                 plum_release(value);
-                SAVE_IP();
                 return false;
             }
             plum_release(list->items[i]);
