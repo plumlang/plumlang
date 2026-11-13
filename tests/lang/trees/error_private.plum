@@ -1,0 +1,6 @@
+tree Safe {
+    _code: int
+    branch check(guess: int) -> bool => guess == self._code
+}
+plant s = Safe(1234)
+drop(s.check(1), s._code)

@@ -587,6 +587,53 @@ A `match` pattern that can't match the value: a case of another kind, a
 literal of another type, or a case pattern naming the wrong number of
 values.
 
+### E0420
+
+A tree names a trait but doesn't have one of the trait's methods (and the
+trait gives no default). Add the method with the trait's parameters and
+result.
+
+### E0421
+
+A method that overrides a parent's method, or provides a trait's, with
+different parameters or a different result. Code that calls it through
+the parent or the trait passes what that declaration says, so the types
+must be the same.
+
+```plum
+tree Animal { branch speak() -> str => "..." }
+tree Dog : Animal { branch speak(loud: bool) -> str => "woof" }   # E0421
+```
+
+### E0422
+
+A field without a default that nothing sets. A tree with `init` must set
+each such field at the start of `init` (`self.name = name`), before
+anything else uses `self`; a tree that adds such a field needs its own
+`init` if its parent has one.
+
+```plum
+tree Point {
+    x: float
+    y: float
+    branch init(r: float) {
+        self.x = r
+        drop(self)        # E0422: self.y isn't set yet
+    }
+}
+```
+
+### E0423
+
+A field or method whose name starts with `_` used outside its tree's
+methods (or those of trees extending it). The underscore makes it private.
+
+### E0424
+
+A method the language calls itself, written with the wrong shape:
+`to_str() -> str` (for printing), `equals(other: <this tree>) -> bool`
+(for `==`), and `init(...)` with no result.
+
 ## Control flow
 
 ### E0501

@@ -1,0 +1,6 @@
+trait Shape {
+    branch area() -> float
+}
+tree Blob : Shape {
+    size: int
+}
