@@ -29,6 +29,7 @@ Format for a new entry:
 - **Types**: `plum check` type-checks programs: inference, int-to-float only, no truthiness, optionals that must be unwrapped, checked calls, trees and kinds.
 - **Control flow**: missing returns, `break`/`continue` outside loops and non-exhaustive `match` are errors; unreachable code and unused variables are warnings.
 - **Compiler**: checked programs compile to typed bytecode; `plum dis` prints it, documented in `docs/bytecode.md`.
+- **VM**: `plum run` runs programs. Integers never wrap (overflow is an error); runtime errors name the line and the calls that led there; interpolation formats (`{x:.2}`, `{n:>5}`, `{n:x}`).
 - **Tests**: golden-file tests (`tests/lang/`) with pending markers and `make golden-update`; the Python prototype's programs ported to the spec's syntax.
 - **CI**: builds and tests on Linux (x86_64, arm64), macOS and Windows (MSVC, mingw-w64), under ASan and UBSan, with a clang-format check.
 - **Licensing and governance**: the Plumlang Commercial License 1.0 with its
