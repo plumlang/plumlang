@@ -639,8 +639,8 @@ with `_` to say it is unused on purpose.
 
 A feature the compiler can't turn into bytecode yet. The program is
 correct (`plum check` accepts it), but it can't run until the roadmap item
-named in the message lands: lists, maps and ranges as values (#20), errors
-(#21), trees and methods (#22), lambdas and closures (#19), tasks (#27).
+named in the message: today that is tree methods, `init`, kinds and
+`match` (#22), modules (#23) and tasks (#27).
 
 ### E0602
 
