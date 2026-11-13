@@ -1,0 +1,19 @@
+# Lists are values: changing one never changes another (spec 11.1).
+plant a = [1, 2, 3]
+plant b = a
+b.push(4)
+b[0] = 100
+drop(a, b)
+branch add_one(items: list[int]) -> list[int] {
+    plant copy = items
+    copy.push(1)
+    return copy
+}
+plant c = add_one(a)
+drop(a, c)
+for x in a {
+    a.push(x * 10)      # the loop goes over the list as it was
+}
+drop(a)
+plant d = a
+drop(d.pop(), d, a)

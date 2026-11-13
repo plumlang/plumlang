@@ -4,6 +4,7 @@
 #include "compiler/chunk.h"
 #include "util/alloc.h"
 #include "util/fmt.h"
+#include "vm/methods.h"
 #include "vm/text.h"
 
 #include <math.h>
@@ -280,7 +281,14 @@ static const char *type_name(PlumValue v) {
     case PLUM_VAL_FLOAT:
         return "float";
     case PLUM_VAL_OBJ:
-        return v.as.obj->type == PLUM_OBJ_STRING ? "str" : "branch";
+        switch ((PlumObjType)v.as.obj->type) {
+        case PLUM_OBJ_STRING:
+            return "str";
+        case PLUM_OBJ_FUNCTION:
+            return "branch";
+        case PLUM_OBJ_LIST:
+            return "list";
+        }
     }
     return "?";
 }
@@ -332,11 +340,14 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         }
         fputc('\n', vm->out);
         break;
-    case PLUM_BUILTIN_LEN: {
-        PlumString *s = plum_as_string(args[0]);
-        result = plum_int((int64_t)plum_utf8_length(s->chars, s->len));
+    case PLUM_BUILTIN_LEN:
+        if (plum_is_obj(args[0], PLUM_OBJ_LIST)) {
+            result = plum_int((int64_t)plum_as_list(args[0])->len);
+        } else {
+            PlumString *s = plum_as_string(args[0]);
+            result = plum_int((int64_t)plum_utf8_length(s->chars, s->len));
+        }
         break;
-    }
     case PLUM_BUILTIN_STR: {
         PlumString *s = plum_value_text(args[0], NULL, error, sizeof error);
         result = str_value(s);
@@ -423,6 +434,43 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
     }
     push(vm, result);
     return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Lists                                                               */
+/* ------------------------------------------------------------------ */
+
+/* Is `i` a position in a list of `len` items? Reports the error if not. */
+static bool check_index(VM *vm, int64_t i, size_t len) {
+    if (i < 0 || (uint64_t)i >= len) {
+        if (len == 0) {
+            runtime_error(vm, "index %lld is out of range: the list is empty", (long long)i);
+        } else {
+            runtime_error(vm, "index %lld is out of range: the list has %zu item%s (0 to %zu)",
+                          (long long)i, len, len == 1 ? "" : "s", len - 1);
+        }
+        return false;
+    }
+    return true;
+}
+
+static PlumList *slice_list(const PlumList *list, size_t from, size_t to) {
+    PlumList *out = plum_list_new(to - from);
+    for (size_t i = from; i < to; i++) {
+        out->items[out->len++] = plum_retain(list->items[i]);
+    }
+    return out;
+}
+
+static PlumList *concat_lists(const PlumList *a, const PlumList *b) {
+    PlumList *out = plum_list_new(plum_add_size(a->len, b->len));
+    for (size_t i = 0; i < a->len; i++) {
+        out->items[out->len++] = plum_retain(a->items[i]);
+    }
+    for (size_t i = 0; i < b->len; i++) {
+        out->items[out->len++] = plum_retain(b->items[i]);
+    }
+    return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -736,6 +784,126 @@ static bool execute(VM *vm) {
             }
             unwind_to(vm, vm->top - n);
             push(vm, plum_obj(&s->obj));
+            break;
+        }
+
+        case PLUM_OP_BUILD_LIST: {
+            uint16_t n = READ_U16();
+            PlumList *list = plum_list_new(n);
+            if (n > 0) { /* memcpy with an empty list's NULL items is undefined */
+                memcpy(list->items, &vm->stack[vm->top - n], n * sizeof(PlumValue)); /* refs move */
+            }
+            list->len = n;
+            vm->top -= n;
+            push(vm, plum_obj(&list->obj));
+            break;
+        }
+        case PLUM_OP_INDEX_LIST: {
+            int64_t i = pop(vm).as.i;
+            PlumValue v = pop(vm);
+            PlumList *list = plum_as_list(v);
+            SAVE_IP(); /* so the error names this line */
+            if (!check_index(vm, i, list->len)) {
+                plum_release(v);
+                return false;
+            }
+            push(vm, plum_retain(list->items[i]));
+            plum_release(v);
+            break;
+        }
+        case PLUM_OP_SLICE: {
+            uint16_t inclusive = READ_U16();
+            int64_t hi = pop(vm).as.i;
+            int64_t lo = pop(vm).as.i;
+            PlumValue v = pop(vm);
+            PlumList *list = plum_as_list(v);
+            int64_t end = inclusive ? hi + (hi < INT64_MAX) : hi;
+            if (lo < 0 || lo > end || (uint64_t)end > list->len || (inclusive && hi == INT64_MAX)) {
+                plum_release(v);
+                FAIL("slice %lld..%s%lld is out of range for a list of %zu item%s", (long long)lo,
+                     inclusive ? "=" : "", (long long)hi, list->len, list->len == 1 ? "" : "s");
+            }
+            PlumList *out = slice_list(list, (size_t)lo, (size_t)end);
+            plum_release(v);
+            push(vm, plum_obj(&out->obj));
+            break;
+        }
+        case PLUM_OP_CONTAINS: {
+            PlumValue coll = pop(vm);
+            PlumValue item = pop(vm);
+            PlumList *list = plum_as_list(coll);
+            bool found = false;
+            for (size_t i = 0; i < list->len && !found; i++) {
+                found = plum_values_equal(list->items[i], item);
+            }
+            plum_release(coll);
+            plum_release(item);
+            push(vm, plum_bool(found));
+            break;
+        }
+        case PLUM_OP_CONCAT_LIST: {
+            PlumValue b = pop(vm);
+            PlumValue a = pop(vm);
+            PlumList *out = concat_lists(plum_as_list(a), plum_as_list(b));
+            plum_release(a);
+            plum_release(b);
+            push(vm, plum_obj(&out->obj));
+            break;
+        }
+        case PLUM_OP_METHOD:
+        case PLUM_OP_METHOD_LOCAL:
+        case PLUM_OP_METHOD_GLOBAL: {
+            uint16_t slot = op == PLUM_OP_METHOD ? 0 : READ_U16();
+            uint16_t m = READ_U16();
+            uint16_t argc = READ_U16();
+            PlumValue *receiver = op == PLUM_OP_METHOD         ? peek(vm, argc)
+                                  : op == PLUM_OP_METHOD_LOCAL ? &SLOT(slot)
+                                                               : &vm->globals[slot];
+            PlumValue result;
+            char error[256];
+            bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - argc], argc,
+                                      &result, error, sizeof error);
+            unwind_to(vm, vm->top - argc - (op == PLUM_OP_METHOD ? 1 : 0));
+            if (!ok) {
+                FAIL("%s", error);
+            }
+            push(vm, result);
+            break;
+        }
+        case PLUM_OP_SET_INDEX_LOCAL:
+        case PLUM_OP_SET_INDEX_GLOBAL: {
+            uint16_t slot = READ_U16();
+            PlumValue value = pop(vm);
+            int64_t i = pop(vm).as.i;
+            PlumValue *place = op == PLUM_OP_SET_INDEX_LOCAL ? &SLOT(slot) : &vm->globals[slot];
+            PlumList *list = plum_list_unique(place); /* copy first if shared */
+            SAVE_IP();                                /* so the error names this line */
+            if (!check_index(vm, i, list->len)) {
+                plum_release(value);
+                return false;
+            }
+            plum_release(list->items[i]);
+            list->items[i] = value;
+            break;
+        }
+        case PLUM_OP_FOR_EACH:
+        case PLUM_OP_FOR_EACH2: {
+            uint16_t at = READ_U16();
+            uint16_t var = READ_U16();
+            uint16_t d = READ_U16();
+            PlumList *list = plum_as_list(SLOT(at));
+            int64_t pos = SLOT(at + 1).as.i;
+            if ((uint64_t)pos >= list->len) {
+                ip += d;
+                break;
+            }
+            SLOT(at + 1).as.i = pos + 1;
+            if (op == PLUM_OP_FOR_EACH2) {
+                SLOT(var) = plum_int(pos); /* ints hold no reference */
+                var++;
+            }
+            plum_release(SLOT(var));
+            SLOT(var) = plum_retain(list->items[pos]);
             break;
         }
 

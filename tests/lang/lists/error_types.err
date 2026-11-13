@@ -1,0 +1,25 @@
+tests/lang/lists/error_types.plum:3:9: error[E0402]: 'value' expects int, found str
+ 3 | xs.push("four")
+   |         ^~~~~~
+tests/lang/lists/error_types.plum:5:1: error[E0415]: sort() orders numbers or strings, but this list holds bool
+ 5 | flags.sort()
+   | ^~~~~~~~~~
+tests/lang/lists/error_types.plum:6:6: error[E0415]: join() joins a list of str, but this list holds int; make them text first
+ 6 | drop(xs.join(","))
+   |      ^~~~~~~
+tests/lang/lists/error_types.plum:7:11: error[E0415]: enumerate() is used as the list of a for loop: 'for i, x in items.enumerate()'
+ 7 | plant e = xs.enumerate()
+   |           ^~~~~~~~~~~~
+tests/lang/lists/error_types.plum:8:1: error[E0412]: enumerate() gives a position and an item: write 'for i, x in items.enumerate()', or 'for x in items' for the items alone
+ 8 | for x in xs.enumerate() { }
+   | ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/lang/lists/error_types.plum:9:1: error[E0415]: list[int] has no method 'shuffle'
+ 9 | xs.shuffle()
+   | ^~~~~~~~~~
+tests/lang/lists/error_types.plum:10:9: error[E0410]: an index into list[int] must be an int, not str
+10 | drop(xs["a"])
+   |         ^~~
+tests/lang/lists/error_types.plum:11:19: error[E0402]: a list holds one type of value: this is str, but the list holds int
+11 | plant mixed = [1, "a"]
+   |                   ^~~
+8 errors

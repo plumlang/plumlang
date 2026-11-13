@@ -1,0 +1,22 @@
+plant xs = [5, 3, 8]
+xs.push(1)
+xs.insert(0, 9)
+drop(xs)
+drop(xs.pop(), xs.remove_at(1), xs)
+xs.reverse()
+drop(xs, xs.contains(3), xs.index_of(8), xs.index_of(42) ?? -1)
+xs.sort()
+drop(xs, [2.5, -1.0, 2].sorted(), ["pear", "apple", "Fig"].sorted())
+plant none_yet: list[str] = []
+drop(["a", "b", "c"].join(", "), ["x"].join(), none_yet.join("-") == "")
+xs.clear()
+drop(xs, len(xs))
+plant scores: list[int] = []
+for i in 0..5 {
+    scores.push(i * i)
+}
+scores[2] += 100
+drop(scores)
+for i, s in scores.enumerate() {
+    if i % 2 == 0 { drop("{i}: {s}") }
+}

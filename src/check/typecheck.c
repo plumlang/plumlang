@@ -3,6 +3,7 @@
 
 #include "util/alloc.h"
 #include "util/array.h"
+#include "vm/methods.h"
 
 #include <stdarg.h>
 #include <string.h>
@@ -315,6 +316,77 @@ static PlumTy *builtin_member(Checker *c, PlumTy *obj, const char *name) {
     return NULL;
 }
 
+/* A function type with up to two named parameters. */
+static PlumTy *method_type(Checker *c, PlumTy *result, const char *n1, PlumTy *t1, bool d1,
+                           const char *n2, PlumTy *t2) {
+    PlumTy *f = plum_ty_new(&c->t, PLUM_TY_FUNC);
+    f->as.func.params = plum_arena_alloc_zeroed(c->arena, 2 * sizeof(PlumTyParam));
+    size_t n = 0;
+    if (n1 != NULL) {
+        f->as.func.params[n++] = (PlumTyParam){plum_intern_cstr(c->names, n1), t1, d1};
+    }
+    if (n2 != NULL) {
+        f->as.func.params[n++] = (PlumTyParam){plum_intern_cstr(c->names, n2), t2, false};
+    }
+    f->as.func.param_count = n;
+    f->as.func.result = result;
+    return f;
+}
+
+/* The type of a list method (vm/methods.h), or NULL with an error. */
+static PlumTy *list_method(Checker *c, PlumExpr *e, PlumTy *list, const char *name) {
+    PlumTy *elem = list->as.elem;
+    char a[TYBUF];
+    int m = plum_method_find(PLUM_RECEIVER_LIST, name);
+    switch (m) {
+    case PLUM_METHOD_LIST_PUSH:
+        return method_type(c, c->t.none, "value", elem, false, NULL, NULL);
+    case PLUM_METHOD_LIST_POP:
+        return method_type(c, elem, NULL, NULL, false, NULL, NULL);
+    case PLUM_METHOD_LIST_INSERT:
+        return method_type(c, c->t.none, "index", c->t.integer, false, "value", elem);
+    case PLUM_METHOD_LIST_REMOVE_AT:
+        return method_type(c, elem, "index", c->t.integer, false, NULL, NULL);
+    case PLUM_METHOD_LIST_CLEAR:
+    case PLUM_METHOD_LIST_REVERSE:
+        return method_type(c, c->t.none, NULL, NULL, false, NULL, NULL);
+    case PLUM_METHOD_LIST_SORT:
+    case PLUM_METHOD_LIST_SORTED:
+        if (!plum_ty_is_loose(elem) && !plum_ty_is_numeric(elem) && elem->kind != PLUM_TY_STR) {
+            plum_diag_error(c->diags, e->span, "E0415",
+                            "%s() orders numbers or strings, but this list holds %s", name,
+                            tx(elem, a));
+            return NULL;
+        }
+        return method_type(c, m == PLUM_METHOD_LIST_SORT ? c->t.none : list, NULL, NULL, false,
+                           NULL, NULL);
+    case PLUM_METHOD_LIST_CONTAINS:
+        return method_type(c, c->t.boolean, "value", elem, false, NULL, NULL);
+    case PLUM_METHOD_LIST_INDEX_OF:
+        return method_type(c, plum_ty_wrap(&c->t, PLUM_TY_OPTIONAL, c->t.integer), "value", elem,
+                           false, NULL, NULL);
+    case PLUM_METHOD_LIST_JOIN:
+        if (!plum_ty_is_loose(elem) && elem->kind != PLUM_TY_STR) {
+            plum_diag_error(c->diags, e->span, "E0415",
+                            "join() joins a list of str, but this list holds %s; make them text "
+                            "first",
+                            tx(elem, a));
+            return NULL;
+        }
+        return method_type(c, c->t.str, "separator", c->t.str, true, NULL, NULL);
+    default:
+        break;
+    }
+    if (strcmp(name, "enumerate") == 0) {
+        plum_diag_error(c->diags, e->span, "E0415",
+                        "enumerate() is used as the list of a for loop: 'for i, x in "
+                        "items.enumerate()'");
+        return NULL;
+    }
+    plum_diag_error(c->diags, e->span, "E0415", "%s has no method '%s'", tx(list, a), name);
+    return NULL;
+}
+
 /* a.b: a field, a method, a kind case, or a built-in member. */
 static PlumTy *check_field(Checker *c, PlumExpr *e) {
     PlumExpr *obj = e->as.field.object;
@@ -381,9 +453,14 @@ static PlumTy *check_field(Checker *c, PlumExpr *e) {
             plum_diag_error(c->diags, e->span, "E0415", "'%s' has no method '%s'", tx(t, a), name);
             return c->t.error;
         }
+    } else if (t->kind == PLUM_TY_LIST) {
+        result = list_method(c, e, t, name);
+        if (result == NULL) {
+            return c->t.error;
+        }
     } else {
-        /* Methods of str, list, map, set and numbers arrive with the
-         * standard library (#24); accept them for now. */
+        /* Methods of str, map, set and numbers arrive with the standard
+         * library (#24); accept them for now. */
         result = c->t.unknown;
     }
     return optional && !plum_ty_is_loose(result) ? plum_ty_wrap(&c->t, PLUM_TY_OPTIONAL, result)
@@ -1489,8 +1566,44 @@ static void check_assign(Checker *c, PlumStmt *s) {
     }
 }
 
+/* Is `e` a call of xs.enumerate() on a list? */
+static bool is_enumerate(const PlumExpr *e) {
+    return e->kind == PLUM_EXPR_CALL && e->as.call.arg_count == 0 &&
+           e->as.call.callee->kind == PLUM_EXPR_FIELD &&
+           strcmp(e->as.call.callee->as.field.name, "enumerate") == 0;
+}
+
 static void check_for(Checker *c, PlumStmt *s) {
-    PlumTy *it = check_expr(c, s->as.for_.iterable, NULL);
+    PlumExpr *iterable = s->as.for_.iterable;
+    if (is_enumerate(iterable)) {
+        /* for i, x in items.enumerate(): a position and an item */
+        PlumExpr *callee = iterable->as.call.callee;
+        PlumTy *list = check_expr(c, callee->as.field.object, NULL);
+        PlumTy *elem = c->t.unknown;
+        if (list->kind == PLUM_TY_LIST) {
+            elem = list->as.elem;
+        } else if (!plum_ty_is_loose(list)) {
+            char a[TYBUF];
+            plum_diag_error(c->diags, callee->span, "E0412", "enumerate() needs a list, not %s",
+                            tx(list, a));
+        }
+        callee->ty = c->t.unknown;
+        iterable->ty = list;
+        if (s->symbol != NULL) {
+            s->symbol->ty = s->as.for_.second != NULL ? c->t.integer : elem;
+        }
+        if (s->symbol2 != NULL) {
+            s->symbol2->ty = elem;
+        }
+        if (s->as.for_.second == NULL) {
+            plum_diag_error(c->diags, s->span, "E0412",
+                            "enumerate() gives a position and an item: write 'for i, x in "
+                            "items.enumerate()', or 'for x in items' for the items alone");
+        }
+        check_stmt(c, s->as.for_.body);
+        return;
+    }
+    PlumTy *it = check_expr(c, iterable, NULL);
     PlumTy *first = c->t.unknown, *second = NULL;
     bool two = s->as.for_.second != NULL;
     char a[TYBUF];

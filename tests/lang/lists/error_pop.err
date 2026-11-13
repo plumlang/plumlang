@@ -1,0 +1,2 @@
+tests/lang/lists/error_pop.plum:2: runtime error: pop() on an empty list
+  in <main>, line 2

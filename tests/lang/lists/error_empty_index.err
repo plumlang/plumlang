@@ -1,0 +1,2 @@
+tests/lang/lists/error_empty_index.plum:2: runtime error: index 0 is out of range: the list is empty
+  in <main>, line 2
