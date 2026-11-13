@@ -53,8 +53,8 @@ check "--version"                   0 "^plum "              out -- --version
 check "unknown command"             2 "unknown command 'frobnicate'" err -- frobnicate
 check "run without a file"          2 "needs a file"        err -- run
 check "run a missing file"          3 "cannot read"         err -- run "$tmp/missing.plum"
-check "run checks the file"         1 "has no errors"       err -- run "$tmp/hello.plum"
-check "file shorthand"              1 "has no errors"       err -- "$tmp/hello.plum"
+check "run a program"               0 "^hello$"             out -- run "$tmp/hello.plum"
+check "file shorthand"              0 "^hello$"             out -- "$tmp/hello.plum"
 check "check a correct file"        0 ""                    out -- check "$tmp/hello.plum"
 
 echo "smoke: $pass passed, $fail failed"

@@ -27,6 +27,7 @@
 #include "util/arena.h"
 #include "util/fmt.h"
 #include "util/intern.h"
+#include "vm/vm.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -122,8 +123,9 @@ static char *read_file(const char *path, size_t *len_out, int *err) {
 typedef enum FrontStage {
     STAGE_TOKENS, /* plum tokens: print the tokens */
     STAGE_AST,    /* plum ast: print the syntax tree */
-    STAGE_CHECK,  /* plum check, plum run: report errors only */
+    STAGE_CHECK,  /* plum check: report errors only */
     STAGE_DIS,    /* plum dis: compile and print the bytecode */
+    STAGE_RUN,    /* plum run: compile and run */
 } FrontStage;
 
 static int cmd_front(const char *name, FrontStage stage, int argc, char **argv);
@@ -135,16 +137,8 @@ static int cmd_run(int argc, char **argv) {
               stderr);
         return PLUM_EXIT_USAGE;
     }
-    int status = cmd_front("run", STAGE_CHECK, 1, argv);
-    if (status != PLUM_EXIT_OK) {
-        return status;
-    }
-    /* The compiler and virtual machine arrive in roadmap stage 4. */
-    fprintf(stderr,
-            "plum: error: this build cannot run programs yet; '%s' has no errors\n"
-            "  note: the compiler and virtual machine arrive in roadmap stage 4 (#36)\n",
-            argv[0]);
-    return PLUM_EXIT_FAILED;
+    /* Arguments after the file are for the program (os.args, #24). */
+    return cmd_front("run", STAGE_RUN, 1, argv);
 }
 
 static void print_token(const PlumToken *tok) {
@@ -176,7 +170,7 @@ static void print_token(const PlumToken *tok) {
     putchar('\n');
 }
 
-/* plum tokens / plum ast: run the front end on one file and print it. */
+/* plum tokens, ast, check, dis and run: the pipeline up to `stage`. */
 static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) {
     if (argc != 1) {
         fprintf(stderr,
@@ -199,6 +193,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
     PlumInterner names;
     PlumDiagList diags;
     PlumTokenList tokens = {0};
+    PlumCompiled compiled = {NULL, 0};
     plum_arena_init(&arena);
     plum_interner_init(&names);
     plum_diag_init(&diags, &source);
@@ -224,18 +219,25 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv) 
             if (diags.errors == 0) {
                 plum_check_flow(&program, &diags);
             }
-            if (diags.errors == 0 && stage == STAGE_DIS) {
-                PlumCompiled compiled = plum_compile(&program, &names, &diags);
-                if (compiled.main != NULL) {
+            if (diags.errors == 0 && (stage == STAGE_DIS || stage == STAGE_RUN)) {
+                compiled = plum_compile(&program, &names, &diags);
+                if (compiled.main != NULL && stage == STAGE_DIS) {
                     plum_disassemble(stdout, compiled.main);
-                    plum_release(plum_obj(&compiled.main->obj));
                 }
             }
         }
     }
     fflush(stdout);
+    /* Warnings and errors come before anything the program prints. */
     plum_diag_print(&diags, stderr, plum_diag_use_color(stderr));
     int status = diags.errors > 0 ? PLUM_EXIT_FAILED : PLUM_EXIT_OK;
+    if (compiled.main != NULL) {
+        if (stage == STAGE_RUN && status == PLUM_EXIT_OK) {
+            fflush(stderr);
+            status = plum_vm_run(&compiled, &source, stdout, stderr);
+        }
+        plum_release(plum_obj(&compiled.main->obj));
+    }
 
     plum_array_free(&tokens);
     plum_diag_free(&diags);
