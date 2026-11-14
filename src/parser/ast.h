@@ -36,8 +36,9 @@ struct PlumType {
     PlumSpan span;
     union {
         struct {
-            const char *name; /* interned */
-            PlumType **args;  /* generic arguments: list[T] */
+            const char *name;   /* interned */
+            const char *module; /* shapes.Circle: "shapes"; NULL for a plain name */
+            PlumType **args;    /* generic arguments: list[T] */
             size_t arg_count;
             PlumSymbol *symbol; /* the type it names, after resolution */
         } name;
@@ -325,6 +326,9 @@ struct PlumStmt {
             const char *alias;  /* `as name`, or NULL */
             const char **names; /* `{ sqrt, PI }` */
             size_t name_count;
+            /* A file's module: its exported names (name -> PlumSymbol*), set by
+             * the module loader before resolution. NULL for a standard module. */
+            const struct PlumMap *exports;
         } seed;
     } as;
 };
