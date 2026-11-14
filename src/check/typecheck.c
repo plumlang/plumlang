@@ -93,6 +93,8 @@ static PlumTy *builtin_named(Checker *c, const char *name) {
         return c->t.byte;
     if (strcmp(name, "none") == 0)
         return c->t.none;
+    if (strcmp(name, "Json") == 0)
+        return c->t.json;
     return NULL;
 }
 
@@ -490,6 +492,8 @@ static PlumTy *sig_type(Checker *c, SigParser *s) {
         t = c->t.floating;
     } else if (sig_word(s, "str")) {
         t = c->t.str;
+    } else if (sig_word(s, "Json")) {
+        t = c->t.json;
     } else if (sig_word(s, "bool")) {
         t = c->t.boolean;
     } else if (sig_word(s, "byte")) {
@@ -655,6 +659,13 @@ static PlumTy *check_field(Checker *c, PlumExpr *e) {
         if (result == NULL) {
             return c->t.error;
         }
+    } else if (t->kind == PLUM_TY_JSON) {
+        const PlumNativeFunction *fn = plum_native_function(&plum_module_json_value, name);
+        if (fn == NULL) {
+            plum_diag_error(c->diags, e->span, "E0415", "Json has no method '%s'", name);
+            return c->t.error;
+        }
+        result = native_type(c, fn, true);
     } else if (t->kind == PLUM_TY_STR) {
         const PlumNativeFunction *fn = plum_native_function(&plum_module_str, name);
         if (fn == NULL) {
@@ -1382,6 +1393,9 @@ static PlumTy *unify(Checker *c, PlumTy *a, PlumTy *b) {
 }
 
 static PlumTy *check_list(Checker *c, PlumExpr *e, PlumTy *expected) {
+    if (expected != NULL && expected->kind == PLUM_TY_JSON) {
+        expected = plum_ty_wrap(&c->t, PLUM_TY_LIST, c->t.json); /* items of any JSON type */
+    }
     PlumTy *want = expected != NULL && expected->kind == PLUM_TY_LIST ? expected->as.elem : NULL;
     if (e->as.list.count == 0) {
         if (want == NULL) {
@@ -1422,6 +1436,9 @@ static PlumTy *check_list(Checker *c, PlumExpr *e, PlumTy *expected) {
 }
 
 static PlumTy *check_map(Checker *c, PlumExpr *e, PlumTy *expected) {
+    if (expected != NULL && expected->kind == PLUM_TY_JSON) {
+        expected = plum_ty_map(&c->t, c->t.str, c->t.json); /* a JSON object */
+    }
     bool typed = expected != NULL && expected->kind == PLUM_TY_MAP;
     if (e->as.map.count == 0) {
         if (!typed) {

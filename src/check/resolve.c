@@ -834,8 +834,8 @@ static void module_names(char *buf, size_t size) {
     buf[0] = '\0';
     for (size_t i = 0; plum_native_module_at(i) != NULL; i++) {
         const char *name = plum_native_module_at(i)->name;
-        if (strcmp(name, "str") == 0) {
-            continue; /* the methods of str, not a module to import */
+        if (strcmp(name, "str") == 0 || strcmp(name, "json.value") == 0) {
+            continue; /* methods of a type, not modules to import */
         }
         int k = snprintf(buf + len, size - len, "%s%s", len > 0 ? ", " : "", name);
         if (k < 0 || (size_t)k >= size - len) {
@@ -944,7 +944,9 @@ static void resolve_seed(Resolver *r, PlumStmt *s) {
         resolve_file_seed(r, s);
         return;
     }
-    const PlumNativeModule *m = strcmp(path, "str") == 0 ? NULL : plum_native_module(path);
+    const PlumNativeModule *m = strcmp(path, "str") == 0 || strcmp(path, "json.value") == 0
+                                    ? NULL
+                                    : plum_native_module(path);
     if (m == NULL) {
         char known[256];
         module_names(known, sizeof known);
@@ -992,8 +994,8 @@ static void add_builtin(Resolver *r, PlumSymbolKind kind, const char *name) {
 }
 
 static void add_builtins(Resolver *r) {
-    static const char *const types[] = {"int",  "float", "bool", "str",  "byte",   "none",
-                                        "list", "map",   "set",  "Task", "Channel"};
+    static const char *const types[] = {"int",  "float", "bool", "str",  "byte",    "none",
+                                        "list", "map",   "set",  "Task", "Channel", "Json"};
     static const char *const functions[] = {"drop", "ask", "len", "type_of", "assert", "exit"};
     static const char *const errors[] = {
         "Error",         "ValueError",        "ParseError", "IndexError", "KeyError",
@@ -1142,6 +1144,10 @@ const PlumNativeFunction *plum_callee_native(const PlumExpr *callee, bool *is_me
     if (t != NULL && t->kind == PLUM_TY_STR) {
         *is_method = true;
         return plum_native_function(&plum_module_str, callee->as.field.name);
+    }
+    if (t != NULL && t->kind == PLUM_TY_JSON) {
+        *is_method = true;
+        return plum_native_function(&plum_module_json_value, callee->as.field.name);
     }
     return NULL;
 }

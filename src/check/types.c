@@ -21,6 +21,7 @@ void plum_types_init(PlumTypes *types, PlumArena *arena) {
     types->str = plum_ty_new(types, PLUM_TY_STR);
     types->byte = plum_ty_new(types, PLUM_TY_BYTE);
     types->range = plum_ty_new(types, PLUM_TY_RANGE);
+    types->json = plum_ty_new(types, PLUM_TY_JSON);
 }
 
 PlumTy *plum_ty_wrap(PlumTypes *types, PlumTyKind kind, PlumTy *elem) {
@@ -112,9 +113,37 @@ bool plum_tree_extends(const PlumSymbol *decl, const PlumSymbol *ancestor) {
     return false;
 }
 
+/* Can a value of type `t` be JSON: plain data, all the way down? */
+static bool json_able(const PlumTy *t) {
+    switch (t->kind) {
+    case PLUM_TY_ERROR:
+    case PLUM_TY_UNKNOWN:
+    case PLUM_TY_NONE:
+    case PLUM_TY_BOOL:
+    case PLUM_TY_INT:
+    case PLUM_TY_FLOAT:
+    case PLUM_TY_BYTE:
+    case PLUM_TY_STR:
+    case PLUM_TY_JSON:
+    case PLUM_TY_TREE: /* an object is written as its fields */
+        return true;
+    case PLUM_TY_LIST:
+    case PLUM_TY_OPTIONAL:
+        return json_able(t->as.elem);
+    case PLUM_TY_MAP:
+        return (t->as.map.key->kind == PLUM_TY_STR || plum_ty_is_loose(t->as.map.key)) &&
+               json_able(t->as.map.value);
+    default:
+        return false;
+    }
+}
+
 bool plum_ty_assignable(const PlumTy *from, const PlumTy *to) {
     if (plum_ty_is_loose(from) || plum_ty_is_loose(to)) {
         return true;
+    }
+    if (to->kind == PLUM_TY_JSON) {
+        return json_able(from);
     }
     if (to->kind == PLUM_TY_FLOAT && (from->kind == PLUM_TY_INT || from->kind == PLUM_TY_BYTE)) {
         return true; /* the one implicit conversion */
@@ -182,6 +211,9 @@ static void text(const PlumTy *t, char *buf, size_t size, size_t *len) {
         return;
     case PLUM_TY_RANGE:
         put(buf, size, len, "range");
+        return;
+    case PLUM_TY_JSON:
+        put(buf, size, len, "Json");
         return;
     case PLUM_TY_LIST:
     case PLUM_TY_SET:

@@ -32,6 +32,7 @@ typedef enum PlumTyKind {
     PLUM_TY_TREE,  /* an object of a tree */
     PLUM_TY_TRAIT, /* a value of any tree implementing the trait */
     PLUM_TY_KIND,  /* a value of a kind */
+    PLUM_TY_JSON,  /* any JSON value: none, bool, numbers, str, lists and maps of them */
 } PlumTyKind;
 
 typedef struct PlumTyParam {
@@ -60,7 +61,7 @@ struct PlumTy {
 /* The shared basic types. */
 typedef struct PlumTypes {
     PlumArena *arena;
-    PlumTy *error, *unknown, *none, *boolean, *integer, *floating, *str, *byte, *range;
+    PlumTy *error, *unknown, *none, *boolean, *integer, *floating, *str, *byte, *range, *json;
 } PlumTypes;
 
 void plum_types_init(PlumTypes *types, PlumArena *arena);
