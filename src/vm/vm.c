@@ -75,6 +75,7 @@ typedef struct VM {
     PLUM_ARRAY(struct PlumTask *) ready;  /* waiting for their turn, in order */
     PLUM_ARRAY(struct PlumTask *) failed; /* finished with an error (holds a reference) */
     bool yielded;                         /* the running task gave way: it waits, or sleeps */
+    uint64_t sleeps;                      /* how many times a task has gone to sleep */
 } VM;
 
 typedef PLUM_ARRAY(struct PlumTask *) TaskList;
@@ -101,9 +102,10 @@ typedef struct PlumTask {
     Handler *handlers;
     int handler_count;
     int handler_cap;
-    int start_argc; /* TASK_NEW */
-    bool started;   /* its first call has been made */
-    double wake_at; /* while sleeping; 0 otherwise */
+    int start_argc;       /* TASK_NEW */
+    bool started;         /* its first call has been made */
+    double wake_at;       /* while sleeping; 0 otherwise */
+    uint64_t sleep_order; /* when it went to sleep, to break ties */
     PlumValue result;
     PlumValue error;  /* TASK_FAILED */
     char *trace;      /* TASK_FAILED: where it failed */
@@ -1142,6 +1144,7 @@ bool plum_native_sleep(PlumNative *n, double seconds) {
     }
     double now = plum_os_monotonic();
     if (t->wake_at == 0) {
+        t->sleep_order = vm->sleeps++;
         t->wake_at = now + seconds; /* the first call: start sleeping */
         if (t->wake_at == 0) {
             t->wake_at = 1e-9;
@@ -1329,6 +1332,16 @@ const PlumNativeModule plum_module_tasks = {
  * the loop sleeps until the first sleeper's time. Returns false if every
  * task is waiting with nothing left to wake it (a deadlock).
  */
+/* Earlier wake time first; equal times keep the order they slept in. */
+static int by_wake_time(const void *a, const void *b) {
+    const PlumTask *x = *(PlumTask *const *)a;
+    const PlumTask *y = *(PlumTask *const *)b;
+    if (x->wake_at != y->wake_at) {
+        return x->wake_at < y->wake_at ? -1 : 1;
+    }
+    return x->sleep_order < y->sleep_order ? -1 : x->sleep_order > y->sleep_order;
+}
+
 static bool run_tasks(VM *vm, PlumFunction *main_fn) {
     PlumTask *main = vm->main_task;
     (void)main_fn;
@@ -1355,12 +1368,22 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
                 plum_os_sleep(soonest - now);
                 now = plum_os_monotonic();
             }
+            /* the ones whose time has come, earliest first: an overslept
+             * loop must still wake them in the order they asked for */
+            TaskList due = {0};
             for (size_t i = 0; i < vm->tasks.len; i++) {
                 PlumTask *t = vm->tasks.items[i];
                 if (t->state == TASK_SLEEPING && t->wake_at <= now) {
-                    make_ready(vm, t);
+                    plum_array_push(&due, t);
                 }
             }
+            if (due.len > 1) {
+                qsort(due.items, due.len, sizeof(PlumTask *), by_wake_time);
+            }
+            for (size_t i = 0; i < due.len; i++) {
+                make_ready(vm, due.items[i]);
+            }
+            plum_array_free(&due);
             continue;
         }
         PlumTask *t = vm->ready.items[next++];
