@@ -29,6 +29,7 @@ Format for a new entry:
 - **Weak references**: `weak` fields that don't keep their object alive (E0425 for other types); `plum run --check-leaks` reports objects left in reference cycles.
 - **Standard library**: `seed math` (also `as` and `{ names }`) for standard modules; `math` (functions, constants, seedable random numbers), the methods of `str`, `io`, `os` (arguments, environment, running commands), `time` (clocks, sleep, dates) and `fs` (files and directories); `plum stdlib` lists them; docs in `docs/stdlib/`. Modules are C functions described by Plumlang signatures.
 - **Modules**: `seed ./file` (also `as` and `{ names }`, and `module.Type` in types); each file loads and runs once, in import order; import cycles (E0311) and missing files are reported at the `seed`; `_names` stay private; `plum run <dir>` runs a package's `plum.toml` entry; errors in imported files name that file. `examples/garden` is a multi-file program.
+- **JSON**: `json.parse` and `json.stringify` (compact or indented), and the `Json` type for any JSON value, with methods (`get`, `at`, `str`, `int`, `list`, ...) that give `none` instead of failing; plain data, including tree objects, can be written as JSON.
 - **Parser**: a keyword used as a field name is E0217 instead of an endless loop.
 - **Memory**: freeing a long chain of objects no longer recurses; callbacks nest at most 100 deep.
 - **Error codes**: every error has a code (`error[E0201]`) explained in `docs/errors.md`.

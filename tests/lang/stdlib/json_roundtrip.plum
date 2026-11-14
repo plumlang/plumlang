@@ -1,0 +1,26 @@
+# Round trips: parse(stringify(x)) gives x back, for every kind of value.
+seed json
+
+plant samples: list[Json] = [
+    none, good, bad, 0, -17, 9007199254740993, 1.5, -0.25, 1e300,
+    "", "plain", "quote \" backslash \\ tab \t newline \n", "é ü 😀 中文",
+    [], [1, [2, [3, []]]], {"a": 1, "b": [good, none], "c": {"d": "e"}},
+]
+for x in samples {
+    plant text = json.stringify(x)
+    plant back = json.parse(text)
+    plant pretty = json.parse(json.stringify(x, indent: 4))
+    drop(back == x and pretty == x, text)
+}
+
+# keys keep their order; a repeated key keeps the last value
+plant m = json.parse("\{\"z\": 1, \"a\": 2, \"z\": 3\}")
+drop(m.keys(), m.get("z").int())
+
+# deep nesting is refused, not a crash
+plant deep = "[".repeat(600) + "]".repeat(600)
+try {
+    drop(json.parse(deep))
+} catch e: ParseError {
+    drop(e.message)
+}

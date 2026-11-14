@@ -1,0 +1,13 @@
+tests/lang/stdlib/error_json_type.plum:3:16: error[E0402]: expected int, found Json
+3 | plant n: int = data
+  |                ^~~~
+tests/lang/stdlib/error_json_type.plum:4:6: error[E0415]: Json has no method 'size'
+4 | drop(data.size())
+  |      ^~~~~~~~~
+tests/lang/stdlib/error_json_type.plum:5:17: error[E0402]: expected Json, found (int) -> int
+5 | plant f: Json = (x: int) => x
+  |                 ^~~~~~~~~~~~~
+tests/lang/stdlib/error_json_type.plum:6:18: error[E0402]: expected str, found int
+6 | plant k: Json = {1: "one"}
+  |                  ^
+4 errors
