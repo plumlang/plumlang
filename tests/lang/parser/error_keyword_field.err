@@ -1,0 +1,4 @@
+tests/lang/parser/error_keyword_field.plum:2:5: error[E0217]: 'kind' is a keyword, so it can't be a field's name; try 'kind_' or another name
+2 |     kind: int
+  |     ^~~~
+1 error
