@@ -1,0 +1,20 @@
+# module: a bed of plants
+seed ./plant { Plant, Season }
+
+tree Bed {
+    label: str
+    plants: list[Plant] = []
+
+    branch add(p: Plant) {
+        self.plants.push(p)
+    }
+
+    branch blooming_in(s: Season) -> list[Plant] => self.plants.filter((p) => p.blooms == s)
+
+    branch tallest() -> Plant? {
+        if len(self.plants) == 0 {
+            return none
+        }
+        return self.plants.sorted_by((p) => p.height_cm)[len(self.plants) - 1]
+    }
+}
