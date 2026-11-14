@@ -1,0 +1,4 @@
+tests/lang/modules/error_missing.plum:1:1: error[E0308]: can't read the module './lib/nothing_here' (tests/lang/modules/lib/nothing_here.plum): No such file or directory
+1 | seed ./lib/nothing_here
+  | ^~~~~~~~~~~~~~~~~~~~~~~
+1 error

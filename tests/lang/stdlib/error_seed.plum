@@ -1,4 +1,3 @@
 seed maths
-seed ./helpers
 seed math { sqrt, cube_root }
 drop(sqrt(4.0))

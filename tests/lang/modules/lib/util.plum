@@ -1,0 +1,11 @@
+# module: helpers that import another module themselves
+seed ./models/shape { Shape, circle }
+
+branch biggest(shapes: list[Shape]) -> Shape => shapes.sorted_by((s) => s.area())[len(shapes) - 1]
+
+branch empty_first() -> int {
+    plant xs: list[int] = []
+    return xs[1]
+}
+
+drop("util module loaded")

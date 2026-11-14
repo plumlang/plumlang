@@ -1,0 +1,4 @@
+tests/lang/modules/cycle/b.plum:2:1: error[E0311]: these modules import each other in a circle: tests/lang/modules/cycle/a.plum -> tests/lang/modules/cycle/b.plum -> tests/lang/modules/cycle/a.plum; move what they share into a module of its own
+2 | seed ./a
+  | ^~~~~~~~
+1 error

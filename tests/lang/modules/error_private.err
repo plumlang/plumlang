@@ -1,0 +1,13 @@
+tests/lang/modules/error_private.plum:1:1: error[E0301]: './lib/models/shape' keeps private '_secret'
+1 | seed ./lib/models/shape { _secret, triangle }
+  | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/lang/modules/error_private.plum:1:1: error[E0301]: './lib/models/shape' has no 'triangle'
+1 | seed ./lib/models/shape { _secret, triangle }
+  | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/lang/modules/error_private.plum:3:6: error[E0301]: '_secret' is private to the module 'sh' (its name starts with '_')
+3 | drop(sh._secret(), sh.triangle)
+  |      ^~~~~~~~~~
+tests/lang/modules/error_private.plum:3:20: error[E0301]: the module 'sh' has no 'triangle'
+3 | drop(sh._secret(), sh.triangle)
+  |                    ^~~~~~~~~~~
+4 errors

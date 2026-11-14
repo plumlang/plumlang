@@ -71,7 +71,8 @@ typedef struct Compiler {
     PLUM_ARRAY(MethodFn) methods; /* every method with a body, compiled */
     FnState *fs;
     int global_count;
-    PlumTy *result; /* the current function's result type, for return */
+    PlumTy *result;   /* the current function's result type, for return */
+    const char *path; /* the module being compiled; NULL for the program's own file */
 } Compiler;
 
 static void compile_expr(Compiler *c, const PlumExpr *e);
@@ -683,10 +684,26 @@ static PlumTreeInfo *builtin_error_info(Compiler *c, const char *name) {
     return tree_info(c, &sym);
 }
 
+/*
+ * The key of a tree (or a kind's case) in the program's map: the name of
+ * a built-in error; for a declared tree, its declaration, since two
+ * modules may each have a tree of the same name.
+ */
+static const char *tree_key(Compiler *c, const PlumSymbol *tree, const char *suffix) {
+    if (is_builtin_error(tree) && suffix == NULL) {
+        return tree->name;
+    }
+    char key[96];
+    snprintf(key, sizeof key, "%p%s%s", (const void *)tree->decl, suffix != NULL ? "." : "",
+             suffix != NULL ? suffix : "");
+    return plum_intern_cstr(c->names, key);
+}
+
 /* The one PlumTreeInfo for `tree` in this program, made with its parents. */
 static PlumTreeInfo *tree_info(Compiler *c, PlumSymbol *tree) {
     void *found = NULL;
-    if (plum_map_get(&c->trees, tree->name, strlen(tree->name), &found)) {
+    const char *key = tree_key(c, tree, NULL);
+    if (plum_map_get(&c->trees, key, strlen(key), &found)) {
         return found;
     }
     PlumTreeInfo *parent = NULL;
@@ -706,7 +723,7 @@ static PlumTreeInfo *tree_info(Compiler *c, PlumSymbol *tree) {
         names[i] = fields[i].name;
     }
     PlumTreeInfo *info = plum_tree_info_new(tree->name, parent, n, names);
-    plum_map_set(&c->trees, tree->name, strlen(tree->name), info);
+    plum_map_set(&c->trees, key, strlen(key), info);
     if (!is_builtin_error(tree)) {
         TreeEntry entry = {tree, info};
         plum_array_push(&c->user_trees, entry);
@@ -1072,8 +1089,9 @@ static PlumTreeInfo *case_info(Compiler *c, const PlumSymbol *kind, const PlumCa
     char name[160];
     snprintf(name, sizeof name, "%s.%s", kind->name, cs->name);
     const char *interned = plum_intern_cstr(c->names, name);
+    const char *key = tree_key(c, kind, cs->name);
     void *found = NULL;
-    if (plum_map_get(&c->trees, interned, strlen(interned), &found)) {
+    if (plum_map_get(&c->trees, key, strlen(key), &found)) {
         return found;
     }
     const char *names[MAX_FIELDS];
@@ -1083,7 +1101,7 @@ static PlumTreeInfo *case_info(Compiler *c, const PlumSymbol *kind, const PlumCa
     }
     PlumTreeInfo *info = plum_tree_info_new(interned, NULL, n, names);
     info->kind = kind->name;
-    plum_map_set(&c->trees, interned, strlen(interned), info);
+    plum_map_set(&c->trees, key, strlen(key), info);
     return info;
 }
 
@@ -2302,6 +2320,7 @@ static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam
     fs.fn = fn;
     fs.depth = depth;
     fs.self = self;
+    fn->path = c->path;
     PlumTy *outer_result = c->result;
     c->fs = &fs;
     c->result = (PlumTy *)result;
@@ -2357,13 +2376,38 @@ static void compile_method_body(Compiler *c, PlumFunction *fn, const PlumBranch 
 }
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags) {
+    PlumCompileModule one = {program, diags, NULL};
+    return plum_compile_modules(&one, 1, names);
+}
+
+/* A module's name for its top-level code in stack traces: "<module shapes>". */
+static const char *module_function_name(Compiler *c, const char *path) {
+    const char *base = path;
+    for (const char *p = path; *p != '\0'; p++) {
+        if (*p == '/' || *p == '\\') {
+            base = p + 1;
+        }
+    }
+    size_t len = strlen(base);
+    if (len > 5 && strcmp(base + len - 5, ".plum") == 0) {
+        len -= 5;
+    }
+    char name[160];
+    snprintf(name, sizeof name, "<module %.*s>", (int)(len < 140 ? len : 140), base);
+    return plum_intern_cstr(c->names, name);
+}
+
+PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count,
+                                  PlumInterner *names) {
     Compiler c;
     memset(&c, 0, sizeof c);
-    c.diags = diags;
     c.names = names;
     plum_map_init(&c.trees);
     plum_map_init(&c.method_ids);
-    size_t errors_before = diags->errors;
+    size_t errors_before = 0;
+    for (size_t m = 0; m < count; m++) {
+        errors_before += modules[m].diags->errors;
+    }
 
     PlumFunction *main = plum_function_new("<main>", 0);
     FnState fs;
@@ -2372,47 +2416,82 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
     c.fs = &fs;
 
     /* Every module variable and function gets a global slot. */
-    for (size_t i = 0; i < program->count; i++) {
-        PlumSymbol *sym = program->stmts[i]->symbol;
-        PlumStmtKind k = program->stmts[i]->kind;
-        if (sym != NULL && (k == PLUM_STMT_DECL || k == PLUM_STMT_BRANCH)) {
-            sym->slot = c.global_count++;
-            sym->has_slot = true;
+    for (size_t m = 0; m < count; m++) {
+        const PlumProgram *program = modules[m].program;
+        for (size_t i = 0; i < program->count; i++) {
+            PlumSymbol *sym = program->stmts[i]->symbol;
+            PlumStmtKind k = program->stmts[i]->kind;
+            if (sym != NULL && (k == PLUM_STMT_DECL || k == PLUM_STMT_BRANCH)) {
+                sym->slot = c.global_count++;
+                sym->has_slot = true;
+            }
         }
     }
 
     /* Module functions exist before the first statement runs, so they can
      * be called before their declaration. */
-    for (size_t i = 0; i < program->count; i++) {
-        const PlumStmt *s = program->stmts[i];
-        if (s->kind != PLUM_STMT_BRANCH || s->symbol == NULL) {
-            continue;
+    for (size_t m = 0; m < count; m++) {
+        const PlumProgram *program = modules[m].program;
+        c.diags = modules[m].diags;
+        c.path = modules[m].path;
+        for (size_t i = 0; i < program->count; i++) {
+            const PlumStmt *s = program->stmts[i];
+            if (s->kind != PLUM_STMT_BRANCH || s->symbol == NULL) {
+                continue;
+            }
+            PlumFunction *fn = plum_function_new(s->as.branch.name, (int)s->as.branch.param_count);
+            plum_retain(plum_obj(&fn->obj));
+            emit_const(&c, plum_obj(&fn->obj), s->span);
+            op1(&c, PLUM_OP_SET_GLOBAL, (uint16_t)s->symbol->slot, s->span.line);
+            compile_function(&c, fn, &s->as.branch, 1,
+                             s->symbol->ty != NULL ? s->symbol->ty->as.func.result : NULL, NULL);
+            plum_release(plum_obj(&fn->obj));
         }
-        PlumFunction *fn = plum_function_new(s->as.branch.name, (int)s->as.branch.param_count);
-        plum_retain(plum_obj(&fn->obj));
-        emit_const(&c, plum_obj(&fn->obj), s->span);
-        op1(&c, PLUM_OP_SET_GLOBAL, (uint16_t)s->symbol->slot, s->span.line);
-        compile_function(&c, fn, &s->as.branch, 1,
-                         s->symbol->ty != NULL ? s->symbol->ty->as.func.result : NULL, NULL);
-        plum_release(plum_obj(&fn->obj));
+        /* Methods: functions whose first argument is the object. */
+        for (size_t i = 0; i < program->count; i++) {
+            const PlumStmt *s = program->stmts[i];
+            if (s->kind == PLUM_STMT_TREE || s->kind == PLUM_STMT_TRAIT) {
+                compile_methods(&c, s);
+            }
+        }
     }
 
-    /* Methods: functions whose first argument is the object. */
-    for (size_t i = 0; i < program->count; i++) {
-        const PlumStmt *s = program->stmts[i];
-        if (s->kind == PLUM_STMT_TREE || s->kind == PLUM_STMT_TRAIT) {
-            compile_methods(&c, s);
+    /*
+     * Each imported module's top-level code is a function of its own (so
+     * errors name its file), called once, in order, before the program's.
+     */
+    for (size_t m = 0; m < count; m++) {
+        const PlumProgram *program = modules[m].program;
+        c.diags = modules[m].diags;
+        c.path = modules[m].path;
+        bool last = m + 1 == count;
+        PlumFunction *body = main;
+        FnState module_fs;
+        if (!last) {
+            body = plum_function_new(module_function_name(&c, modules[m].path), 0);
+            body->path = modules[m].path;
+            memset(&module_fs, 0, sizeof module_fs);
+            module_fs.fn = body;
+            module_fs.enclosing = &fs;
+            c.fs = &module_fs;
+        }
+        for (size_t i = 0; i < program->count; i++) {
+            const PlumStmt *s = program->stmts[i];
+            if (s->kind != PLUM_STMT_BRANCH) {
+                compile_stmt(&c, s);
+            }
+        }
+        uint32_t end = program->count > 0 ? program->stmts[program->count - 1]->span.line : 1;
+        op(&c, PLUM_OP_RETURN_NONE, end);
+        if (!last) {
+            c.fs = &fs;
+            c.path = NULL;
+            emit_const(&c, plum_obj(&body->obj), (PlumSpan){0, 0, 1, 1}); /* the constant owns it */
+            op1(&c, PLUM_OP_CALL, 0, 1);
+            op(&c, PLUM_OP_POP, 1);
         }
     }
-
-    for (size_t i = 0; i < program->count; i++) {
-        const PlumStmt *s = program->stmts[i];
-        if (s->kind != PLUM_STMT_BRANCH) {
-            compile_stmt(&c, s);
-        }
-    }
-    op(&c, PLUM_OP_RETURN_NONE,
-       program->count > 0 ? program->stmts[program->count - 1]->span.line : 1);
+    c.path = NULL;
 
     PlumCompiled out;
     memset(&out, 0, sizeof out);
@@ -2440,7 +2519,11 @@ PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumD
         plum_release(plum_obj(&((PlumTreeInfo *)entry->value)->obj));
     }
     plum_map_free(&c.trees);
-    if (diags->errors != errors_before) {
+    size_t errors_after = 0;
+    for (size_t m = 0; m < count; m++) {
+        errors_after += modules[m].diags->errors;
+    }
+    if (errors_after != errors_before) {
         plum_release(plum_obj(&main->obj));
         out.main = NULL;
     }

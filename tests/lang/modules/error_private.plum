@@ -1,0 +1,3 @@
+seed ./lib/models/shape { _secret, triangle }
+seed ./lib/models/shape as sh
+drop(sh._secret(), sh.triangle)

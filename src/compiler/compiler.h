@@ -27,6 +27,19 @@ typedef struct PlumCompiled {
 } PlumCompiled;
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags);
+
+/* One module of a program: its syntax tree, where its errors go, and its
+ * file (NULL for the program's own). */
+typedef struct PlumCompileModule {
+    const PlumProgram *program;
+    PlumDiagList *diags;
+    const char *path;
+} PlumCompileModule;
+
+/* A program of several modules, imports first and the program's own file
+ * last; each module's top-level code runs once, in that order. */
+PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count,
+                                  PlumInterner *names);
 void plum_compiled_free(PlumCompiled *compiled);
 
 #endif /* PLUM_COMPILER_COMPILER_H */

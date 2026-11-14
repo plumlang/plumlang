@@ -1,0 +1,17 @@
+# seed ./file: as a module, under another name, or name by name. Each file
+# runs once, before the file importing it, however many times it's imported.
+seed ./lib/models/shape as sh
+seed ./lib/util
+seed ./lib/util { biggest }
+seed ./lib/models/shape { Kind }
+
+plant shapes: list[sh.Shape] = [sh.circle(1.0), sh.Shape("square", Kind.Square, 3.0)]
+drop(biggest(shapes), util.biggest(shapes).name, sh.made)
+for s in shapes {
+    match s.form {
+        Round => drop("round")
+        Square => drop("square")
+    }
+}
+plant c: sh.Shape = sh.circle(2.0)
+drop(c, sh.made, c is sh.Shape)

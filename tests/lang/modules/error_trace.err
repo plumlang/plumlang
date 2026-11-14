@@ -1,0 +1,3 @@
+tests/lang/modules/lib/util.plum:8: IndexError: index 1 is out of range: the list is empty
+  in empty_first, line 8 of tests/lang/modules/lib/util.plum
+  in <main>, line 4
