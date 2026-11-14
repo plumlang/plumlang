@@ -834,7 +834,7 @@ static void module_names(char *buf, size_t size) {
     buf[0] = '\0';
     for (size_t i = 0; plum_native_module_at(i) != NULL; i++) {
         const char *name = plum_native_module_at(i)->name;
-        if (strcmp(name, "str") == 0 || strcmp(name, "json.value") == 0) {
+        if (plum_native_is_methods(plum_native_module_at(i))) {
             continue; /* methods of a type, not modules to import */
         }
         int k = snprintf(buf + len, size - len, "%s%s", len > 0 ? ", " : "", name);
@@ -944,9 +944,10 @@ static void resolve_seed(Resolver *r, PlumStmt *s) {
         resolve_file_seed(r, s);
         return;
     }
-    const PlumNativeModule *m = strcmp(path, "str") == 0 || strcmp(path, "json.value") == 0
-                                    ? NULL
-                                    : plum_native_module(path);
+    const PlumNativeModule *m = plum_native_module(path);
+    if (m != NULL && plum_native_is_methods(m)) {
+        m = NULL; /* the methods of a type can't be imported */
+    }
     if (m == NULL) {
         char known[256];
         module_names(known, sizeof known);
@@ -1148,6 +1149,15 @@ const PlumNativeFunction *plum_callee_native(const PlumExpr *callee, bool *is_me
     if (t != NULL && t->kind == PLUM_TY_JSON) {
         *is_method = true;
         return plum_native_function(&plum_module_json_value, callee->as.field.name);
+    }
+    if (t != NULL && (t->kind == PLUM_TY_TASK || t->kind == PLUM_TY_CHANNEL)) {
+        const char *name = callee->as.field.name;
+        bool task = t->kind == PLUM_TY_TASK;
+        bool known = task ? strcmp(name, "wait") == 0 || strcmp(name, "done") == 0
+                          : strcmp(name, "send") == 0 || strcmp(name, "receive") == 0 ||
+                                strcmp(name, "close") == 0;
+        *is_method = known;
+        return known ? plum_native_function(&plum_module_tasks, name) : NULL;
     }
     return NULL;
 }
