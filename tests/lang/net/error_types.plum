@@ -1,0 +1,4 @@
+seed net
+plant l = net.listen(0)
+l.send("x")
+plant c: Connection = l

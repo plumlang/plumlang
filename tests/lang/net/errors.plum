@@ -1,0 +1,39 @@
+# Network failures are NetError, with the reason; bad arguments ValueError.
+seed net
+
+plant u = net.udp(0, host: "127.0.0.1")
+try {
+    drop(u.receive(timeout: 0.05))
+} catch e: NetError {
+    drop(e.message)
+}
+plant server = net.listen(0, host: "127.0.0.1")
+try {
+    drop(server.accept(timeout: 0.05))
+} catch e: NetError {
+    drop(e.message)
+}
+server.close()
+try {
+    drop(server.accept())
+} catch e: NetError {
+    drop(e.message)
+}
+try {
+    net.listen(70000)
+} catch e: ValueError {
+    drop(e.message)
+}
+try {
+    net.connect("no-such-host.invalid", 80)
+} catch e: NetError {
+    drop("lookup failed:", e.message.starts_with("can't find the address of 'no-such-host.invalid'"))
+}
+plant idle = net.listen(0, host: "127.0.0.1")
+plant c = net.connect("127.0.0.1", idle.port())
+try {
+    drop(c.read(timeout: 0.05))
+} catch e: NetError {
+    drop(e.message)
+}
+drop(type_of(c), type_of(idle), "{c}")
