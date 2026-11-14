@@ -34,6 +34,7 @@ typedef enum PlumObjType {
     PLUM_OBJ_WEAK,      /* a weak reference to an object */
     PLUM_OBJ_TASK,      /* a task (spawn): defined in vm.c, which owns its running state */
     PLUM_OBJ_CHANNEL,   /* a channel between tasks: defined in vm.c */
+    PLUM_OBJ_HANDLE,    /* a resource of the operating system: a socket */
 } PlumObjType;
 
 /* The header every heap object starts with. */
@@ -113,6 +114,26 @@ typedef struct PlumWeak {
     PlumObject *target; /* NULL once the object is gone */
     uint32_t line;      /* where the object was made (for the leak check) */
 } PlumWeak;
+
+/*
+ * A handle on something the operating system keeps: a socket. It closes
+ * when the program closes it, or when its last reference goes.
+ */
+typedef struct PlumHandle {
+    PlumObj obj;
+    const char *kind; /* "Listener", "Connection", "UdpSocket" */
+    intptr_t fd;      /* -1 once closed */
+    void (*close)(struct PlumHandle *h);
+    char *in; /* bytes read but not yet given out (read_line) */
+    size_t in_len;
+    size_t in_cap;
+    char peer[96]; /* the other end; for UDP, the last sender */
+    int port;      /* the local port */
+} PlumHandle;
+
+static inline PlumHandle *plum_as_handle(PlumValue v) {
+    return (PlumHandle *)(void *)v.as.obj;
+}
 
 /* Freeing tasks and channels, whose insides only the VM knows. */
 void plum_task_destroy(PlumObj *task);

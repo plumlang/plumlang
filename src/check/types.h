@@ -29,10 +29,11 @@ typedef enum PlumTyKind {
     PLUM_TY_FUNC,
     PLUM_TY_TASK,
     PLUM_TY_CHANNEL,
-    PLUM_TY_TREE,  /* an object of a tree */
-    PLUM_TY_TRAIT, /* a value of any tree implementing the trait */
-    PLUM_TY_KIND,  /* a value of a kind */
-    PLUM_TY_JSON,  /* any JSON value: none, bool, numbers, str, lists and maps of them */
+    PLUM_TY_TREE,   /* an object of a tree */
+    PLUM_TY_TRAIT,  /* a value of any tree implementing the trait */
+    PLUM_TY_KIND,   /* a value of a kind */
+    PLUM_TY_JSON,   /* any JSON value: none, bool, numbers, str, lists and maps of them */
+    PLUM_TY_HANDLE, /* a resource from the runtime: Listener, Connection, UdpSocket */
 } PlumTyKind;
 
 typedef struct PlumTyParam {
@@ -54,7 +55,8 @@ struct PlumTy {
             size_t param_count;
             PlumTy *result;
         } func;
-        PlumSymbol *decl; /* TREE, TRAIT, KIND */
+        PlumSymbol *decl;   /* TREE, TRAIT, KIND */
+        const char *handle; /* HANDLE: its name, interned */
     } as;
 };
 

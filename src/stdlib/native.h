@@ -65,6 +65,9 @@ typedef struct PlumNativeModule {
 
 /* ---- Looking modules up (compile time) ---------------------------- */
 
+/* The methods of the handle type `name` (Listener, Connection, UdpSocket), or NULL. */
+const PlumNativeModule *plum_native_handle_methods(const char *name);
+
 /* Is `m` the methods of a type (str, Json, Task) rather than a module to seed? */
 bool plum_native_is_methods(const PlumNativeModule *m);
 
@@ -111,6 +114,21 @@ void plum_native_seed_random(PlumNative *n, uint64_t seed);
  */
 bool plum_native_sleep(PlumNative *n, double seconds);
 
+/*
+ * Wait until `fd` can be read (or, with `write`, written), for at most
+ * `timeout` seconds (0: no limit). Returns 1 when the caller should try
+ * again now, 0 when the task gave way (return false; the call is made
+ * again once the socket is ready), and -1 when the time ran out.
+ */
+int plum_native_wait_io(PlumNative *n, intptr_t fd, bool write, double timeout);
+
+/*
+ * A place a native call can keep things across its waits (how much of a
+ * write is sent, a connection under way). Starts NULL; when the call ends,
+ * `free_fn` is called on what's there.
+ */
+void **plum_native_call_state(PlumNative *n, void (*free_fn)(void *));
+
 int plum_native_argc(PlumNative *n);
 const char *plum_native_arg(PlumNative *n, int i);
 
@@ -134,5 +152,9 @@ extern const PlumNativeModule plum_module_fs;
 extern const PlumNativeModule plum_module_json;
 extern const PlumNativeModule plum_module_json_value; /* the methods of Json values */
 extern const PlumNativeModule plum_module_tasks;      /* Task and Channel methods (vm.c) */
+extern const PlumNativeModule plum_module_net;
+extern const PlumNativeModule plum_module_listener;   /* the methods of Listener */
+extern const PlumNativeModule plum_module_connection; /* the methods of Connection */
+extern const PlumNativeModule plum_module_udp;        /* the methods of UdpSocket */
 
 #endif /* PLUM_STDLIB_NATIVE_H */

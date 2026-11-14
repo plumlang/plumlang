@@ -1,0 +1,64 @@
+# TCP: a server task echoing lines, clients taking turns with it.
+seed net
+
+plant server = net.listen(0, host: "127.0.0.1")
+plant port = server.port()
+
+branch echo(conn: Connection) {
+    plant line = conn.read_line()
+    while line != none {
+        conn.write("echo: {line ?? ""}\n")
+        line = conn.read_line()
+    }
+    conn.close()
+}
+
+spawn (() => {
+    while good {
+        plant conn = server.accept()
+        spawn ((c: Connection) => echo(c))(conn)
+    }
+})()
+
+# three clients at once, each in its own task
+plant results = Channel[str]()
+for name in ["ada", "bo", "cy"] {
+    spawn ((who: str) => {
+        plant c = net.connect("127.0.0.1", port)
+        c.write("hello from {who}\r\nbye\n")
+        results.send("{c.read_line() ?? "?"} / {c.read_line() ?? "?"}")
+        c.close()
+    })(name)
+}
+plant got: list[str] = []
+for i in 0..3 {
+    got.push(results.receive() ?? "")
+}
+for line in got.sorted() {
+    drop(line)
+}
+
+# read() gives what has arrived; none once the other side closes
+plant c = net.connect("127.0.0.1", port)
+c.write("x\n")
+drop(c.read()?.trim(), c.remote() == "127.0.0.1:{port}", c.port() != port)
+c.close()
+
+# a big write goes out in pieces while the reader takes it in
+plant sink = net.listen(0, host: "127.0.0.1")
+plant total = Channel[int]()
+spawn (() => {
+    plant conn = sink.accept()
+    plant n = 0
+    plant piece = conn.read()
+    while piece != none {
+        n += len(piece ?? "")
+        piece = conn.read()
+    }
+    total.send(n)
+})()
+plant big = "0123456789".repeat(300000)
+plant w = net.connect("127.0.0.1", sink.port())
+w.write(big)
+w.close()
+drop("received", total.receive(), "of", len(big))

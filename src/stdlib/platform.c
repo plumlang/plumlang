@@ -14,6 +14,24 @@
 #define WIN32_LEAN_AND_MEAN
 #include <direct.h>
 #include <windows.h>
+#include <winsock2.h> /* before windows.h */
+
+int plum_os_poll(PlumPollItem *items, size_t count, int timeout_ms) {
+    WSAPOLLFD *fds = calloc(count > 0 ? count : 1, sizeof *fds);
+    if (fds == NULL) {
+        return -1;
+    }
+    for (size_t i = 0; i < count; i++) {
+        fds[i].fd = (SOCKET)items[i].fd;
+        fds[i].events = items[i].write ? POLLWRNORM : POLLRDNORM;
+    }
+    int n = WSAPoll(fds, (ULONG)count, timeout_ms);
+    for (size_t i = 0; i < count; i++) {
+        items[i].ready = n > 0 && fds[i].revents != 0;
+    }
+    free(fds);
+    return n;
+}
 
 double plum_os_now(void) {
     FILETIME ft;
@@ -92,9 +110,30 @@ const char *plum_os_name(void) {
 
 #else
 #include <dirent.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+
+int plum_os_poll(PlumPollItem *items, size_t count, int timeout_ms) {
+    struct pollfd *fds = calloc(count > 0 ? count : 1, sizeof *fds);
+    if (fds == NULL) {
+        return -1;
+    }
+    for (size_t i = 0; i < count; i++) {
+        fds[i].fd = (int)items[i].fd;
+        fds[i].events = items[i].write ? POLLOUT : POLLIN;
+    }
+    int n;
+    do {
+        n = poll(fds, (nfds_t)count, timeout_ms);
+    } while (n < 0 && errno == EINTR);
+    for (size_t i = 0; i < count; i++) {
+        items[i].ready = n > 0 && fds[i].revents != 0; /* an error or hang-up wakes it too */
+    }
+    free(fds);
+    return n;
+}
 
 double plum_os_now(void) {
     struct timespec ts;
@@ -169,5 +208,203 @@ const char *plum_os_name(void) {
 #else
     return "unix";
 #endif
+}
+#endif
+
+/* ------------------------------------------------------------------ */
+/* The poller                                                          */
+/* ------------------------------------------------------------------ */
+
+#if defined(__linux__)
+#include <sys/epoll.h>
+
+struct PlumPoller {
+    int ep;
+    size_t armed;
+};
+
+PlumPoller *plum_poller_new(void) {
+    PlumPoller *p = calloc(1, sizeof *p);
+    if (p != NULL) {
+        p->ep = epoll_create1(EPOLL_CLOEXEC);
+    }
+    return p;
+}
+
+void plum_poller_free(PlumPoller *p) {
+    if (p != NULL) {
+        close(p->ep);
+        free(p);
+    }
+}
+
+void plum_poller_arm(PlumPoller *p, intptr_t fd, bool write, void *who) {
+    struct epoll_event ev;
+    memset(&ev, 0, sizeof ev);
+    ev.events = (write ? EPOLLOUT : EPOLLIN) | EPOLLONESHOT;
+    ev.data.ptr = who;
+    if (epoll_ctl(p->ep, EPOLL_CTL_MOD, (int)fd, &ev) != 0) {
+        epoll_ctl(p->ep, EPOLL_CTL_ADD, (int)fd, &ev);
+    }
+    p->armed++;
+}
+
+void plum_poller_disarm(PlumPoller *p, intptr_t fd, bool write) {
+    (void)write;
+    epoll_ctl(p->ep, EPOLL_CTL_DEL, (int)fd, NULL);
+    p->armed--;
+}
+
+size_t plum_poller_armed(const PlumPoller *p) {
+    return p->armed;
+}
+
+int plum_poller_wait(PlumPoller *p, int timeout_ms, void **ready, int max) {
+    struct epoll_event events[256];
+    int n;
+    do {
+        n = epoll_wait(p->ep, events, max < 256 ? max : 256, timeout_ms);
+    } while (n < 0 && errno == EINTR);
+    for (int i = 0; i < n; i++) {
+        ready[i] = events[i].data.ptr; /* one-shot: it is disarmed now */
+    }
+    if (n > 0) {
+        p->armed -= (size_t)n;
+    }
+    return n < 0 ? 0 : n;
+}
+
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#include <sys/event.h>
+
+struct PlumPoller {
+    int kq;
+    size_t armed;
+};
+
+PlumPoller *plum_poller_new(void) {
+    PlumPoller *p = calloc(1, sizeof *p);
+    if (p != NULL) {
+        p->kq = kqueue();
+    }
+    return p;
+}
+
+void plum_poller_free(PlumPoller *p) {
+    if (p != NULL) {
+        close(p->kq);
+        free(p);
+    }
+}
+
+void plum_poller_arm(PlumPoller *p, intptr_t fd, bool write, void *who) {
+    struct kevent ev;
+    EV_SET(&ev, (uintptr_t)fd, write ? EVFILT_WRITE : EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, who);
+    kevent(p->kq, &ev, 1, NULL, 0, NULL);
+    p->armed++;
+}
+
+void plum_poller_disarm(PlumPoller *p, intptr_t fd, bool write) {
+    struct kevent ev;
+    EV_SET(&ev, (uintptr_t)fd, write ? EVFILT_WRITE : EVFILT_READ, EV_DELETE, 0, 0, NULL);
+    kevent(p->kq, &ev, 1, NULL, 0, NULL);
+    p->armed--;
+}
+
+size_t plum_poller_armed(const PlumPoller *p) {
+    return p->armed;
+}
+
+int plum_poller_wait(PlumPoller *p, int timeout_ms, void **ready, int max) {
+    struct kevent events[256];
+    struct timespec ts;
+    ts.tv_sec = timeout_ms / 1000;
+    ts.tv_nsec = (long)(timeout_ms % 1000) * 1000000L;
+    int n;
+    do {
+        n = kevent(p->kq, NULL, 0, events, max < 256 ? max : 256, timeout_ms < 0 ? NULL : &ts);
+    } while (n < 0 && errno == EINTR);
+    for (int i = 0; i < n; i++) {
+        ready[i] = events[i].udata;
+    }
+    if (n > 0) {
+        p->armed -= (size_t)n;
+    }
+    return n < 0 ? 0 : n;
+}
+
+#else
+/* Elsewhere (Windows): poll over the armed sockets. */
+typedef struct Armed {
+    intptr_t fd;
+    bool write;
+    void *who;
+} Armed;
+
+struct PlumPoller {
+    Armed *items;
+    size_t len;
+    size_t cap;
+};
+
+PlumPoller *plum_poller_new(void) {
+    return calloc(1, sizeof(PlumPoller));
+}
+
+void plum_poller_free(PlumPoller *p) {
+    if (p != NULL) {
+        free(p->items);
+        free(p);
+    }
+}
+
+void plum_poller_arm(PlumPoller *p, intptr_t fd, bool write, void *who) {
+    if (p->len == p->cap) {
+        size_t cap = p->cap < 16 ? 16 : p->cap * 2;
+        Armed *grown = realloc(p->items, cap * sizeof *grown);
+        if (grown == NULL) {
+            return;
+        }
+        p->items = grown;
+        p->cap = cap;
+    }
+    p->items[p->len++] = (Armed){fd, write, who};
+}
+
+void plum_poller_disarm(PlumPoller *p, intptr_t fd, bool write) {
+    for (size_t i = 0; i < p->len; i++) {
+        if (p->items[i].fd == fd && p->items[i].write == write) {
+            p->items[i] = p->items[--p->len];
+            return;
+        }
+    }
+}
+
+size_t plum_poller_armed(const PlumPoller *p) {
+    return p->len;
+}
+
+int plum_poller_wait(PlumPoller *p, int timeout_ms, void **ready, int max) {
+    PlumPollItem *items = calloc(p->len > 0 ? p->len : 1, sizeof *items);
+    if (items == NULL) {
+        return 0;
+    }
+    for (size_t i = 0; i < p->len; i++) {
+        items[i] = (PlumPollItem){p->items[i].fd, p->items[i].write, false};
+    }
+    int got = 0;
+    if (plum_os_poll(items, p->len, timeout_ms) > 0) {
+        size_t keep = 0;
+        for (size_t i = 0; i < p->len; i++) {
+            if (items[i].ready && got < max) {
+                ready[got++] = p->items[i].who; /* woken once: no longer armed */
+            } else {
+                p->items[keep++] = p->items[i];
+            }
+        }
+        p->len = keep;
+    }
+    free(items);
+    return got;
 }
 #endif

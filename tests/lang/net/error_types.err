@@ -1,0 +1,7 @@
+tests/lang/net/error_types.plum:3:1: error[E0415]: Listener has no method 'send'
+3 | l.send("x")
+  | ^~~~~~
+tests/lang/net/error_types.plum:4:23: error[E0402]: expected Connection, found Listener
+4 | plant c: Connection = l
+  |                       ^
+2 errors

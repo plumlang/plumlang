@@ -45,6 +45,9 @@ endif
 CFLAGS  += $(STD) $(WARN) $(OPT) $(INCLUDE) $(DEFS) -MMD -MP
 LDFLAGS += $(LDSAN)
 LDLIBS  += -lm
+ifeq ($(OS),Windows_NT)
+LDLIBS  += -lws2_32 # Winsock, for the net module
+endif
 
 BUILD   := build/$(MODE)
 # Everything but the command-line front end is the library the unit tests

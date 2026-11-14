@@ -95,6 +95,11 @@ static PlumTy *builtin_named(Checker *c, const char *name) {
         return c->t.none;
     if (strcmp(name, "Json") == 0)
         return c->t.json;
+    if (plum_native_handle_methods(name) != NULL) {
+        PlumTy *h = plum_ty_new(&c->t, PLUM_TY_HANDLE);
+        h->as.handle = plum_intern_cstr(c->names, name);
+        return h;
+    }
     return NULL;
 }
 
@@ -457,6 +462,7 @@ static PlumTy *table_method(Checker *c, PlumExpr *e, PlumTy *t, const char *name
 
 typedef struct SigParser {
     const char *p;
+    const char *src; /* the whole signature */
 } SigParser;
 
 static void sig_space(SigParser *s) {
@@ -498,6 +504,15 @@ static PlumTy *sig_type(Checker *c, SigParser *s) {
         t = c->t.str;
     } else if (sig_word(s, "Json")) {
         t = c->t.json;
+    } else if (sig_word(s, "Listener") || sig_word(s, "Connection") || sig_word(s, "UdpSocket")) {
+        const char *end = s->p;
+        const char *start = end;
+        while (start > s->src &&
+               ((start[-1] >= 'a' && start[-1] <= 'z') || (start[-1] >= 'A' && start[-1] <= 'Z'))) {
+            start--;
+        }
+        t = plum_ty_new(&c->t, PLUM_TY_HANDLE);
+        t->as.handle = plum_intern(c->names, start, (size_t)(end - start));
     } else if (sig_word(s, "bool")) {
         t = c->t.boolean;
     } else if (sig_word(s, "byte")) {
@@ -516,7 +531,7 @@ static PlumTy *native_type(Checker *c, const PlumNativeFunction *fn, bool method
     PlumTy *f = plum_ty_new(&c->t, PLUM_TY_FUNC);
     PlumTyParam params[32];
     size_t n = 0;
-    SigParser s = {fn->signature};
+    SigParser s = {fn->signature, fn->signature};
     sig_word(&s, "(");
     while (*s.p != '\0' && *s.p != ')') {
         sig_space(&s);
@@ -663,6 +678,15 @@ static PlumTy *check_field(Checker *c, PlumExpr *e) {
         if (result == NULL) {
             return c->t.error;
         }
+    } else if (t->kind == PLUM_TY_HANDLE) {
+        const PlumNativeModule *m = plum_native_handle_methods(t->as.handle);
+        const PlumNativeFunction *fn = m != NULL ? plum_native_function(m, name) : NULL;
+        if (fn == NULL) {
+            plum_diag_error(c->diags, e->span, "E0415", "%s has no method '%s'", t->as.handle,
+                            name);
+            return c->t.error;
+        }
+        result = native_type(c, fn, true);
     } else if (t->kind == PLUM_TY_JSON) {
         const PlumNativeFunction *fn = plum_native_function(&plum_module_json_value, name);
         if (fn == NULL) {

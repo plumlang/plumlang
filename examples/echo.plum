@@ -1,0 +1,36 @@
+# An echo server and its client in one program: the server runs as a
+# task, and each connection gets a task of its own. To run them apart,
+# put the server part in its own file and connect to it with this client
+# from another (or with `nc 127.0.0.1 <port>`).
+seed net
+seed time
+
+branch serve(conn: Connection) {
+    drop("server: a client connected")
+    plant line = conn.read_line()
+    while line != none {
+        conn.write("{(line ?? "").upper()}\n")
+        line = conn.read_line()
+    }
+    drop("server: the client left")
+}
+
+plant server = net.listen(0, host: "127.0.0.1")
+drop("listening on a free port")
+spawn (() => {
+    while good {
+        plant conn = server.accept()
+        spawn ((c: Connection) => serve(c))(conn)
+    }
+})()
+
+# the client
+plant client = net.connect("127.0.0.1", server.port())
+for word in ["plum", "garden", "tree"] {
+    client.write("{word}\n")
+    drop("client: sent {word}, got {client.read_line() ?? "nothing"}")
+}
+client.close()
+
+# give the server a turn to notice the client left
+time.sleep(0.05)

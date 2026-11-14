@@ -1,0 +1,6 @@
+listening on a free port
+server: a client connected
+client: sent plum, got PLUM
+client: sent garden, got GARDEN
+client: sent tree, got TREE
+server: the client left

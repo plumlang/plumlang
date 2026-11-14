@@ -27,6 +27,9 @@ add_library(plumcore STATIC ${PLUM_LIB_SOURCES})
 if(NOT MSVC)
   target_link_libraries(plumcore PUBLIC m) # pow, fmod; part of the C runtime on MSVC
 endif()
+if(WIN32)
+  target_link_libraries(plumcore PUBLIC ws2_32) # Winsock, for the net module
+endif()
 add_executable(plum ${PLUM_CLI_SOURCES})
 add_executable(plum_unit_tests ${PLUM_UNIT_SOURCES})
 target_link_libraries(plum PRIVATE plumcore)

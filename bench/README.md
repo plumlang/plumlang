@@ -30,6 +30,23 @@ Linux x86_64, GCC 15.2 at `-O2`, Python 3.14.4; fastest of seven runs.
 | mandelbrot | 0.341 s | 0.860 s | 2.52x |
 | strings | 0.137 s | 0.160 s | 1.17x |
 
+## Idle connections
+
+`bench/net/idle.plum` opens 10,000 TCP connections to its own server, a
+task per connection on the server side, all waiting to read, then times a
+new connection made while they idle. Linux x86_64, GCC 15.2 `-O2`, with
+`ulimit -n 30000`:
+
+| | Result |
+|---|---|
+| 10,000 connections open and idle | 0.16 s |
+| a new connection while they idle | 0.2 ms |
+| memory, all told | 84 MB (both ends of every connection, in one process) |
+
+Before the scheduler used epoll and a timer heap (each wait scanned every
+task and polled every socket), opening them took 6.0 s and a new
+connection 4.4 ms.
+
 ## What was tried
 
 Each change was measured with `bench/run.py --runs 7` and kept only if it

@@ -1,0 +1,12 @@
+# UDP: datagrams between two sockets, and where they came from.
+seed net
+
+plant a = net.udp(0, host: "127.0.0.1")
+plant b = net.udp(0, host: "127.0.0.1")
+a.send_to("127.0.0.1", b.port(), "ping")
+drop(b.receive(), b.sender() == "127.0.0.1:{a.port()}")
+b.send_to("127.0.0.1", a.port(), "pong")
+drop(a.receive(max: 3))
+drop(net.resolve("127.0.0.1"), len(net.resolve("localhost")) > 0)
+a.close()
+b.close()

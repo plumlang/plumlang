@@ -1,0 +1,48 @@
+# 10,000 idle connections in one process: a task per connection on the
+# server side, all waiting to read, while the clients stay connected.
+# Run with: ulimit -n 30000; /usr/bin/time -v plum run bench/net/idle.plum
+seed net
+seed os
+seed time
+
+plant count = 10000
+plant args = os.args()
+if len(args) > 0 {
+    count = int(args[0])
+}
+
+plant server = net.listen(0, host: "127.0.0.1")
+plant port = server.port()
+plant opened = Channel[int]()
+
+branch serve(conn: Connection) {
+    conn.read_line()       # waits here, idle, until the end
+    conn.close()
+}
+
+spawn (() => {
+    for i in 0..count {
+        plant conn = server.accept()
+        opened.send(1)
+        spawn ((c: Connection) => serve(c))(conn)
+    }
+})()
+
+plant start = time.clock()
+plant clients: list[Connection] = []
+for i in 0..count {
+    clients.push(net.connect("127.0.0.1", port))
+}
+for i in 0..count {
+    opened.receive()
+}
+drop("{count} connections open and idle after {time.clock() - start:.2} s")
+
+# one more round trip while they all wait: the loop still answers quickly
+time.sleep(0.5)
+plant t0 = time.clock()
+plant _probe = net.connect("127.0.0.1", port)
+drop("a new connection while they idle: {(time.clock() - t0) * 1000:.1} ms")
+for c in clients {
+    c.write("bye\n")
+}

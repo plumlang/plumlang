@@ -36,6 +36,14 @@ typedef struct Handler {
 #define FRAME_SEG  64
 #define FRAME_SEGS ((PLUM_MAX_FRAMES + FRAME_SEG - 1) / FRAME_SEG)
 
+/* A sleeper's time, or a socket wait's time limit. */
+typedef struct Timer {
+    double when;
+    uint64_t order; /* ties go to the earlier timer */
+    uint64_t seq;   /* the task's timer_seq when set: a newer one replaces it */
+    struct PlumTask *task;
+} Timer;
+
 typedef struct VM {
     PlumValue *stack;
     size_t top;
@@ -74,8 +82,10 @@ typedef struct VM {
     PLUM_ARRAY(struct PlumTask *) tasks;  /* every task not finished (holds a reference) */
     PLUM_ARRAY(struct PlumTask *) ready;  /* waiting for their turn, in order */
     PLUM_ARRAY(struct PlumTask *) failed; /* finished with an error (holds a reference) */
+    PlumPoller *poller;                   /* the sockets tasks wait on */
+    PLUM_ARRAY(Timer) timers;             /* a heap: the next time to wake someone first */
     bool yielded;                         /* the running task gave way: it waits, or sleeps */
-    uint64_t sleeps;                      /* how many times a task has gone to sleep */
+    uint64_t timer_order;                 /* how many times a task has gone to sleep */
 } VM;
 
 typedef PLUM_ARRAY(struct PlumTask *) TaskList;
@@ -86,6 +96,7 @@ typedef enum TaskState {
     TASK_RUNNING,
     TASK_BLOCKED,  /* waiting for a channel or another task */
     TASK_SLEEPING, /* until wake_at */
+    TASK_IO,       /* until io_fd is ready, or io_deadline */
     TASK_DONE,
     TASK_FAILED,
 } TaskState;
@@ -102,10 +113,16 @@ typedef struct PlumTask {
     Handler *handlers;
     int handler_count;
     int handler_cap;
-    int start_argc;       /* TASK_NEW */
-    bool started;         /* its first call has been made */
-    double wake_at;       /* while sleeping; 0 otherwise */
-    uint64_t sleep_order; /* when it went to sleep, to break ties */
+    int start_argc;     /* TASK_NEW */
+    bool started;       /* its first call has been made */
+    double wake_at;     /* while sleeping; 0 otherwise */
+    uint64_t timer_seq; /* bumped by each new timer, and when woken: older ones are void */
+    intptr_t io_fd;     /* TASK_IO: the socket */
+    bool io_write;      /* TASK_IO: waiting to write, not read */
+    bool io_woken;      /* woken because io_fd became ready */
+    double io_deadline; /* the native call's time limit; 0: none */
+    void *call_state;   /* a native call's scratch across its waits */
+    void (*call_state_free)(void *);
     PlumValue result;
     PlumValue error;  /* TASK_FAILED */
     char *trace;      /* TASK_FAILED: where it failed */
@@ -468,6 +485,8 @@ static const char *type_name(PlumValue v) {
             return "weak";
         case PLUM_OBJ_TASK:
             return "Task";
+        case PLUM_OBJ_HANDLE:
+            return plum_as_handle(v)->kind;
         case PLUM_OBJ_CHANNEL:
             return "Channel";
         case PLUM_OBJ_LIST:
@@ -1054,6 +1073,7 @@ static bool task_ended(const PlumTask *t) {
 /* Put `t` in line to run (once). */
 static void make_ready(VM *vm, PlumTask *t) {
     if (!t->queued && !task_ended(t)) {
+        t->timer_seq++; /* any timer it had is void now */
         t->state = TASK_READY;
         t->queued = true;
         plum_array_push(&vm->ready, t);
@@ -1101,6 +1121,9 @@ void plum_task_destroy(PlumObj *obj) {
         plum_free(t->segs[i]);
     }
     plum_free(t->handlers);
+    if (t->call_state != NULL && t->call_state_free != NULL) {
+        t->call_state_free(t->call_state);
+    }
     plum_release(t->result);
     plum_release(t->error);
     plum_free(t->trace);
@@ -1135,6 +1158,8 @@ static bool can_wait(VM *vm, const char *what) {
     return false;
 }
 
+static void add_timer(VM *vm, PlumTask *t, double when);
+
 bool plum_native_sleep(PlumNative *n, double seconds) {
     VM *vm = VM_OF(n);
     PlumTask *t = vm->current;
@@ -1144,12 +1169,12 @@ bool plum_native_sleep(PlumNative *n, double seconds) {
     }
     double now = plum_os_monotonic();
     if (t->wake_at == 0) {
-        t->sleep_order = vm->sleeps++;
         t->wake_at = now + seconds; /* the first call: start sleeping */
         if (t->wake_at == 0) {
             t->wake_at = 1e-9;
         }
         t->state = TASK_SLEEPING;
+        add_timer(vm, t, t->wake_at);
         return give_way(vm);
     }
     if (now >= t->wake_at) {
@@ -1157,7 +1182,61 @@ bool plum_native_sleep(PlumNative *n, double seconds) {
         return true;
     }
     t->state = TASK_SLEEPING;
+    add_timer(vm, t, t->wake_at);
     return give_way(vm);
+}
+
+int plum_native_wait_io(PlumNative *n, intptr_t fd, bool write, double timeout) {
+    VM *vm = VM_OF(n);
+    PlumTask *t = vm->current;
+    double now = plum_os_monotonic();
+    if (vm->callback_depth > 0 || t == NULL) {
+        /* inside a callback: just wait here */
+        PlumPollItem item = {fd, write, false};
+        int ms = timeout > 0 ? (int)(timeout * 1000.0 + 0.5) : -1;
+        return plum_os_poll(&item, 1, ms) > 0 ? 1 : -1;
+    }
+    if (t->io_woken && t->io_fd == fd && t->io_write == write) {
+        t->io_woken = false; /* the socket is ready: go ahead */
+        return 1;
+    }
+    t->io_woken = false;
+    if (t->io_deadline == 0 && timeout > 0) {
+        t->io_deadline = now + timeout;
+    }
+    if (t->io_deadline > 0 && now >= t->io_deadline) {
+        return -1;
+    }
+    t->io_fd = fd;
+    t->io_write = write;
+    t->state = TASK_IO;
+    plum_poller_arm(vm->poller, fd, write, t);
+    if (t->io_deadline > 0) {
+        add_timer(vm, t, t->io_deadline);
+    }
+    give_way(vm);
+    return 0;
+}
+
+void **plum_native_call_state(PlumNative *n, void (*free_fn)(void *)) {
+    PlumTask *t = VM_OF(n)->current;
+    t->call_state_free = free_fn;
+    return &t->call_state;
+}
+
+/* A native call has ended (not just paused): drop what it kept. */
+static void end_native_call(VM *vm) {
+    PlumTask *t = vm->current;
+    if (t == NULL || vm->callback_depth > 0) {
+        return;
+    }
+    if (t->call_state != NULL && t->call_state_free != NULL) {
+        t->call_state_free(t->call_state);
+    }
+    t->call_state = NULL;
+    t->call_state_free = NULL;
+    t->io_deadline = 0;
+    t->io_woken = false;
 }
 
 #define ARGS PlumNative *n, const PlumValue *args, int argc, PlumValue *result
@@ -1332,14 +1411,113 @@ const PlumNativeModule plum_module_tasks = {
  * the loop sleeps until the first sleeper's time. Returns false if every
  * task is waiting with nothing left to wake it (a deadlock).
  */
-/* Earlier wake time first; equal times keep the order they slept in. */
-static int by_wake_time(const void *a, const void *b) {
-    const PlumTask *x = *(PlumTask *const *)a;
-    const PlumTask *y = *(PlumTask *const *)b;
-    if (x->wake_at != y->wake_at) {
-        return x->wake_at < y->wake_at ? -1 : 1;
+/* ------------------------------------------------------------------ */
+/* Timers and sockets: what the scheduler waits for                    */
+/* ------------------------------------------------------------------ */
+
+/* Is a before b in the timer heap? Earlier first; equal times in order. */
+static bool timer_before(const Timer *a, const Timer *b) {
+    return a->when < b->when || (a->when == b->when && a->order < b->order);
+}
+
+/* Wake `t` at `when` (it holds a reference until the timer is used). */
+static void add_timer(VM *vm, PlumTask *t, double when) {
+    Timer tm = {when, vm->timer_order++, ++t->timer_seq, t};
+    t->obj.refcount++;
+    plum_array_push(&vm->timers, tm);
+    size_t i = vm->timers.len - 1;
+    while (i > 0) {
+        size_t up = (i - 1) / 2;
+        if (!timer_before(&vm->timers.items[i], &vm->timers.items[up])) {
+            break;
+        }
+        Timer swap = vm->timers.items[i];
+        vm->timers.items[i] = vm->timers.items[up];
+        vm->timers.items[up] = swap;
+        i = up;
     }
-    return x->sleep_order < y->sleep_order ? -1 : x->sleep_order > y->sleep_order;
+}
+
+static Timer pop_timer(VM *vm) {
+    Timer top = vm->timers.items[0];
+    vm->timers.items[0] = vm->timers.items[--vm->timers.len];
+    size_t i = 0;
+    for (;;) {
+        size_t l = 2 * i + 1, r = l + 1, least = i;
+        if (l < vm->timers.len && timer_before(&vm->timers.items[l], &vm->timers.items[least])) {
+            least = l;
+        }
+        if (r < vm->timers.len && timer_before(&vm->timers.items[r], &vm->timers.items[least])) {
+            least = r;
+        }
+        if (least == i) {
+            break;
+        }
+        Timer swap = vm->timers.items[i];
+        vm->timers.items[i] = vm->timers.items[least];
+        vm->timers.items[least] = swap;
+        i = least;
+    }
+    return top;
+}
+
+/* Is the timer still wanted: its task still asleep or waiting, for it? */
+static bool timer_live(const Timer *tm) {
+    PlumTask *t = tm->task;
+    return tm->seq == t->timer_seq && (t->state == TASK_SLEEPING || t->state == TASK_IO);
+}
+
+/* Drop the timers nobody waits for any more from the top of the heap. */
+static void prune_timers(VM *vm) {
+    while (vm->timers.len > 0 && !timer_live(&vm->timers.items[0])) {
+        Timer tm = pop_timer(vm);
+        plum_release(plum_obj(&tm.task->obj));
+    }
+}
+
+/*
+ * Wait for something to wake a task: the next timer, or a socket. False
+ * when there is nothing to wait for (every task waits on another).
+ */
+static bool wait_for_events(VM *vm) {
+    prune_timers(vm);
+    size_t armed = plum_poller_armed(vm->poller);
+    if (vm->timers.len == 0 && armed == 0) {
+        return false;
+    }
+    double now = plum_os_monotonic();
+    int ms = -1;
+    if (vm->timers.len > 0) {
+        double left = vm->timers.items[0].when - now;
+        ms = left <= 0 ? 0 : (int)(left * 1000.0) + 1;
+    }
+    if (armed > 0) {
+        void *ready[256];
+        int n = plum_poller_wait(vm->poller, ms, ready, 256);
+        for (int i = 0; i < n; i++) {
+            PlumTask *t = ready[i];
+            if (t->state == TASK_IO) {
+                t->io_woken = true;
+                make_ready(vm, t); /* its socket is ready: it tries again */
+            }
+        }
+    } else if (ms > 0) {
+        plum_os_sleep(ms / 1000.0);
+    }
+    /* the timers that are due, earliest first */
+    now = plum_os_monotonic();
+    while (vm->timers.len > 0 && vm->timers.items[0].when <= now) {
+        Timer tm = pop_timer(vm);
+        PlumTask *t = tm.task;
+        if (timer_live(&tm)) {
+            if (t->state == TASK_IO) {
+                plum_poller_disarm(vm->poller, t->io_fd, t->io_write); /* its time is up */
+            }
+            make_ready(vm, t);
+        }
+        plum_release(plum_obj(&t->obj));
+    }
+    return true;
 }
 
 static bool run_tasks(VM *vm, PlumFunction *main_fn) {
@@ -1350,40 +1528,10 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
         if (next == vm->ready.len) {
             vm->ready.len = 0;
             next = 0;
-            /* nobody ready: wake the sleepers whose time has come, or wait for one */
-            double soonest = 0;
-            bool any = false;
-            for (size_t i = 0; i < vm->tasks.len; i++) {
-                PlumTask *t = vm->tasks.items[i];
-                if (t->state == TASK_SLEEPING && (!any || t->wake_at < soonest)) {
-                    soonest = t->wake_at;
-                    any = true;
-                }
-            }
-            if (!any) {
+            /* Nobody ready: wait for the next timer or a ready socket. */
+            if (!wait_for_events(vm)) {
                 return false; /* everyone waits for someone: deadlock */
             }
-            double now = plum_os_monotonic();
-            if (soonest > now) {
-                plum_os_sleep(soonest - now);
-                now = plum_os_monotonic();
-            }
-            /* the ones whose time has come, earliest first: an overslept
-             * loop must still wake them in the order they asked for */
-            TaskList due = {0};
-            for (size_t i = 0; i < vm->tasks.len; i++) {
-                PlumTask *t = vm->tasks.items[i];
-                if (t->state == TASK_SLEEPING && t->wake_at <= now) {
-                    plum_array_push(&due, t);
-                }
-            }
-            if (due.len > 1) {
-                qsort(due.items, due.len, sizeof(PlumTask *), by_wake_time);
-            }
-            for (size_t i = 0; i < due.len; i++) {
-                make_ready(vm, due.items[i]);
-            }
-            plum_array_free(&due);
             continue;
         }
         PlumTask *t = vm->ready.items[next++];
@@ -2256,6 +2404,7 @@ static bool execute(VM *vm) {
                 frame->ip = op_start;
                 return false;
             }
+            end_native_call(vm);
             if (!ok) {
                 goto thrown;
             }
@@ -2555,6 +2704,7 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     /* The program's own code is the first task; <main> sits at the bottom
      * of its stack, like any called function. */
     push(vm, plum_retain(plum_obj(&program->main->obj)));
+    vm->poller = plum_poller_new();
     vm->main_task = spawn(vm, 0);
     PlumTask *main = vm->main_task;
     plum_free(vm->stack); /* it only carried <main> into the first task */
@@ -2590,6 +2740,11 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
         }
     }
     /* What's still running when the program ends is dropped. */
+    plum_poller_free(vm->poller);
+    for (size_t i = 0; i < vm->timers.len; i++) {
+        plum_release(plum_obj(&vm->timers.items[i].task->obj));
+    }
+    plum_array_free(&vm->timers);
     for (size_t i = 0; i < vm->tasks.len; i++) {
         plum_release(plum_obj(&vm->tasks.items[i]->obj));
     }

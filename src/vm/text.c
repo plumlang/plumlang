@@ -264,6 +264,10 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
     case PLUM_OBJ_TASK:
         put(b, "<task>", 6);
         return true;
+    case PLUM_OBJ_HANDLE:
+        snprintf(tmp, sizeof tmp, "<%s>", plum_as_handle(v)->kind);
+        put(b, tmp, strlen(tmp));
+        return true;
     case PLUM_OBJ_CHANNEL:
         put(b, "<channel>", 9);
         return true;
