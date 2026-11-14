@@ -29,11 +29,17 @@ typedef struct Handler {
     const uint8_t *target; /* where the catches start, with the error pushed */
 } Handler;
 
+/* Frames live in segments of FRAME_SEG, so a Frame never moves once made
+ * (the run loop keeps pointers to them across calls) and a task only has
+ * the segments it uses. */
+#define FRAME_SEG 256
+#define FRAME_SEGS ((PLUM_MAX_FRAMES + FRAME_SEG - 1) / FRAME_SEG)
+
 typedef struct VM {
     PlumValue *stack;
     size_t top;
     size_t capacity;
-    Frame frames[PLUM_MAX_FRAMES];
+    Frame *segs[FRAME_SEGS];
     int frame_count;
     PlumValue *globals;
     int global_count;
@@ -60,6 +66,10 @@ typedef struct VM {
     PLUM_ARRAY(PlumWeak *) tracked; /* --check-leaks: a weak box for every tree object */
     PlumTextHook text_hook;         /* objects become text through their to_str() */
 } VM;
+
+static inline Frame *FRAME(VM *vm, int i) {
+    return &vm->segs[i / FRAME_SEG][i % FRAME_SEG];
+}
 
 /* ------------------------------------------------------------------ */
 /* The stack                                                           */
@@ -139,7 +149,7 @@ static void throw_error(VM *vm, PlumValue error) {
     vm->trace_len = 0;
     const PlumObject *o = plum_as_object(error);
     const PlumString *message = plum_as_string(o->fields[0]); /* every error's first field */
-    const Frame *top = &vm->frames[vm->frame_count - 1];
+    const Frame *top = FRAME(vm, vm->frame_count - 1);
     trace_add(vm, "%s:%u: %s: %s\n", top->fn->path != NULL ? top->fn->path : vm->source->path,
               (unsigned)frame_line(top), o->tree->name, message->chars);
     /* Innermost calls first; a deep recursion shows its two ends. */
@@ -150,7 +160,7 @@ static void throw_error(VM *vm, PlumValue error) {
             trace_add(vm, "  ... %d more calls\n", i - 1);
             i = 1;
         }
-        const Frame *f = &vm->frames[i];
+        const Frame *f = FRAME(vm, i);
         if (f->fn->path != NULL && strcmp(f->fn->path, vm->source->path) != 0) {
             /* code from an imported module */
             trace_add(vm, "  in %s, line %u of %s\n", f->fn->name, (unsigned)frame_line(f),
@@ -196,7 +206,7 @@ static bool catch_thrown(VM *vm) {
     unwind_to(vm, h->top);
     push(vm, vm->thrown);
     vm->thrown = plum_none();
-    vm->frames[vm->frame_count - 1].ip = h->target;
+    FRAME(vm, vm->frame_count - 1)->ip = h->target;
     return true;
 }
 
@@ -928,7 +938,10 @@ static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
                       PLUM_MAX_FRAMES);
         return false;
     }
-    Frame *f = &vm->frames[vm->frame_count++];
+    if (vm->frame_count % FRAME_SEG == 0 && vm->segs[vm->frame_count / FRAME_SEG] == NULL) {
+        vm->segs[vm->frame_count / FRAME_SEG] = plum_alloc_zeroed(FRAME_SEG, sizeof(Frame));
+    }
+    Frame *f = FRAME(vm, vm->frame_count++);
     f->fn = fn;
     f->closure = closure;
     f->ip = fn->chunk->code.items;
@@ -978,7 +991,7 @@ static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
 #define PLACE_KIND(op, local, global) ((op) == (local) ? 0 : (op) == (global) ? 1 : 2)
 
 static bool execute(VM *vm) {
-    Frame *frame = &vm->frames[vm->frame_count - 1];
+    Frame *frame = FRAME(vm, vm->frame_count - 1);
     const uint8_t *ip = frame->ip;
     PlumChunk *chunk = frame->fn->chunk;
 
@@ -1766,7 +1779,7 @@ static bool execute(VM *vm) {
             if (!invoke(vm, fn, argc)) {
                 goto thrown;
             }
-            frame = &vm->frames[vm->frame_count - 1];
+            frame = FRAME(vm, vm->frame_count - 1);
             ip = frame->ip;
             chunk = frame->fn->chunk;
             break;
@@ -1856,7 +1869,7 @@ static bool execute(VM *vm) {
             if (!call(vm, fn, closure, argc)) {
                 goto thrown;
             }
-            frame = &vm->frames[vm->frame_count - 1];
+            frame = FRAME(vm, vm->frame_count - 1);
             ip = frame->ip;
             chunk = frame->fn->chunk;
             break;
@@ -1904,7 +1917,7 @@ static bool execute(VM *vm) {
             if (vm->frame_count == vm->stop_at) {
                 return true; /* back to whoever started this run */
             }
-            frame = &vm->frames[vm->frame_count - 1];
+            frame = FRAME(vm, vm->frame_count - 1);
             ip = frame->ip;
             chunk = frame->fn->chunk;
             break;
@@ -1920,7 +1933,7 @@ static bool execute(VM *vm) {
         if (!catch_thrown(vm)) {
             return false;
         }
-        frame = &vm->frames[vm->frame_count - 1];
+        frame = FRAME(vm, vm->frame_count - 1);
         ip = frame->ip;
         chunk = frame->fn->chunk;
     }
@@ -2048,6 +2061,9 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     plum_free(vm->globals);
     plum_free(vm->trace);
     plum_free(vm->handlers);
+    for (int i = 0; i < FRAME_SEGS; i++) {
+        plum_free(vm->segs[i]);
+    }
     plum_free(vm->stack);
     plum_free(vm);
     return code;
