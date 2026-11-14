@@ -34,7 +34,9 @@ static bool t_sleep(ARGS) {
         return plum_native_throw(n, PLUM_ERROR_VALUE,
                                  "sleep(%g): the seconds must be 0 to 10,000,000", s);
     }
-    plum_os_sleep(s);
+    if (!plum_native_sleep(n, s)) {
+        return false; /* other tasks run meanwhile */
+    }
     *result = plum_none();
     return true;
 }

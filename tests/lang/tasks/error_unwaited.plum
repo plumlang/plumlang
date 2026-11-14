@@ -1,0 +1,10 @@
+# A task's error isn't lost when nothing waits for it.
+seed time
+
+branch failing() {
+    throw KeyError("a task failed")
+}
+
+spawn failing()
+time.sleep(0.01)
+drop("the program went on")

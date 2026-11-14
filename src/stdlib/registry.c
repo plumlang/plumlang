@@ -4,8 +4,9 @@
 #include <string.h>
 
 static const PlumNativeModule *const modules[] = {
-    &plum_module_math, &plum_module_str, &plum_module_io,   &plum_module_os,
-    &plum_module_time, &plum_module_fs,  &plum_module_json, &plum_module_json_value,
+    &plum_module_math, &plum_module_str,        &plum_module_io,
+    &plum_module_os,   &plum_module_time,       &plum_module_fs,
+    &plum_module_json, &plum_module_json_value, &plum_module_tasks,
 };
 
 #define MODULE_COUNT (sizeof modules / sizeof modules[0])
@@ -17,6 +18,10 @@ const PlumNativeModule *plum_native_module(const char *name) {
         }
     }
     return NULL;
+}
+
+bool plum_native_is_methods(const PlumNativeModule *m) {
+    return m == &plum_module_str || m == &plum_module_json_value || m == &plum_module_tasks;
 }
 
 const PlumNativeModule *plum_native_module_at(size_t i) {

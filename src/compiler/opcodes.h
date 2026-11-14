@@ -139,6 +139,7 @@
     /* Calls */                                                                                  \
     X(CALL, 1, "call the function under [a] arguments")                                          \
     X(CALL_BUILTIN, 2, "call built-in [a] with [b] arguments")                                   \
+    X(SPAWN, 1, "a task running the function under [a] arguments; push the task")                \
     X(CALL_NATIVE, 2, "call standard-library function [a] with [b] arguments")                   \
     X(RETURN, 0, "return the top value")                                                         \
     X(RETURN_NONE, 0, "return none")

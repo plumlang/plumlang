@@ -32,6 +32,8 @@ typedef enum PlumObjType {
     PLUM_OBJ_TREE_INFO, /* what the VM knows about a tree: name, parent, fields */
     PLUM_OBJ_OBJECT,    /* an object of a tree */
     PLUM_OBJ_WEAK,      /* a weak reference to an object */
+    PLUM_OBJ_TASK,      /* a task (spawn): defined in vm.c, which owns its running state */
+    PLUM_OBJ_CHANNEL,   /* a channel between tasks: defined in vm.c */
 } PlumObjType;
 
 /* The header every heap object starts with. */
@@ -111,6 +113,10 @@ typedef struct PlumWeak {
     PlumObject *target; /* NULL once the object is gone */
     uint32_t line;      /* where the object was made (for the leak check) */
 } PlumWeak;
+
+/* Freeing tasks and channels, whose insides only the VM knows. */
+void plum_task_destroy(PlumObj *task);
+void plum_channel_destroy(PlumObj *channel);
 
 /* The weak box of `o`, made if needed, with a new reference. */
 PlumWeak *plum_weak_of(PlumObject *o);

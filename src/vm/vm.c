@@ -3,6 +3,7 @@
 
 #include "compiler/chunk.h"
 #include "stdlib/native.h"
+#include "stdlib/platform.h"
 #include "util/alloc.h"
 #include "util/fmt.h"
 #include "util/random.h"
@@ -29,11 +30,17 @@ typedef struct Handler {
     const uint8_t *target; /* where the catches start, with the error pushed */
 } Handler;
 
+/* Frames live in segments of FRAME_SEG, so a Frame never moves once made
+ * (the run loop keeps pointers to them across calls) and a task only has
+ * the segments it uses. */
+#define FRAME_SEG  64
+#define FRAME_SEGS ((PLUM_MAX_FRAMES + FRAME_SEG - 1) / FRAME_SEG)
+
 typedef struct VM {
     PlumValue *stack;
     size_t top;
     size_t capacity;
-    Frame frames[PLUM_MAX_FRAMES];
+    Frame *segs[FRAME_SEGS];
     int frame_count;
     PlumValue *globals;
     int global_count;
@@ -59,7 +66,70 @@ typedef struct VM {
     uint64_t rng[4];                /* math.random: xoshiro256** */
     PLUM_ARRAY(PlumWeak *) tracked; /* --check-leaks: a weak box for every tree object */
     PlumTextHook text_hook;         /* objects become text through their to_str() */
+    /* Tasks (spec 12): all run on this thread, one at a time. The VM's
+     * stack, frames and handlers above are the running task's; the others
+     * keep theirs in their PlumTask until they run again. */
+    struct PlumTask *current;
+    struct PlumTask *main_task;
+    PLUM_ARRAY(struct PlumTask *) tasks;  /* every task not finished (holds a reference) */
+    PLUM_ARRAY(struct PlumTask *) ready;  /* waiting for their turn, in order */
+    PLUM_ARRAY(struct PlumTask *) failed; /* finished with an error (holds a reference) */
+    bool yielded;                         /* the running task gave way: it waits, or sleeps */
+    uint64_t sleeps;                      /* how many times a task has gone to sleep */
 } VM;
+
+typedef PLUM_ARRAY(struct PlumTask *) TaskList;
+
+typedef enum TaskState {
+    TASK_NEW,   /* spawned, not started: its stack holds the function and arguments */
+    TASK_READY, /* in the ready queue */
+    TASK_RUNNING,
+    TASK_BLOCKED,  /* waiting for a channel or another task */
+    TASK_SLEEPING, /* until wake_at */
+    TASK_DONE,
+    TASK_FAILED,
+} TaskState;
+
+typedef struct PlumTask {
+    PlumObj obj;
+    TaskState state;
+    /* its registers, while it isn't the one running */
+    PlumValue *stack;
+    size_t top;
+    size_t capacity;
+    Frame *segs[FRAME_SEGS];
+    int frame_count;
+    Handler *handlers;
+    int handler_count;
+    int handler_cap;
+    int start_argc;       /* TASK_NEW */
+    bool started;         /* its first call has been made */
+    double wake_at;       /* while sleeping; 0 otherwise */
+    uint64_t sleep_order; /* when it went to sleep, to break ties */
+    PlumValue result;
+    PlumValue error;  /* TASK_FAILED */
+    char *trace;      /* TASK_FAILED: where it failed */
+    bool waited;      /* someone has seen its result or error */
+    bool queued;      /* in the ready queue */
+    size_t index;     /* in vm->tasks */
+    TaskList waiters; /* tasks waiting for this one to end */
+} PlumTask;
+
+typedef struct PlumChannel {
+    PlumObj obj;
+    PlumValue *items; /* a ring of `len` values from `head` */
+    size_t head;
+    size_t len;
+    size_t cap;
+    int64_t limit; /* 0: no limit */
+    bool closed;
+    TaskList receivers; /* waiting for a value */
+    TaskList senders;   /* waiting for room */
+} PlumChannel;
+
+static inline Frame *FRAME(VM *vm, int i) {
+    return &vm->segs[i / FRAME_SEG][i % FRAME_SEG];
+}
 
 /* ------------------------------------------------------------------ */
 /* The stack                                                           */
@@ -69,7 +139,7 @@ static void grow(VM *vm, size_t need) {
     if (need <= vm->capacity) {
         return;
     }
-    size_t cap = vm->capacity < 256 ? 256 : vm->capacity;
+    size_t cap = vm->capacity < 32 ? 32 : vm->capacity; /* small: every task has one */
     while (cap < need) {
         cap = plum_mul_size(cap, 2);
     }
@@ -139,7 +209,7 @@ static void throw_error(VM *vm, PlumValue error) {
     vm->trace_len = 0;
     const PlumObject *o = plum_as_object(error);
     const PlumString *message = plum_as_string(o->fields[0]); /* every error's first field */
-    const Frame *top = &vm->frames[vm->frame_count - 1];
+    const Frame *top = FRAME(vm, vm->frame_count - 1);
     trace_add(vm, "%s:%u: %s: %s\n", top->fn->path != NULL ? top->fn->path : vm->source->path,
               (unsigned)frame_line(top), o->tree->name, message->chars);
     /* Innermost calls first; a deep recursion shows its two ends. */
@@ -150,7 +220,7 @@ static void throw_error(VM *vm, PlumValue error) {
             trace_add(vm, "  ... %d more calls\n", i - 1);
             i = 1;
         }
-        const Frame *f = &vm->frames[i];
+        const Frame *f = FRAME(vm, i);
         if (f->fn->path != NULL && strcmp(f->fn->path, vm->source->path) != 0) {
             /* code from an imported module */
             trace_add(vm, "  in %s, line %u of %s\n", f->fn->name, (unsigned)frame_line(f),
@@ -196,17 +266,8 @@ static bool catch_thrown(VM *vm) {
     unwind_to(vm, h->top);
     push(vm, vm->thrown);
     vm->thrown = plum_none();
-    vm->frames[vm->frame_count - 1].ip = h->target;
+    FRAME(vm, vm->frame_count - 1)->ip = h->target;
     return true;
-}
-
-/* Print an error nothing caught; the program ends with exit code 1. */
-static void report_uncaught(VM *vm) {
-    fflush(vm->out); /* the program's output so far comes before the error */
-    if (vm->trace != NULL) {
-        fputs(vm->trace, vm->err);
-    }
-    vm->exit_code = 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -405,6 +466,10 @@ static const char *type_name(PlumValue v) {
             return "tree";
         case PLUM_OBJ_WEAK:
             return "weak";
+        case PLUM_OBJ_TASK:
+            return "Task";
+        case PLUM_OBJ_CHANNEL:
+            return "Channel";
         case PLUM_OBJ_LIST:
             return "list";
         case PLUM_OBJ_MAP:
@@ -919,6 +984,457 @@ static bool invoke(VM *vm, PlumFunction *fn, int argc) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Tasks                                                               */
+/* ------------------------------------------------------------------ */
+
+static PlumTask *as_task(PlumValue v) {
+    return (PlumTask *)(void *)v.as.obj;
+}
+
+static PlumChannel *as_channel(PlumValue v) {
+    return (PlumChannel *)(void *)v.as.obj;
+}
+
+/* Move the running registers into `t`, leaving the VM's empty. */
+static void save_task(VM *vm, PlumTask *t) {
+    t->stack = vm->stack;
+    t->top = vm->top;
+    t->capacity = vm->capacity;
+    memcpy(t->segs, vm->segs, sizeof t->segs);
+    t->frame_count = vm->frame_count;
+    t->handlers = vm->handlers;
+    t->handler_count = vm->handler_count;
+    t->handler_cap = vm->handler_cap;
+    vm->stack = NULL;
+    vm->top = 0;
+    vm->capacity = 0;
+    memset(vm->segs, 0, sizeof vm->segs);
+    vm->frame_count = 0;
+    vm->handlers = NULL;
+    vm->handler_count = 0;
+    vm->handler_cap = 0;
+}
+
+/* Make `t`'s registers the running ones. */
+static void load_task(VM *vm, PlumTask *t) {
+    vm->stack = t->stack;
+    vm->top = t->top;
+    vm->capacity = t->capacity;
+    memcpy(vm->segs, t->segs, sizeof vm->segs);
+    vm->frame_count = t->frame_count;
+    vm->handlers = t->handlers;
+    vm->handler_count = t->handler_count;
+    vm->handler_cap = t->handler_cap;
+    t->stack = NULL;
+    t->top = 0;
+    t->capacity = 0;
+    memset(t->segs, 0, sizeof t->segs);
+    t->frame_count = 0;
+    t->handlers = NULL;
+    t->handler_count = 0;
+    t->handler_cap = 0;
+    vm->current = t;
+}
+
+static PlumTask *task_new(VM *vm) {
+    PlumTask *t = plum_alloc_zeroed(1, sizeof *t);
+    t->obj.refcount = 1; /* vm->tasks holds it */
+    t->obj.type = PLUM_OBJ_TASK;
+    t->result = plum_none();
+    t->error = plum_none();
+    t->index = vm->tasks.len;
+    plum_array_push(&vm->tasks, t);
+    return t;
+}
+
+static bool task_ended(const PlumTask *t) {
+    return t->state == TASK_DONE || t->state == TASK_FAILED;
+}
+
+/* Put `t` in line to run (once). */
+static void make_ready(VM *vm, PlumTask *t) {
+    if (!t->queued && !task_ended(t)) {
+        t->state = TASK_READY;
+        t->queued = true;
+        plum_array_push(&vm->ready, t);
+    }
+}
+
+/* SPAWN: a task for the function and `argc` arguments on top of the stack. */
+static PlumTask *spawn(VM *vm, int argc) {
+    PlumTask *t = task_new(vm);
+    size_t n = (size_t)argc + 1;
+    t->capacity = n < 16 ? 16 : n;
+    t->stack = plum_alloc_zeroed(t->capacity, sizeof(PlumValue));
+    memcpy(t->stack, &vm->stack[vm->top - n], n * sizeof(PlumValue)); /* the refs move */
+    vm->top -= n;
+    t->top = n;
+    t->start_argc = argc;
+    make_ready(vm, t);
+    t->obj.refcount++; /* and the program's reference */
+    return t;
+}
+
+/* The task has ended: wake whoever waits, and stop tracking it. */
+static void task_finished(VM *vm, PlumTask *t) {
+    for (size_t i = 0; i < t->waiters.len; i++) {
+        make_ready(vm, t->waiters.items[i]);
+    }
+    t->waiters.len = 0;
+    PlumTask *last = vm->tasks.items[--vm->tasks.len]; /* out of vm->tasks */
+    vm->tasks.items[t->index] = last;
+    last->index = t->index;
+    if (t->state == TASK_FAILED && t != vm->main_task) {
+        plum_array_push(&vm->failed, t); /* the reference moves */
+    } else {
+        plum_release(plum_obj(&t->obj));
+    }
+}
+
+void plum_task_destroy(PlumObj *obj) {
+    PlumTask *t = (PlumTask *)(void *)obj;
+    for (size_t i = 0; i < t->top; i++) {
+        plum_release(t->stack[i]);
+    }
+    plum_free(t->stack);
+    for (int i = 0; i < FRAME_SEGS; i++) {
+        plum_free(t->segs[i]);
+    }
+    plum_free(t->handlers);
+    plum_release(t->result);
+    plum_release(t->error);
+    plum_free(t->trace);
+    plum_array_free(&t->waiters);
+    plum_free(t);
+}
+
+void plum_channel_destroy(PlumObj *obj) {
+    PlumChannel *ch = (PlumChannel *)(void *)obj;
+    for (size_t i = 0; i < ch->len; i++) {
+        plum_release(ch->items[(ch->head + i) % ch->cap]);
+    }
+    plum_free(ch->items);
+    plum_array_free(&ch->receivers);
+    plum_array_free(&ch->senders);
+    plum_free(ch);
+}
+
+/* The running task gives way; its state is already set (blocked or sleeping). */
+static bool give_way(VM *vm) {
+    vm->yielded = true;
+    return false;
+}
+
+/* A task can only wait when nothing but itself is on the C stack. */
+static bool can_wait(VM *vm, const char *what) {
+    if (vm->callback_depth == 0) {
+        return true;
+    }
+    runtime_error(vm, PLUM_ERROR_ERROR,
+                  "%s can't wait inside to_str, map or another callback; wait outside it", what);
+    return false;
+}
+
+bool plum_native_sleep(PlumNative *n, double seconds) {
+    VM *vm = VM_OF(n);
+    PlumTask *t = vm->current;
+    if (vm->callback_depth > 0 || t == NULL) {
+        plum_os_sleep(seconds);
+        return true;
+    }
+    double now = plum_os_monotonic();
+    if (t->wake_at == 0) {
+        t->sleep_order = vm->sleeps++;
+        t->wake_at = now + seconds; /* the first call: start sleeping */
+        if (t->wake_at == 0) {
+            t->wake_at = 1e-9;
+        }
+        t->state = TASK_SLEEPING;
+        return give_way(vm);
+    }
+    if (now >= t->wake_at) {
+        t->wake_at = 0; /* the call made again once the time is up: done */
+        return true;
+    }
+    t->state = TASK_SLEEPING;
+    return give_way(vm);
+}
+
+#define ARGS PlumNative *n, const PlumValue *args, int argc, PlumValue *result
+
+/* task.wait(): the task's result, or its error thrown here. */
+static bool t_wait(ARGS) {
+    (void)argc;
+    VM *vm = VM_OF(n);
+    PlumTask *t = as_task(args[0]);
+    if (t->state == TASK_DONE) {
+        t->waited = true;
+        *result = plum_retain(t->result);
+        return true;
+    }
+    if (t->state == TASK_FAILED) {
+        t->waited = true;
+        /* thrown again here, keeping the trace of where it failed */
+        vm->trace_len = 0;
+        if (vm->trace != NULL) {
+            vm->trace[0] = '\0';
+        }
+        if (t->trace != NULL) {
+            trace_add(vm, "%s", t->trace);
+        }
+        plum_release(vm->trace_of);
+        vm->trace_of = plum_retain(t->error);
+        throw_error(vm, plum_retain(t->error));
+        return false;
+    }
+    if (t == vm->current) {
+        return plum_native_throw(n, PLUM_ERROR_ERROR, "a task can't wait for itself");
+    }
+    if (!can_wait(vm, "wait()")) {
+        return false;
+    }
+    plum_array_push(&t->waiters, vm->current);
+    vm->current->state = TASK_BLOCKED;
+    return give_way(vm);
+}
+
+static bool t_done(ARGS) {
+    (void)n;
+    (void)argc;
+    *result = plum_bool(task_ended(as_task(args[0])));
+    return true;
+}
+
+static bool c_new(ARGS) {
+    int64_t limit = argc > 0 && args[0].type == PLUM_VAL_INT ? args[0].as.i : 0;
+    if (limit < 0) {
+        return plum_native_throw(n, PLUM_ERROR_VALUE,
+                                 "Channel(%lld): the capacity must be 0 (no limit) or more",
+                                 (long long)limit);
+    }
+    PlumChannel *ch = plum_alloc_zeroed(1, sizeof *ch);
+    ch->obj.refcount = 1;
+    ch->obj.type = PLUM_OBJ_CHANNEL;
+    ch->limit = limit;
+    *result = plum_obj(&ch->obj);
+    return true;
+}
+
+/* Wake the task that has waited longest on `list`. */
+static void wake_first(VM *vm, TaskList *list) {
+    if (list->len > 0) {
+        PlumTask *t = list->items[0];
+        memmove(list->items, list->items + 1, (list->len - 1) * sizeof(PlumTask *));
+        list->len--;
+        make_ready(vm, t);
+    }
+}
+
+static bool c_send(ARGS) {
+    (void)argc;
+    VM *vm = VM_OF(n);
+    PlumChannel *ch = as_channel(args[0]);
+    if (ch->closed) {
+        return plum_native_throw(n, PLUM_ERROR_ERROR, "send() on a closed channel");
+    }
+    if (ch->limit > 0 && ch->len >= (size_t)ch->limit) {
+        if (!can_wait(vm, "send()")) {
+            return false;
+        }
+        plum_array_push(&ch->senders, vm->current); /* wait for room */
+        vm->current->state = TASK_BLOCKED;
+        return give_way(vm);
+    }
+    if (ch->len == ch->cap) {
+        size_t cap = ch->cap < 8 ? 8 : ch->cap * 2;
+        PlumValue *items = plum_alloc_zeroed(cap, sizeof(PlumValue));
+        for (size_t i = 0; i < ch->len; i++) {
+            items[i] = ch->items[(ch->head + i) % ch->cap];
+        }
+        plum_free(ch->items);
+        ch->items = items;
+        ch->head = 0;
+        ch->cap = cap;
+    }
+    ch->items[(ch->head + ch->len) % ch->cap] = plum_retain(args[1]);
+    ch->len++;
+    wake_first(vm, &ch->receivers);
+    *result = plum_none();
+    return true;
+}
+
+/* receive(): the next value; none once the channel is closed and empty. */
+static bool c_receive(ARGS) {
+    (void)argc;
+    VM *vm = VM_OF(n);
+    PlumChannel *ch = as_channel(args[0]);
+    if (ch->len > 0) {
+        *result = ch->items[ch->head]; /* the reference moves */
+        ch->head = (ch->head + 1) % ch->cap;
+        ch->len--;
+        wake_first(vm, &ch->senders);
+        return true;
+    }
+    if (ch->closed) {
+        *result = plum_none();
+        return true;
+    }
+    if (!can_wait(vm, "receive()")) {
+        return false;
+    }
+    plum_array_push(&ch->receivers, vm->current);
+    vm->current->state = TASK_BLOCKED;
+    return give_way(vm);
+}
+
+static bool c_close(ARGS) {
+    (void)argc;
+    VM *vm = VM_OF(n);
+    PlumChannel *ch = as_channel(args[0]);
+    ch->closed = true;
+    while (ch->receivers.len > 0) {
+        wake_first(vm, &ch->receivers); /* they see the end */
+    }
+    while (ch->senders.len > 0) {
+        wake_first(vm, &ch->senders); /* they see it closed */
+    }
+    *result = plum_none();
+    return true;
+}
+
+#undef ARGS
+
+/* Typed by the checker itself (Task[T] and Channel[T]); the signatures here
+ * are for `plum stdlib`. */
+static const PlumNativeFunction task_functions[] = {
+    {"wait", "(self: Task[T]) -> T", t_wait,
+     "the task's result once it ends; if it failed, its error is thrown here"},
+    {"done", "(self: Task[T]) -> bool", t_done, "has the task ended?"},
+    {"new_channel", "(capacity: int = 0) -> Channel[T]", c_new,
+     "Channel[T](capacity): a channel; a capacity of 0 means no limit"},
+    {"send", "(self: Channel[T], value: T)", c_send,
+     "put a value in the channel; waits for room if it has a capacity and is full"},
+    {"receive", "(self: Channel[T]) -> T?", c_receive,
+     "the next value, waiting for one; none once the channel is closed and empty"},
+    {"close", "(self: Channel[T])", c_close,
+     "no more values: receivers get what's left, then none"},
+};
+
+const PlumNativeModule plum_module_tasks = {
+    "task.methods", "the methods of Task and Channel (no seed needed)",
+    task_functions, sizeof task_functions / sizeof task_functions[0],
+    NULL,           0,
+};
+
+/*
+ * Run tasks until the program's main task ends (or exit() is called): each
+ * runs until it ends or waits, then the next in line. When none is ready,
+ * the loop sleeps until the first sleeper's time. Returns false if every
+ * task is waiting with nothing left to wake it (a deadlock).
+ */
+/* Earlier wake time first; equal times keep the order they slept in. */
+static int by_wake_time(const void *a, const void *b) {
+    const PlumTask *x = *(PlumTask *const *)a;
+    const PlumTask *y = *(PlumTask *const *)b;
+    if (x->wake_at != y->wake_at) {
+        return x->wake_at < y->wake_at ? -1 : 1;
+    }
+    return x->sleep_order < y->sleep_order ? -1 : x->sleep_order > y->sleep_order;
+}
+
+static bool run_tasks(VM *vm, PlumFunction *main_fn) {
+    PlumTask *main = vm->main_task;
+    (void)main_fn;
+    size_t next = 0;
+    for (;;) {
+        if (next == vm->ready.len) {
+            vm->ready.len = 0;
+            next = 0;
+            /* nobody ready: wake the sleepers whose time has come, or wait for one */
+            double soonest = 0;
+            bool any = false;
+            for (size_t i = 0; i < vm->tasks.len; i++) {
+                PlumTask *t = vm->tasks.items[i];
+                if (t->state == TASK_SLEEPING && (!any || t->wake_at < soonest)) {
+                    soonest = t->wake_at;
+                    any = true;
+                }
+            }
+            if (!any) {
+                return false; /* everyone waits for someone: deadlock */
+            }
+            double now = plum_os_monotonic();
+            if (soonest > now) {
+                plum_os_sleep(soonest - now);
+                now = plum_os_monotonic();
+            }
+            /* the ones whose time has come, earliest first: an overslept
+             * loop must still wake them in the order they asked for */
+            TaskList due = {0};
+            for (size_t i = 0; i < vm->tasks.len; i++) {
+                PlumTask *t = vm->tasks.items[i];
+                if (t->state == TASK_SLEEPING && t->wake_at <= now) {
+                    plum_array_push(&due, t);
+                }
+            }
+            if (due.len > 1) {
+                qsort(due.items, due.len, sizeof(PlumTask *), by_wake_time);
+            }
+            for (size_t i = 0; i < due.len; i++) {
+                make_ready(vm, due.items[i]);
+            }
+            plum_array_free(&due);
+            continue;
+        }
+        PlumTask *t = vm->ready.items[next++];
+        t->queued = false;
+        load_task(vm, t);
+        t->state = TASK_RUNNING;
+        vm->yielded = false;
+        bool ok;
+        if (!t->started) {
+            t->started = true;
+            PlumValue fn = vm->stack[0];
+            PlumClosure *closure = fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn) : NULL;
+            PlumFunction *f = closure != NULL ? closure->fn : plum_as_function(fn);
+            ok = call(vm, f, closure, t->start_argc) && execute(vm);
+        } else {
+            ok = execute(vm);
+        }
+        if (vm->stopped) {
+            save_task(vm, t);
+            return true; /* exit() */
+        }
+        if (!ok && vm->yielded) {
+            save_task(vm, t); /* it waits or sleeps; its state says which */
+            continue;
+        }
+        if (ok) {
+            t->result = pop(vm);
+            t->state = TASK_DONE;
+        } else {
+            /* an error nothing in the task caught */
+            t->state = TASK_FAILED;
+            t->error = vm->thrown;
+            vm->thrown = plum_none();
+            if (vm->trace != NULL) {
+                size_t len = strlen(vm->trace);
+                t->trace = plum_alloc(len + 1);
+                memcpy(t->trace, vm->trace, len + 1);
+            }
+        }
+        unwind_to(vm, 0);
+        vm->frame_count = 0;
+        vm->handler_count = 0;
+        save_task(vm, t);
+        if (t == main) {
+            return true;
+        }
+        task_finished(vm, t);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* The run loop                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -928,7 +1444,10 @@ static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
                       PLUM_MAX_FRAMES);
         return false;
     }
-    Frame *f = &vm->frames[vm->frame_count++];
+    if (vm->frame_count % FRAME_SEG == 0 && vm->segs[vm->frame_count / FRAME_SEG] == NULL) {
+        vm->segs[vm->frame_count / FRAME_SEG] = plum_alloc_zeroed(FRAME_SEG, sizeof(Frame));
+    }
+    Frame *f = FRAME(vm, vm->frame_count++);
     f->fn = fn;
     f->closure = closure;
     f->ip = fn->chunk->code.items;
@@ -978,7 +1497,7 @@ static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
 #define PLACE_KIND(op, local, global) ((op) == (local) ? 0 : (op) == (global) ? 1 : 2)
 
 static bool execute(VM *vm) {
-    Frame *frame = &vm->frames[vm->frame_count - 1];
+    Frame *frame = FRAME(vm, vm->frame_count - 1);
     const uint8_t *ip = frame->ip;
     PlumChunk *chunk = frame->fn->chunk;
 
@@ -1025,6 +1544,7 @@ static bool execute(VM *vm) {
     } while (0)
 
     for (;;) {
+        const uint8_t *op_start = ip; /* where a task that gives way picks up again */
         PlumOpcode op = (PlumOpcode)*ip++;
         switch (op) {
         case PLUM_OP_CONST:
@@ -1710,6 +2230,11 @@ static bool execute(VM *vm) {
             }
             break;
         }
+        case PLUM_OP_SPAWN: {
+            uint16_t argc = READ_U16();
+            push(vm, plum_obj(&spawn(vm, argc)->obj));
+            break;
+        }
         case PLUM_OP_CALL_NATIVE: {
             const PlumNativeFunction *fn = plum_native_by_id(READ_U16());
             uint16_t argc = READ_U16();
@@ -1725,6 +2250,11 @@ static bool execute(VM *vm) {
             bool ok = fn->fn((PlumNative *)(void *)vm, args, argc, &result);
             if (args != local) {
                 plum_free(args);
+            }
+            if (!ok && vm->yielded) {
+                /* the task waits: this call runs again when it is resumed */
+                frame->ip = op_start;
+                return false;
             }
             if (!ok) {
                 goto thrown;
@@ -1766,7 +2296,7 @@ static bool execute(VM *vm) {
             if (!invoke(vm, fn, argc)) {
                 goto thrown;
             }
-            frame = &vm->frames[vm->frame_count - 1];
+            frame = FRAME(vm, vm->frame_count - 1);
             ip = frame->ip;
             chunk = frame->fn->chunk;
             break;
@@ -1856,7 +2386,7 @@ static bool execute(VM *vm) {
             if (!call(vm, fn, closure, argc)) {
                 goto thrown;
             }
-            frame = &vm->frames[vm->frame_count - 1];
+            frame = FRAME(vm, vm->frame_count - 1);
             ip = frame->ip;
             chunk = frame->fn->chunk;
             break;
@@ -1904,7 +2434,7 @@ static bool execute(VM *vm) {
             if (vm->frame_count == vm->stop_at) {
                 return true; /* back to whoever started this run */
             }
-            frame = &vm->frames[vm->frame_count - 1];
+            frame = FRAME(vm, vm->frame_count - 1);
             ip = frame->ip;
             chunk = frame->fn->chunk;
             break;
@@ -1920,7 +2450,7 @@ static bool execute(VM *vm) {
         if (!catch_thrown(vm)) {
             return false;
         }
-        frame = &vm->frames[vm->frame_count - 1];
+        frame = FRAME(vm, vm->frame_count - 1);
         ip = frame->ip;
         chunk = frame->fn->chunk;
     }
@@ -2012,8 +2542,6 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     vm->globals = plum_alloc_zeroed(program->global_count > 0 ? (size_t)program->global_count : 1,
                                     sizeof(PlumValue));
 
-    /* <main> sits at stack index 0, like any called function. */
-    push(vm, plum_retain(plum_obj(&program->main->obj)));
     vm->errors = program->errors;
     vm->options = options;
     uint64_t key[2];
@@ -2023,10 +2551,55 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     vm->text_hook = (PlumTextHook){object_text, vm};
     vm->thrown = plum_none();
     vm->trace_of = plum_none();
-    if (!(call(vm, program->main, NULL, 0) && execute(vm)) && !vm->stopped) {
-        report_uncaught(vm);
+
+    /* The program's own code is the first task; <main> sits at the bottom
+     * of its stack, like any called function. */
+    push(vm, plum_retain(plum_obj(&program->main->obj)));
+    vm->main_task = spawn(vm, 0);
+    PlumTask *main = vm->main_task;
+    plum_free(vm->stack); /* it only carried <main> into the first task */
+    vm->stack = NULL;
+    vm->top = 0;
+    vm->capacity = 0;
+    if (!run_tasks(vm, program->main)) {
+        fflush(out);
+        fprintf(err,
+                "%s: Error: deadlock: every task is waiting (for a channel or another task) "
+                "and nothing is left to wake them\n",
+                source->path);
+        vm->exit_code = 1;
+    } else if (!vm->stopped && main->state == TASK_FAILED) {
+        fflush(out);
+        if (main->trace != NULL) {
+            fputs(main->trace, err);
+        }
+        vm->exit_code = 1;
     }
     fflush(out);
+    /* A task that failed must not fail silently. */
+    for (size_t i = 0; i < vm->failed.len && !vm->stopped; i++) {
+        PlumTask *t = vm->failed.items[i];
+        if (!t->waited) {
+            fprintf(err, "error in a task that nothing waited for:\n");
+            if (t->trace != NULL) {
+                fputs(t->trace, err);
+            }
+            if (vm->exit_code == 0) {
+                vm->exit_code = 1;
+            }
+        }
+    }
+    /* What's still running when the program ends is dropped. */
+    for (size_t i = 0; i < vm->tasks.len; i++) {
+        plum_release(plum_obj(&vm->tasks.items[i]->obj));
+    }
+    for (size_t i = 0; i < vm->failed.len; i++) {
+        plum_release(plum_obj(&vm->failed.items[i]->obj));
+    }
+    plum_release(plum_obj(&main->obj));
+    plum_array_free(&vm->tasks);
+    plum_array_free(&vm->failed);
+    plum_array_free(&vm->ready);
 
     unwind_to(vm, 0);
     for (int i = 0; i < vm->global_count; i++) {
@@ -2048,6 +2621,9 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     plum_free(vm->globals);
     plum_free(vm->trace);
     plum_free(vm->handlers);
+    for (int i = 0; i < FRAME_SEGS; i++) {
+        plum_free(vm->segs[i]);
+    }
     plum_free(vm->stack);
     plum_free(vm);
     return code;

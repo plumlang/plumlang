@@ -1,0 +1,10 @@
+tests/lang/tasks/error_objects.plum:9:12: error[E0426]: a task can't be given Box: tasks don't share objects; give it values, and send results back through a Channel
+ 9 | spawn work(b)
+   |            ^
+tests/lang/tasks/error_objects.plum:10:12: error[E0426]: a task can't be given Box: tasks don't share objects; give it values, and send results back through a Channel
+10 | spawn work([b][0])
+   |            ^~~~~~
+tests/lang/tasks/error_objects.plum:12:7: error[E0426]: a task can't run a method of an object, since tasks don't share objects; give it the values it needs instead
+12 | spawn b.bump()
+   |       ^~~~~~
+3 errors

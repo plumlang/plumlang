@@ -108,7 +108,7 @@ static void op2(Compiler *c, PlumOpcode o, uint16_t a, uint16_t b, uint32_t line
 
 static void unsupported(Compiler *c, PlumSpan span, const char *what, int issue) {
     plum_diag_error(c->diags, span, "E0601",
-                    "%s: not supported by the compiler yet (it arrives with #%d)", what, issue);
+                    "%s: not supported by the compiler yet (see the roadmap, #%d)", what, issue);
 }
 
 static uint16_t constant(Compiler *c, PlumValue v, PlumSpan span) {
@@ -213,7 +213,7 @@ static int symbol_place(Compiler *c, PlumSymbol *sym, uint16_t *index) {
 
 static void load_symbol(Compiler *c, PlumSymbol *sym, PlumSpan span) {
     if (!sym->has_slot) {
-        unsupported(c, span, "this kind of name", 22);
+        unsupported(c, span, "this kind of name", 36);
         return;
     }
     if (sym == c->fs->self) {
@@ -808,7 +808,7 @@ static void compile_field(Compiler *c, const PlumExpr *e) {
     if (obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
         obj->symbol->kind == PLUM_SYM_MODULE) {
         unsupported(c, e->span, "a module's function as a value (call it, or wrap it in a lambda)",
-                    24);
+                    36);
         return;
     }
     PlumSymbol *tree = tree_of(obj->ty);
@@ -820,11 +820,11 @@ static void compile_field(Compiler *c, const PlumExpr *e) {
         return;
     }
     if (cs != NULL) {
-        unsupported(c, e->span, "a kind case with values as a function (call it)", 22);
+        unsupported(c, e->span, "a kind case with values as a function (call it)", 36);
         return;
     }
     if (index < 0) {
-        unsupported(c, e->span, "a method as a value (call it, or wrap it in a lambda)", 22);
+        unsupported(c, e->span, "a method as a value (call it, or wrap it in a lambda)", 36);
         return;
     }
     if (obj->kind == PLUM_EXPR_SUPER) {
@@ -1034,10 +1034,7 @@ static void compile_invoke(Compiler *c, const PlumExpr *e) {
     PlumSymbol *decl = object_decl(obj->ty);
     const PlumTy *fty = unwrap_optional(callee->ty);
     if (decl == NULL || !ty_is(fty, PLUM_TY_FUNC)) {
-        const PlumTy *rt = unwrap_optional(obj->ty);
-        bool task = ty_is(rt, PLUM_TY_TASK) || ty_is(rt, PLUM_TY_CHANNEL);
-        unsupported(c, e->span, task ? "methods of tasks and channels" : "methods of this type",
-                    task ? 27 : 24);
+        unsupported(c, e->span, "methods of this type", 36);
         return;
     }
     uint32_t line = e->span.line;
@@ -1277,6 +1274,33 @@ static void compile_match(Compiler *c, const PlumExpr *e) {
     c->fs->next_slot = saved;
 }
 
+/*
+ * spawn f(args): the function and its arguments, then SPAWN makes them a
+ * task. Methods, constructors and library functions are wrapped by hand:
+ * spawn (() => ...)().
+ */
+static void compile_spawn(Compiler *c, const PlumExpr *e) {
+    const PlumExpr *call = e->as.inner;
+    const PlumExpr *callee = call->as.call.callee;
+    PlumSymbol *sym = callee->kind == PLUM_EXPR_NAME ? callee->symbol : NULL;
+    bool method;
+    bool plain_function = ty_is(callee->ty, PLUM_TY_FUNC) && callee->kind != PLUM_EXPR_FIELD &&
+                          plum_callee_native(callee, &method) == NULL &&
+                          (sym == NULL || sym->kind == PLUM_SYM_FUNC || sym->kind == PLUM_SYM_VAR ||
+                           sym->kind == PLUM_SYM_CONST || sym->kind == PLUM_SYM_PARAM ||
+                           sym->kind == PLUM_SYM_LOOP || sym->kind == PLUM_SYM_BINDING);
+    if (!plain_function) {
+        unsupported(c, e->span,
+                    "spawn of a method, constructor or library function (wrap it: "
+                    "spawn (() => ...)())",
+                    36);
+        return;
+    }
+    compile_expr(c, callee);
+    compile_args(c, call, callee->ty, callee_decl(sym));
+    op1(c, PLUM_OP_SPAWN, (uint16_t)callee->ty->as.func.param_count, e->span.line);
+}
+
 static void compile_list(Compiler *c, const PlumExpr *e) {
     const PlumTy *elem = ty_is(e->ty, PLUM_TY_LIST) ? e->ty->as.elem : NULL;
     if (e->as.list.count > 0xFFFF) {
@@ -1426,7 +1450,7 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
                                                             : PLUM_RECEIVER_LIST;
     int m = plum_method_find(receiver, callee->as.field.name);
     if (m < 0 || !ty_is(fty, PLUM_TY_FUNC) || callee->as.field.optional) {
-        unsupported(c, e->span, "this method", 24);
+        unsupported(c, e->span, "this method", 36);
         return;
     }
     uint32_t line = e->span.line;
@@ -1486,6 +1510,21 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
     PlumSymbol *sym = callee->kind == PLUM_EXPR_NAME ? callee->symbol : NULL;
     uint32_t line = e->span.line;
 
+    if (callee->kind == PLUM_EXPR_INDEX && callee->as.index.object->kind == PLUM_EXPR_NAME &&
+        callee->as.index.object->symbol != NULL &&
+        callee->as.index.object->symbol->kind == PLUM_SYM_BUILTIN_TYPE &&
+        strcmp(callee->as.index.object->symbol->name, "Channel") == 0) {
+        /* Channel[T](capacity) */
+        uint16_t argc = (uint16_t)(e->as.call.arg_count > 0 ? 1 : 0);
+        if (argc > 0) {
+            compile_expr(c, e->as.call.args[0].value);
+        }
+        op2(c, PLUM_OP_CALL_NATIVE,
+            (uint16_t)plum_native_id(plum_native_function(&plum_module_tasks, "new_channel")), argc,
+            line);
+        return;
+    }
+
     bool method = false;
     const PlumNativeFunction *native = plum_callee_native(callee, &method);
     if (native != NULL) {
@@ -1496,7 +1535,7 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
     if (sym != NULL && (sym->kind == PLUM_SYM_BUILTIN_FUNC || sym->kind == PLUM_SYM_BUILTIN_TYPE)) {
         int id = builtin_id(sym->name);
         if (id < 0) {
-            unsupported(c, e->span, "this built-in", 24);
+            unsupported(c, e->span, "this built-in", 36);
             return;
         }
         for (size_t i = 0; i < e->as.call.arg_count; i++) {
@@ -1536,7 +1575,7 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
     }
     const PlumTy *fty = callee->ty;
     if (!ty_is(fty, PLUM_TY_FUNC)) {
-        unsupported(c, e->span, "this kind of call", 19);
+        unsupported(c, e->span, "this kind of call", 36);
         return;
     }
     compile_expr(c, callee);
@@ -1600,7 +1639,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         }
         if (e->symbol != NULL && e->symbol->kind == PLUM_SYM_NATIVE) {
             unsupported(c, e->span,
-                        "a module's function as a value (call it, or wrap it in a lambda)", 24);
+                        "a module's function as a value (call it, or wrap it in a lambda)", 36);
             return;
         }
         load_symbol(c, e->symbol, e->span);
@@ -1658,7 +1697,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
             return;
         }
         if (tree == NULL || tree->kind != PLUM_SYM_TREE) {
-            unsupported(c, e->span, "'is' with this type", 22);
+            unsupported(c, e->span, "'is' with this type", 36);
             return;
         }
         compile_expr(c, e->as.cast.value);
@@ -1699,7 +1738,7 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         return;
     }
     case PLUM_EXPR_SPAWN:
-        unsupported(c, e->span, "spawn", 27);
+        compile_spawn(c, e);
         return;
     case PLUM_EXPR_WILDCARD:
     case PLUM_EXPR_ERROR:
@@ -1882,14 +1921,48 @@ static void compile_while(Compiler *c, const PlumStmt *s) {
  * since lists are values) and a position live in hidden slots; FOR_EACH
  * puts the next item in the loop variable or leaves the loop.
  */
+/*
+ * for x in channel: receive until the channel is closed and empty.
+ *
+ *   start: GET ch; receive; JUMP_IF_NONE_KEEP done; SET x; body; LOOP start
+ *   done:  POP (the none)
+ *   end:   (break lands here)
+ */
+static void compile_for_channel(Compiler *c, const PlumStmt *s) {
+    uint32_t line = s->span.line;
+    int saved = c->fs->next_slot;
+    uint16_t ch = new_local(c, NULL, s->span);
+    uint16_t var = new_local(c, s->symbol, s->span);
+    compile_expr(c, s->as.for_.iterable);
+    op1(c, PLUM_OP_SET_LOCAL, ch, line);
+    Loop loop;
+    begin_loop(c, &loop, false); /* continue goes back to receive */
+    op1(c, PLUM_OP_GET_LOCAL, ch, line);
+    op2(c, PLUM_OP_CALL_NATIVE,
+        (uint16_t)plum_native_id(plum_native_function(&plum_module_tasks, "receive")), 1, line);
+    size_t done = emit_jump(c, PLUM_OP_JUMP_IF_NONE_KEEP, line);
+    op1(c, PLUM_OP_SET_LOCAL, var, line);
+    box_if_captured(c, s->symbol, s->span);
+    compile_block(c, s->as.for_.body);
+    emit_loop(c, loop.start, s->span);
+    patch_jump(c, done, s->span);
+    op(c, PLUM_OP_POP, line);
+    end_loop(c, &loop, s->span);
+    c->fs->next_slot = saved;
+}
+
 static void compile_for_each(Compiler *c, const PlumStmt *s) {
     const PlumExpr *it = s->as.for_.iterable;
+    if (ty_is(it->ty, PLUM_TY_CHANNEL)) {
+        compile_for_channel(c, s);
+        return;
+    }
     bool enumerate = it->kind == PLUM_EXPR_CALL && it->as.call.callee->kind == PLUM_EXPR_FIELD &&
                      strcmp(it->as.call.callee->as.field.name, "enumerate") == 0;
     const PlumExpr *source = enumerate ? it->as.call.callee->as.field.object : it;
     if (!ty_is(source->ty, PLUM_TY_LIST) && !ty_is(source->ty, PLUM_TY_MAP) &&
         !ty_is(source->ty, PLUM_TY_SET) && !ty_is(source->ty, PLUM_TY_STR)) {
-        unsupported(c, it->span, "loops over this", 20);
+        unsupported(c, it->span, "loops over this", 36);
         return;
     }
     bool two = enumerate || s->as.for_.second != NULL; /* i, x or key, value */
@@ -1990,7 +2063,7 @@ static void compile_field_assign(Compiler *c, const PlumStmt *s) {
     PlumSymbol *tree = tree_of(target->as.field.object->ty);
     int index = tree != NULL ? field_index(tree, target->as.field.name) : -1;
     if (index < 0 || target->as.field.optional) {
-        unsupported(c, target->span, "assigning to this field", 22);
+        unsupported(c, target->span, "assigning to this field", 36);
         return;
     }
     uint32_t line = s->span.line;
@@ -2026,7 +2099,7 @@ static void compile_path_assign(Compiler *c, const PlumStmt *s) {
     int field = 0;
     const PlumExpr *object = base == NULL ? field_path(target, keys, &depth, &field) : NULL;
     if (base == NULL && object == NULL) {
-        unsupported(c, target->span, "assigning into this", 22);
+        unsupported(c, target->span, "assigning into this", 36);
         return;
     }
     uint32_t line = s->span.line;
@@ -2100,7 +2173,7 @@ static void compile_index_assign(Compiler *c, const PlumStmt *s) {
     }
     if ((!ty_is(obj->ty, PLUM_TY_LIST) && !is_map) || place == NULL ||
         target->as.index.index->kind == PLUM_EXPR_RANGE) {
-        unsupported(c, target->span, "assigning to a slice", 20);
+        unsupported(c, target->span, "assigning to a slice", 36);
         return;
     }
     uint32_t line = s->span.line;
@@ -2165,7 +2238,7 @@ static void compile_assign(Compiler *c, const PlumStmt *s) {
         return;
     }
     if (target->kind != PLUM_EXPR_NAME) {
-        unsupported(c, target->span, "assigning to this", 22);
+        unsupported(c, target->span, "assigning to this", 36);
         return;
     }
     PlumTokenKind tok = s->as.assign.op;

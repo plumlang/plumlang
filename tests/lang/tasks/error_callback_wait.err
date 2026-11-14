@@ -1,0 +1,3 @@
+tests/lang/tasks/error_callback_wait.plum:4: Error: receive() can't wait inside to_str, map or another callback; wait outside it
+  in <lambda:4>, line 4
+  in <main>, line 4

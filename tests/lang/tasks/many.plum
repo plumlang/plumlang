@@ -1,0 +1,15 @@
+# Thousands of tasks, each sleeping, cost little: they run on one thread.
+seed time
+
+plant done = Channel[int]()
+for i in 0..5000 {
+    spawn ((n: int) => {
+        time.sleep(0.05)
+        done.send(n % 7)
+    })(i)
+}
+plant total = 0
+for i in 0..5000 {
+    total += done.receive() ?? 0
+}
+drop(total)

@@ -65,6 +65,9 @@ typedef struct PlumNativeModule {
 
 /* ---- Looking modules up (compile time) ---------------------------- */
 
+/* Is `m` the methods of a type (str, Json, Task) rather than a module to seed? */
+bool plum_native_is_methods(const PlumNativeModule *m);
+
 /* The standard module `name` ("math"), or NULL. */
 const PlumNativeModule *plum_native_module(const char *name);
 /* Every module, for listing; NULL past the end. */
@@ -101,6 +104,13 @@ uint64_t plum_native_random(PlumNative *n);
 void plum_native_seed_random(PlumNative *n, uint64_t seed);
 
 /* The program's own command-line arguments (after the file). */
+/*
+ * Sleep `seconds`. In a task this lets the other tasks run: it returns
+ * false the first time (the call is made again when the time is up, and
+ * then returns true). Inside a callback it simply waits.
+ */
+bool plum_native_sleep(PlumNative *n, double seconds);
+
 int plum_native_argc(PlumNative *n);
 const char *plum_native_arg(PlumNative *n, int i);
 
@@ -123,5 +133,6 @@ extern const PlumNativeModule plum_module_time;
 extern const PlumNativeModule plum_module_fs;
 extern const PlumNativeModule plum_module_json;
 extern const PlumNativeModule plum_module_json_value; /* the methods of Json values */
+extern const PlumNativeModule plum_module_tasks;      /* Task and Channel methods (vm.c) */
 
 #endif /* PLUM_STDLIB_NATIVE_H */

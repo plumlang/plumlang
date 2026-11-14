@@ -1,7 +1,4 @@
-tests/lang/compiler/error_unsupported.plum:4:11: error[E0601]: spawn: not supported by the compiler yet (it arrives with #27)
-4 | plant t = spawn work()
-  |           ^~~~~~~~~~~~
-tests/lang/compiler/error_unsupported.plum:5:6: error[E0601]: methods of tasks and channels: not supported by the compiler yet (it arrives with #27)
-5 | drop(t.wait())
-  |      ^~~~~~~~
-2 errors
+tests/lang/compiler/error_unsupported.plum:4:15: error[E0601]: a module's function as a value (call it, or wrap it in a lambda): not supported by the compiler yet (see the roadmap, #36)
+4 | plant root2 = math.sqrt
+  |               ^~~~~~~~~
+1 error

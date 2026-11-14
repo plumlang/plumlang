@@ -309,6 +309,10 @@ static PlumTy *builtin_member(Checker *c, PlumTy *obj, const char *name) {
         f->as.func.result = obj->as.elem;
         return f;
     }
+    if (obj->kind == PLUM_TY_TASK && strcmp(name, "done") == 0) {
+        f->as.func.result = c->t.boolean;
+        return f;
+    }
     if (obj->kind == PLUM_TY_CHANNEL) {
         if (strcmp(name, "send") == 0) {
             f->as.func.params[0].name = plum_intern_cstr(c->names, "value");
@@ -1052,7 +1056,9 @@ static PlumTy *check_call(Checker *c, PlumExpr *e) {
         if (arg->kind == PLUM_EXPR_NAME && arg->symbol != NULL) {
             elem = named_type(c, arg->symbol, NULL, 0, arg->span);
         }
-        args_loose(c, e);
+        callee->ty = c->t.unknown;
+        PlumTyParam capacity = {plum_intern_cstr(c->names, "capacity"), c->t.integer, true};
+        check_args(c, e, "Channel(...)", &capacity, 1);
         return plum_ty_wrap(&c->t, PLUM_TY_CHANNEL, elem);
     }
 
@@ -1658,6 +1664,49 @@ static PlumTy *check_match(Checker *c, PlumExpr *e, PlumTy *expected) {
     return is_value && result != NULL ? result : c->t.none;
 }
 
+/* Does a value of this type hold a tree object (which tasks can't share)? */
+static bool holds_object(const PlumTy *t) {
+    switch (t->kind) {
+    case PLUM_TY_TREE:
+    case PLUM_TY_TRAIT:
+        return true;
+    case PLUM_TY_LIST:
+    case PLUM_TY_SET:
+    case PLUM_TY_OPTIONAL:
+        return holds_object(t->as.elem);
+    case PLUM_TY_MAP:
+        return holds_object(t->as.map.key) || holds_object(t->as.map.value);
+    default:
+        return false;
+    }
+}
+
+/* Spec 12.3: a task gets its own copies of what it is given, so it can't be
+ * given a tree object (objects are shared); channels carry values between tasks. */
+static void check_spawn_args(Checker *c, const PlumExpr *call) {
+    if (call->kind != PLUM_EXPR_CALL) {
+        return;
+    }
+    const PlumExpr *callee = call->as.call.callee;
+    if (callee->kind == PLUM_EXPR_FIELD && callee->as.field.object->ty != NULL &&
+        holds_object(callee->as.field.object->ty)) {
+        plum_diag_error(c->diags, callee->span, "E0426",
+                        "a task can't run a method of an object, since tasks don't share "
+                        "objects; give it the values it needs instead");
+        return;
+    }
+    for (size_t i = 0; i < call->as.call.arg_count; i++) {
+        const PlumExpr *arg = call->as.call.args[i].value;
+        if (arg->ty != NULL && holds_object(arg->ty)) {
+            char a[TYBUF];
+            plum_diag_error(c->diags, arg->span, "E0426",
+                            "a task can't be given %s: tasks don't share objects; give it values, "
+                            "and send results back through a Channel",
+                            tx(arg->ty, a));
+        }
+    }
+}
+
 static PlumTy *check_expr(Checker *c, PlumExpr *e, PlumTy *expected) {
     PlumTy *t = c->t.error;
     char a[TYBUF];
@@ -1792,6 +1841,7 @@ static PlumTy *check_expr(Checker *c, PlumExpr *e, PlumTy *expected) {
     }
     case PLUM_EXPR_SPAWN:
         t = plum_ty_wrap(&c->t, PLUM_TY_TASK, check_expr(c, e->as.inner, NULL));
+        check_spawn_args(c, e->as.inner);
         break;
     case PLUM_EXPR_MATCH:
         t = check_match(c, e, expected);

@@ -17,6 +17,7 @@ seed math { sqrt, PI }     # sqrt(PI)
 | [`time`](time.md) | clocks, sleeping and dates |
 | [`fs`](fs.md) | files and directories |
 | [`json`](json.md) | parse and produce JSON; [`Json` values](json.value.md) |
+| [`Task` and `Channel`](task.methods.md) | waiting for tasks, channels between them (no `seed`) |
 
 `plum stdlib` lists every module's functions with their signatures, and
 `plum stdlib math` one module's. The reference table on each page is

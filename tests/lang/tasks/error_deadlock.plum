@@ -1,0 +1,4 @@
+# Every task waiting, nothing to wake them: a deadlock ends the program.
+plant ch = Channel[int]()
+drop("waiting for a value nobody sends")
+drop(ch.receive())
