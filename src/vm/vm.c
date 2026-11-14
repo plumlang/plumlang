@@ -868,6 +868,10 @@ void plum_native_seed_random(PlumNative *n, uint64_t seed) {
     }
 }
 
+struct PlumTable *plum_native_new_map(PlumNative *n) {
+    return plum_table_new(false, VM_OF(n)->seed);
+}
+
 int plum_native_argc(PlumNative *n) {
     return VM_OF(n)->options->argc;
 }

@@ -104,7 +104,7 @@ static bool t_parts(ARGS) {
     if (!broken_down(n, "parts", args, argc, 1, &tm)) {
         return false;
     }
-    PlumTable *map = plum_table_new(false, (const uint64_t[2]){0x706C756D, 0x74696D65});
+    PlumTable *map = plum_native_new_map(n);
     static const char *const names[] = {"year",   "month",  "day",     "hour",
                                         "minute", "second", "weekday", "yearday"};
     int64_t values[] = {tm.tm_year + 1900,

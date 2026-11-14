@@ -1,0 +1,30 @@
+# json: parsing, the Json methods, writing trees and literals, errors, a round trip.
+seed json
+
+plant text = "\{\"name\": \"Ada\", \"age\": 36, \"langs\": [\"plum\", \"c\"], \"admin\": true, \"boss\": null, \"pi\": 3.5, \"note\": \"line\\nbreak \\u00e9 \\ud83d\\ude00\"\}"
+plant data = json.parse(text)
+drop(data.get("name").str(), data.get("age").int(), data.get("langs").at(-1).str())
+drop(data.get("missing").is_null(), data.get("missing").get("deeper").str() ?? "none here", data.type_name(), data.keys())
+drop(data.get("pi").float(), data.get("pi").int(), data.get("age").float(), data.get("admin").bool())
+drop(data.get("note").str())
+if plant langs = data.get("langs").list() {
+    for l in langs { drop(l.str() ?? "?") }
+}
+drop(json.stringify(data))
+
+tree User {
+    name: str
+    tags: list[str] = []
+    friend: User? = none
+}
+plant u = User("Bo", ["x"], User("Cy"))
+drop(json.stringify(u))
+plant body: Json = {"user": "Ada", "ids": [1, 2, 3], "nested": {"ok": good, "n": none}, "mixed": [1, "two", 3.0]}
+drop(json.stringify(body, indent: 2))
+drop(json.stringify([1, 2]), json.stringify("q\"t"), json.stringify(none))
+for broken in ["\{", "[1,]", "\{\"a\" 1\}", "01", "\"x", "nul", "[1] 2"] {
+    try { drop(json.parse(broken)) } catch e: ParseError { drop(e.message) }
+}
+try { drop(json.stringify(1.0 / 0.0)) } catch e: ValueError { drop(e.message) }
+plant again = json.parse(json.stringify(body))
+drop(json.stringify(again) == json.stringify(body))

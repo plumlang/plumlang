@@ -92,6 +92,10 @@ FILE *plum_native_err(PlumNative *n);
 /* The text of a value, through its to_str(); NULL if that threw. */
 PlumString *plum_native_text(PlumNative *n, PlumValue v);
 
+/* A new, empty map, hashed with the program's key (so input can't choose
+ * colliding keys). */
+struct PlumTable *plum_native_new_map(PlumNative *n);
+
 /* 64 random bits from the program's generator, and seeding it. */
 uint64_t plum_native_random(PlumNative *n);
 void plum_native_seed_random(PlumNative *n, uint64_t seed);
@@ -117,5 +121,7 @@ extern const PlumNativeModule plum_module_io;
 extern const PlumNativeModule plum_module_os;
 extern const PlumNativeModule plum_module_time;
 extern const PlumNativeModule plum_module_fs;
+extern const PlumNativeModule plum_module_json;
+extern const PlumNativeModule plum_module_json_value; /* the methods of Json values */
 
 #endif /* PLUM_STDLIB_NATIVE_H */

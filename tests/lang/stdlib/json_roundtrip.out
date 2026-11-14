@@ -1,0 +1,18 @@
+good null
+good true
+good false
+good 0
+good -17
+good 9007199254740993
+good 1.5
+good -0.25
+good 1e+300
+good ""
+good "plain"
+good "quote \" backslash \\ tab \t newline \n"
+good "é ü 😀 中文"
+good []
+good [1,[2,[3,[]]]]
+good {"a":1,"b":[true,null],"c":{"d":"e"}}
+["z", "a"] 3
+json.parse: line 1, column 513: nested more than 512 deep

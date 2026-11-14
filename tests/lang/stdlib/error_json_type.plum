@@ -1,0 +1,6 @@
+seed json
+plant data = json.parse("[1]")
+plant n: int = data
+drop(data.size())
+plant f: Json = (x: int) => x
+plant k: Json = {1: "one"}

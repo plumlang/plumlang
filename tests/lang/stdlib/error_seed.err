@@ -1,4 +1,4 @@
-tests/lang/stdlib/error_seed.plum:1:1: error[E0308]: there is no standard module 'maths'; the modules are: math, io, os, time, fs
+tests/lang/stdlib/error_seed.plum:1:1: error[E0308]: there is no standard module 'maths'; the modules are: math, io, os, time, fs, json
 1 | seed maths
   | ^~~~~~~~~~
 tests/lang/stdlib/error_seed.plum:2:1: error[E0301]: the module 'math' has no 'cube_root'
