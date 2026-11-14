@@ -229,6 +229,15 @@ PlumType *plum_parse_type(PlumParser *p) {
         type = new_type(p, PLUM_TYPE_NAME, name->span);
         type->as.name.name =
             name->kind == PLUM_TOK_NONE ? plum_intern_cstr(p->names, "none") : name->as.name;
+        if (name->kind == PLUM_TOK_IDENT && check(p, PLUM_TOK_DOT) &&
+            peek_at(p, 1)->kind == PLUM_TOK_IDENT) {
+            /* shapes.Circle: a type from an imported module */
+            advance(p);
+            const PlumToken *member = advance(p);
+            type->as.name.module = type->as.name.name;
+            type->as.name.name = member->as.name;
+            type->span = join(name->span, member->span);
+        }
         if (match(p, PLUM_TOK_LBRACKET)) {
             PLUM_ARRAY(PlumType *) args = {0};
             do {
@@ -1014,7 +1023,20 @@ static PlumStmt *parse_tree(PlumParser *p, bool is_trait) {
     if (expect(p, PLUM_TOK_LBRACE, "'{' to start the body")) {
         skip_newlines(p);
         while (!check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
-            if (match(p, PLUM_TOK_BRANCH)) {
+            size_t start = p->pos;
+            if (!check(p, PLUM_TOK_IDENT) && peek_at(p, 1)->kind == PLUM_TOK_COLON && !is_trait &&
+                plum_token_kind_text(peek(p)->kind)[0] != '\'') {
+                /* kind: Kind -- a keyword can't name a field */
+                error_at(p, peek(p)->span, "E0217",
+                         "'%s' is a keyword, so it can't be a field's name; try '%s_' or "
+                         "another name",
+                         plum_token_kind_text(peek(p)->kind), plum_token_kind_text(peek(p)->kind));
+                while (!check(p, PLUM_TOK_NEWLINE) && !check(p, PLUM_TOK_RBRACE) &&
+                       !check(p, PLUM_TOK_EOF)) {
+                    advance(p); /* the rest of this field */
+                }
+                p->panic = false;
+            } else if (match(p, PLUM_TOK_BRANCH)) {
                 plum_array_push(&methods, parse_branch_decl(p, is_trait));
                 end_statement(p);
             } else if (check(p, PLUM_TOK_IDENT) && !is_trait) {
@@ -1040,6 +1062,9 @@ static PlumStmt *parse_tree(PlumParser *p, bool is_trait) {
             }
             if (p->panic) {
                 synchronize(p);
+            }
+            if (p->pos == start) {
+                advance(p); /* recovery stopped where it began (at a keyword): move on */
             }
             skip_newlines(p);
         }
@@ -1098,6 +1123,20 @@ static PlumStmt *parse_kind(PlumParser *p) {
  * seed math | seed net.http as web | seed ./models/user | seed ../lib/x
  * seed math { sqrt, PI }
  */
+/* Is `tok` a keyword (a word, unlike punctuation)? */
+static bool keyword_word(const PlumToken *tok) {
+    if (tok->kind == PLUM_TOK_IDENT) {
+        return false;
+    }
+    const char *text = plum_token_kind_text(tok->kind);
+    for (const char *c = text; *c != '\0'; c++) {
+        if (*c < 'a' || *c > 'z') {
+            return false;
+        }
+    }
+    return text[0] != '\0';
+}
+
 static PlumStmt *parse_seed(PlumParser *p) {
     const PlumToken *kw = advance(p);
     PlumStmt *s = new_stmt(p, PLUM_STMT_SEED, kw->span);
@@ -1115,7 +1154,11 @@ static PlumStmt *parse_seed(PlumParser *p) {
             }
         }
         do {
-            const char *seg = expect_name(p, "a file name in the path");
+            /* a file may be named like a keyword: ./models/plant */
+            const char *seg =
+                keyword_word(peek(p))
+                    ? plum_intern_cstr(p->names, plum_token_kind_text(advance(p)->kind))
+                    : expect_name(p, "a file name in the path");
             for (const char *c = seg; *c; c++) {
                 plum_array_push(&path, *c);
             }

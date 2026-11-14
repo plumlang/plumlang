@@ -9,5 +9,6 @@ current `plum`.
 | `bank.plum` | trees with methods, inheritance and `super`, custom errors, `to_str` |
 | `shapes.plum` | traits with default methods, `init`, `map` / `filter` / `sorted_by` on objects |
 | `todo.plum` | shared objects, lists inside objects, `equals` for `==`, `if plant` |
+| `garden/` | a program of several files: `seed ./models/plant`, a `plum.toml` package (`plum run examples/garden`) |
 
 Run one with `plum run examples/bank.plum`.

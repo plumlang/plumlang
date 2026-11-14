@@ -1,0 +1,7 @@
+# Two modules may each have a tree of the same name; they stay apart.
+seed ./lib/node_a as a
+seed ./lib/node_b as b
+
+plant x = a.Node()
+plant y = b.Node()
+drop(x.which(), y.which(), x.a, y.b, type_of(x), x is a.Node, y is a.Node)

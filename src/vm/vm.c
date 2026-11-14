@@ -140,8 +140,8 @@ static void throw_error(VM *vm, PlumValue error) {
     const PlumObject *o = plum_as_object(error);
     const PlumString *message = plum_as_string(o->fields[0]); /* every error's first field */
     const Frame *top = &vm->frames[vm->frame_count - 1];
-    trace_add(vm, "%s:%u: %s: %s\n", vm->source->path, (unsigned)frame_line(top), o->tree->name,
-              message->chars);
+    trace_add(vm, "%s:%u: %s: %s\n", top->fn->path != NULL ? top->fn->path : vm->source->path,
+              (unsigned)frame_line(top), o->tree->name, message->chars);
     /* Innermost calls first; a deep recursion shows its two ends. */
     for (int i = vm->frame_count - 1; i >= 0; i--) {
         int from_top = vm->frame_count - 1 - i;
@@ -151,7 +151,13 @@ static void throw_error(VM *vm, PlumValue error) {
             i = 1;
         }
         const Frame *f = &vm->frames[i];
-        trace_add(vm, "  in %s, line %u\n", f->fn->name, (unsigned)frame_line(f));
+        if (f->fn->path != NULL && strcmp(f->fn->path, vm->source->path) != 0) {
+            /* code from an imported module */
+            trace_add(vm, "  in %s, line %u of %s\n", f->fn->name, (unsigned)frame_line(f),
+                      f->fn->path);
+        } else {
+            trace_add(vm, "  in %s, line %u\n", f->fn->name, (unsigned)frame_line(f));
+        }
     }
 }
 

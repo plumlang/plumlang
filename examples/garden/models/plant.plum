@@ -1,0 +1,21 @@
+# module: what grows in the garden
+kind Season { Spring, Summer, Autumn, Winter }
+
+tree Plant {
+    name: str
+    blooms: Season
+    height_cm: float = 10.0
+
+    branch grow(days: int) {
+        self.height_cm += float(days) * 0.5
+    }
+
+    branch to_str() -> str => "{self.name} ({self.height_cm:.1} cm)"
+}
+
+branch season_name(s: Season) -> str => match s {
+    Spring => "spring"
+    Summer => "summer"
+    Autumn => "autumn"
+    Winter => "winter"
+}

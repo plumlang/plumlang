@@ -1,0 +1,5 @@
+tree T {
+    kind: int
+    x: int
+}
+drop(T(1).x)

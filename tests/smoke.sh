@@ -56,6 +56,10 @@ check "run a missing file"          3 "cannot read"         err -- run "$tmp/mis
 check "run a program"               0 "^hello$"             out -- run "$tmp/hello.plum"
 check "file shorthand"              0 "^hello$"             out -- "$tmp/hello.plum"
 check "check a correct file"        0 ""                    out -- check "$tmp/hello.plum"
+check "run a package directory"     0 "^tallest: sunflower" out -- run "$here/../examples/garden"
+check "a directory without plum.toml" 3 "without a plum.toml" err -- run "$tmp"
+check "an unknown run option"       2 "unknown option"      err -- run --fast "$tmp/hello.plum"
+check "the leak check"              0 "every object was freed" err -- run --check-leaks "$tmp/hello.plum"
 
 echo "smoke: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

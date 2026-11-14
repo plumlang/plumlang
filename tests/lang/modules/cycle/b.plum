@@ -1,0 +1,2 @@
+# module: part of an import cycle
+seed ./a

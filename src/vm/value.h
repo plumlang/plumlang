@@ -126,6 +126,7 @@ typedef struct PlumCapture {
 typedef struct PlumFunction {
     PlumObj obj;
     const char *name; /* for stack traces; "<main>" for the top level */
+    const char *path; /* the file it is written in; NULL: the program's own file */
     int arity;
     int slot_count;        /* parameters + locals */
     PlumChunk *chunk;      /* owned */

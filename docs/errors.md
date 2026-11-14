@@ -355,6 +355,11 @@ A `seed` after other statements. Imports go at the top of the file.
 A `{` at the start of a statement. Plumlang has no free-standing blocks;
 for an empty map write `plant m = {:}`.
 
+### E0217
+
+A keyword used as a field's name, like `kind: Kind` or `match: str`.
+Keywords can't name anything; pick another name (`kind_`, `shape_kind`).
+
 ## Names
 
 ### E0301
@@ -421,9 +426,10 @@ plant b: boolean = good   # error: in Plumlang it is 'bool'
 
 ### E0308
 
-A `seed` of a module that doesn't exist. The message lists the standard
-modules (`plum stdlib` shows them with their functions). Importing your
-own files (`seed ./shapes`) arrives with #23.
+A `seed` of a module that doesn't exist: a standard module name that
+isn't one (the message lists them; `plum stdlib` shows their functions),
+or a file that can't be read (`seed ./shapes` looks for `shapes.plum` next
+to the importing file).
 
 ### E0309
 
@@ -443,6 +449,12 @@ match light {
 
 A `tree`, `trait` or `kind` declared inside a function. Declare it at the
 top of the file.
+
+### E0311
+
+Modules that import each other in a circle: `a` imports `b`, which
+imports `a` (perhaps through others). The message shows the whole circle.
+Move what both need into a module of its own that both import.
 
 ## Types
 

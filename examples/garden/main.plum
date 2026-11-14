@@ -1,0 +1,21 @@
+# A small multi-file program: `plum run examples/garden` runs it through
+# its plum.toml, `plum run examples/garden/main.plum` directly.
+seed ./models/plant as plants
+seed ./models/bed { Bed }
+
+plant bed = Bed("front")
+bed.add(plants.Plant("tulip", plants.Season.Spring))
+bed.add(plants.Plant("sunflower", plants.Season.Summer, height_cm: 30.0))
+bed.add(plants.Plant("crocus", plants.Season.Spring))
+
+for p in bed.plants {
+    p.grow(20)
+}
+
+for season in [plants.Season.Spring, plants.Season.Summer, plants.Season.Winter] {
+    plant names = bed.blooming_in(season).map((p) => p.name)
+    drop("{plants.season_name(season)}: {if len(names) > 0 { names.join(", ") } else { "nothing" }}")
+}
+if plant top = bed.tallest() {
+    drop("tallest:", top)
+}

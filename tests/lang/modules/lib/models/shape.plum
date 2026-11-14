@@ -1,0 +1,26 @@
+# module: shapes, imported by the tests in tests/lang/modules
+seed math
+
+kind Kind { Round, Square }
+
+tree Shape {
+    name: str
+    form: Kind
+    size: float
+    branch area() -> float => match self.form {
+        Round => math.PI * self.size ** 2
+        Square => self.size * self.size
+    }
+    branch to_str() -> str => "{self.name} ({self.area():.2})"
+}
+
+plant made = 0
+
+branch circle(r: float) -> Shape {
+    made += 1
+    return Shape("circle", Kind.Round, r)
+}
+
+branch _secret() -> int => 42
+
+drop("shape module loaded")

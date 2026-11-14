@@ -12,6 +12,9 @@
 # of `plum run` (for example `tokens` to test the lexer). An `# exit: N`
 # line expects exit code N instead (say 0 for a .err file of warnings).
 #
+# A file whose first line is `# module: ...` is a module that tests import
+# with `seed`; it isn't run on its own.
+#
 # A test whose first line is `# pending: <reason>` is expected to fail
 # until the feature lands: it is reported as pending and does not fail
 # the run. A pending test that passes fails the run, so the marker is
@@ -68,6 +71,10 @@ show_diff() {
 }
 
 for test in $(find "$DIR" -name '*.plum' | sort); do
+    # A module other tests import, not a program of its own.
+    if head -n 1 "$test" | grep -q '^# module:'; then
+        continue
+    fi
     base=${test%.plum}
     if [ -f "$base.out" ]; then
         expect="$base.out" stream=out want_exit=0

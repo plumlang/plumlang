@@ -18,6 +18,7 @@
 #include "parser/ast.h"
 #include "util/arena.h"
 #include "util/intern.h"
+#include "util/map.h"
 
 typedef enum PlumSymbolKind {
     PLUM_SYM_VAR,          /* plant */
@@ -54,10 +55,12 @@ struct PlumSymbol {
 
 /*
  * Resolve every name in `program`, filling in the symbol pointers of the
- * syntax tree. Errors go to `diags`. Symbols live in `arena`.
+ * syntax tree. Errors go to `diags`. Symbols live in `arena`. If
+ * `exports` isn't NULL, it receives the names other modules can import
+ * (name -> PlumSymbol*).
  */
 void plum_resolve(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
-                  PlumDiagList *diags);
+                  PlumDiagList *diags, PlumMap *exports);
 
 /* "a variable", "a function", "a tree", ... for messages. */
 const char *plum_symbol_kind_text(PlumSymbolKind kind);

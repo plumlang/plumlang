@@ -804,12 +804,23 @@ seed math { sqrt, PI }          # bring names in directly: sqrt(PI)
 ```
 
 A module's name is the last part of its path. Imports must come before other
-statements. Circular imports are a compile error that shows the cycle.
+statements. Circular imports are a compile error that shows the cycle (E0311).
+
+With `seed ./shapes`, the module's names are reached through it:
+`shapes.area(c)`, and in types `shapes.Circle`. With `seed ./shapes {
+Circle, area }`, those names are used directly. Either way the names are the
+module's own: a variable it changes is changed for everyone who imported it.
+Its kinds' cases can be used bare in `match` patterns (`Round =>`).
+
+Each file is loaded once, however many modules import it, and its top-level
+statements run once, before the statements of the first module that imports
+it. A file may be named like a keyword (`seed ./models/plant`).
 
 ### 9.3 Packages
 
 A directory with a `plum.toml` is a package; its `entry` file is the
-program. Third-party packages are a post-1.0 feature.
+program, so `plum run my-project` runs it. Third-party packages are a
+post-1.0 feature.
 
 ```toml
 [package]

@@ -226,6 +226,8 @@ static const char *foreign_type(const char *name) {
     return NULL;
 }
 
+static PlumSymbol *module_member(Resolver *r, const char *module, const char *name, PlumSpan span);
+
 static void resolve_type(Resolver *r, PlumType *type) {
     if (type == NULL) {
         return;
@@ -233,7 +235,12 @@ static void resolve_type(Resolver *r, PlumType *type) {
     switch (type->kind) {
     case PLUM_TYPE_NAME: {
         const char *name = type->as.name.name;
-        PlumSymbol *sym = lookup(r, name);
+        PlumSymbol *sym = type->as.name.module != NULL
+                              ? module_member(r, type->as.name.module, name, type->span)
+                              : lookup(r, name);
+        if (sym == NULL && type->as.name.module != NULL) {
+            break; /* reported */
+        }
         if (sym == NULL) {
             const char *close = suggest(r, name, true);
             const char *theirs = foreign_type(name);
@@ -536,9 +543,24 @@ static void resolve_expr(Resolver *r, PlumExpr *e) {
         resolve_expr(r, e->as.index.object);
         resolve_expr(r, e->as.index.index);
         break;
-    case PLUM_EXPR_FIELD:
+    case PLUM_EXPR_FIELD: {
         resolve_expr(r, e->as.field.object); /* the field itself is checked with types */
+        const PlumExpr *obj = e->as.field.object;
+        if (obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+            obj->symbol->kind == PLUM_SYM_MODULE && obj->symbol->decl != NULL &&
+            obj->symbol->decl->as.seed.exports != NULL) {
+            /* shapes.area: from here on, just the name of that module's symbol */
+            PlumSymbol *member = module_member(r, obj->as.name, e->as.field.name, e->span);
+            const char *name = e->as.field.name;
+            e->kind = PLUM_EXPR_NAME;
+            e->as.name = name;
+            e->symbol = member;
+            if (member == NULL) {
+                e->kind = PLUM_EXPR_ERROR;
+            }
+        }
         break;
+    }
     case PLUM_EXPR_LAMBDA:
         resolve_lambda(r, e);
         break;
@@ -827,17 +849,110 @@ static void module_names(char *buf, size_t size) {
  * seed math, seed math as m, seed math { sqrt, PI }: a standard module.
  * Files (seed ./shapes) arrive with #23.
  */
+/* `module.name` where `module` is an imported file: its exported symbol. */
+static PlumSymbol *module_member(Resolver *r, const char *module, const char *name, PlumSpan span) {
+    PlumSymbol *m = lookup(r, module);
+    if (m == NULL || m->kind != PLUM_SYM_MODULE || m->decl == NULL ||
+        m->decl->as.seed.exports == NULL) {
+        plum_diag_error(r->diags, span, "E0301", "unknown module '%s'; import it with 'seed'",
+                        module);
+        return NULL;
+    }
+    void *found = NULL;
+    if (plum_map_get(m->decl->as.seed.exports, name, strlen(name), &found)) {
+        PlumSymbol *sym = found;
+        sym->used = true;
+        return sym;
+    }
+    if (name[0] == '_') {
+        plum_diag_error(r->diags, span, "E0301",
+                        "'%s' is private to the module '%s' (its name starts with '_')", name,
+                        module);
+    } else {
+        plum_diag_error(r->diags, span, "E0301", "the module '%s' has no '%s'", module, name);
+    }
+    return NULL;
+}
+
+/* Bring a kind's cases along with it, so `Circle(r) =>` patterns work. */
+static void import_cases(Resolver *r, const PlumSymbol *kind, const PlumMap *exports) {
+    if (kind->kind != PLUM_SYM_KIND || kind->decl == NULL) {
+        return;
+    }
+    const PlumStmt *k = kind->decl;
+    for (size_t i = 0; i < k->as.kind.case_count; i++) {
+        const char *name = k->as.kind.cases[i].name;
+        void *found = NULL;
+        if (plum_map_get(exports, name, strlen(name), &found) &&
+            !plum_map_get(&r->cases, name, strlen(name), NULL)) {
+            plum_map_set(&r->cases, name, strlen(name), found);
+        }
+    }
+}
+
+/* seed ./shapes, seed ./shapes as s, seed ./shapes { Circle, area } */
+static void resolve_file_seed(Resolver *r, PlumStmt *s) {
+    const PlumMap *exports = s->as.seed.exports;
+    if (s->as.seed.name_count > 0) {
+        for (size_t i = 0; i < s->as.seed.name_count; i++) {
+            const char *name = s->as.seed.names[i];
+            void *found = NULL;
+            if (!plum_map_get(exports, name, strlen(name), &found)) {
+                plum_diag_error(r->diags, s->span, "E0301", "'%s' %s '%s'", s->as.seed.path,
+                                name[0] == '_' ? "keeps private" : "has no", name);
+                continue;
+            }
+            PlumSymbol *sym = found;
+            sym->used = true;
+            PlumSymbol *existing = find_in(r->scope, name);
+            if (existing != NULL && existing != sym) {
+                plum_diag_error(
+                    r->diags, s->span, "E0302", "'%s' is already declared on line %u, as %s", name,
+                    (unsigned)existing->span.line, plum_symbol_kind_text(existing->kind));
+                continue;
+            }
+            plum_map_set(&r->scope->names, sym->name, strlen(sym->name), sym);
+            import_cases(r, sym, exports);
+        }
+        return;
+    }
+    const char *name = s->as.seed.alias;
+    if (name == NULL) {
+        const char *slash = strrchr(s->as.seed.path, '/');
+        name = plum_intern_cstr(r->names, slash != NULL ? slash + 1 : s->as.seed.path);
+    }
+    PlumSymbol *sym = new_symbol(r, PLUM_SYM_MODULE, name, s->span, s);
+    sym->used = true;
+    declare(r, sym);
+    s->symbol = sym;
+    /* Its kinds' cases work in patterns (`Round =>`), unless a name here
+     * already means something else. */
+    size_t cursor = 0;
+    const PlumMapEntry *entry;
+    while ((entry = plum_map_next(exports, &cursor)) != NULL) {
+        const PlumSymbol *member = entry->value;
+        if (member->kind == PLUM_SYM_CASE &&
+            !plum_map_get(&r->cases, entry->key, entry->len, NULL)) {
+            plum_map_set(&r->cases, entry->key, entry->len, entry->value);
+        }
+    }
+}
+
 static void resolve_seed(Resolver *r, PlumStmt *s) {
     const char *path = s->as.seed.path;
+    if (s->as.seed.exports != NULL) {
+        resolve_file_seed(r, s);
+        return;
+    }
     const PlumNativeModule *m = strcmp(path, "str") == 0 ? NULL : plum_native_module(path);
     if (m == NULL) {
         char known[256];
         module_names(known, sizeof known);
         if (path[0] == '.') {
             plum_diag_error(r->diags, s->span, "E0308",
-                            "importing files is not supported yet; it arrives with #23 (the "
-                            "standard modules are: %s)",
-                            known);
+                            "the file module '%s' wasn't loaded; files are imported when a "
+                            "program is checked or run",
+                            path);
         } else {
             plum_diag_error(r->diags, s->span, "E0308",
                             "there is no standard module '%s'; the modules are: %s", path, known);
@@ -947,7 +1062,7 @@ static void declare_module(Resolver *r, const PlumProgram *program) {
 }
 
 void plum_resolve(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
-                  PlumDiagList *diags) {
+                  PlumDiagList *diags, PlumMap *exports) {
     Resolver r;
     memset(&r, 0, sizeof r);
     r.arena = arena;
@@ -963,6 +1078,30 @@ void plum_resolve(const PlumProgram *program, PlumArena *arena, PlumInterner *na
     declare_module(&r, program);
     for (size_t i = 0; i < program->count; i++) {
         resolve_stmt(&r, program->stmts[i]);
+    }
+
+    if (exports != NULL) {
+        /* What other modules can import: every top-level name but _private
+         * ones and the modules this one imported, and the kinds' cases. */
+        size_t cursor = 0;
+        const PlumMapEntry *entry;
+        while ((entry = plum_map_next(&module.names, &cursor)) != NULL) {
+            const PlumSymbol *sym = entry->value;
+            if (entry->key[0] != '_' && sym->kind != PLUM_SYM_MODULE &&
+                sym->kind != PLUM_SYM_NATIVE) {
+                plum_map_set(exports, entry->key, entry->len, entry->value);
+            }
+        }
+        cursor = 0;
+        while ((entry = plum_map_next(&r.cases, &cursor)) != NULL) {
+            const PlumSymbol *sym = entry->value;
+            void *kind = NULL;
+            if (entry->key[0] != '_' && sym->owner != NULL &&
+                plum_map_get(&module.names, sym->owner->name, strlen(sym->owner->name), &kind) &&
+                kind == sym->owner) {
+                plum_map_set(exports, entry->key, entry->len, entry->value);
+            }
+        }
     }
 
     pop(&r);

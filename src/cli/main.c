@@ -22,9 +22,11 @@
 #include "compiler/compiler.h"
 #include "diag/diag.h"
 #include "lexer/lexer.h"
+#include "module/loader.h"
 #include "parser/parser.h"
 #include "plum/version.h"
 #include "stdlib/native.h"
+#include "stdlib/platform.h"
 #include "util/arena.h"
 #include "util/fmt.h"
 #include "util/intern.h"
@@ -69,59 +71,6 @@ static void print_version(void) {
  * Read a whole file into a NUL-terminated buffer the caller frees.
  * Returns NULL and sets *err to errno (or ENOMEM / EFBIG) on failure.
  */
-static char *read_file(const char *path, size_t *len_out, int *err) {
-    FILE *f = fopen(path, "rb");
-    if (f == NULL) {
-        *err = errno;
-        return NULL;
-    }
-
-    size_t cap = 4096;
-    size_t len = 0;
-    char *buf = malloc(cap);
-    if (buf == NULL) {
-        fclose(f);
-        *err = ENOMEM;
-        return NULL;
-    }
-
-    for (;;) {
-        size_t n = fread(buf + len, 1, cap - len - 1, f);
-        len += n;
-        if (n == 0) {
-            break;
-        }
-        if (len == cap - 1) {
-            if (cap > ((size_t)-1) / 2) {
-                free(buf);
-                fclose(f);
-                *err = EFBIG;
-                return NULL;
-            }
-            char *grown = realloc(buf, cap * 2);
-            if (grown == NULL) {
-                free(buf);
-                fclose(f);
-                *err = ENOMEM;
-                return NULL;
-            }
-            buf = grown;
-            cap *= 2;
-        }
-    }
-
-    if (ferror(f)) {
-        *err = errno != 0 ? errno : EIO;
-        free(buf);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
-
-    buf[len] = '\0';
-    *len_out = len;
-    return buf;
-}
 
 typedef enum FrontStage {
     STAGE_TOKENS, /* plum tokens: print the tokens */
@@ -192,34 +141,23 @@ static void print_token(const PlumToken *tok) {
 }
 
 /* plum tokens, ast, check, dis and run: the pipeline up to `stage`. */
-static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
-                     const PlumRunOptions *options) {
-    if (argc != 1) {
-        fprintf(stderr,
-                "plum: error: `plum %s` needs one file\n"
-                "  hint: plum %s hello.plum\n",
-                name, name);
-        return PLUM_EXIT_USAGE;
-    }
-    const char *path = argv[0];
+/* plum tokens and ast: one file, up to `stage`. */
+static int cmd_one_file(const char *path, FrontStage stage) {
     size_t len = 0;
     int err = 0;
-    char *text = read_file(path, &len, &err);
+    char *text = plum_read_file(path, &len, &err);
     if (text == NULL) {
         fprintf(stderr, "plum: error: cannot read '%s': %s\n", path, strerror(err));
         return PLUM_EXIT_NOINPUT;
     }
-
     PlumSource source = {path, text, len};
     PlumArena arena;
     PlumInterner names;
     PlumDiagList diags;
     PlumTokenList tokens = {0};
-    PlumCompiled compiled = {0};
     plum_arena_init(&arena);
     plum_interner_init(&names);
     plum_diag_init(&diags, &source);
-
     plum_lex(&source, &arena, &names, &diags, &tokens);
     if (stage == STAGE_TOKENS) {
         for (size_t i = 0; i < tokens.len; i++) {
@@ -229,43 +167,165 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
         PlumParser parser;
         plum_parser_init(&parser, &tokens, &arena, &names, &diags);
         PlumProgram program = plum_parse_program(&parser);
-        if (stage == STAGE_AST) {
-            plum_print_program(stdout, &program);
-        } else if (diags.errors == 0) {
-            /* Names are only resolved in a program that parsed, so a
-             * syntax error doesn't also show up as unknown names. */
-            plum_resolve(&program, &arena, &names, &diags);
-            if (diags.errors == 0) {
-                plum_typecheck(&program, &arena, &names, &diags);
-            }
-            if (diags.errors == 0) {
-                plum_check_flow(&program, &diags);
-            }
-            if (diags.errors == 0 && (stage == STAGE_DIS || stage == STAGE_RUN)) {
-                compiled = plum_compile(&program, &names, &diags);
-                if (compiled.main != NULL && stage == STAGE_DIS) {
-                    plum_disassemble(stdout, compiled.main);
-                }
-            }
-        }
+        plum_print_program(stdout, &program);
     }
     fflush(stdout);
-    /* Warnings and errors come before anything the program prints. */
     plum_diag_print(&diags, stderr, plum_diag_use_color(stderr));
     int status = diags.errors > 0 ? PLUM_EXIT_FAILED : PLUM_EXIT_OK;
-    if (compiled.main != NULL) {
-        if (stage == STAGE_RUN && status == PLUM_EXIT_OK) {
-            fflush(stderr);
-            status = plum_vm_run(&compiled, &source, options, stdout, stderr);
-        }
-    }
-    plum_compiled_free(&compiled);
-
     plum_array_free(&tokens);
     plum_diag_free(&diags);
     plum_interner_free(&names);
     plum_arena_free(&arena);
     free(text);
+    return status;
+}
+
+/*
+ * A package (spec 9.3): a directory with a plum.toml whose [package]
+ * section names the entry file. Returns that file's path (malloc'd), or
+ * NULL after printing why not.
+ */
+static char *package_entry(const char *dir) {
+    size_t dlen = strlen(dir);
+    while (dlen > 1 && (dir[dlen - 1] == '/' || dir[dlen - 1] == '\\')) {
+        dlen--;
+    }
+    char *manifest = malloc(dlen + 12);
+    if (manifest == NULL) {
+        return NULL;
+    }
+    snprintf(manifest, dlen + 12, "%.*s/plum.toml", (int)dlen, dir);
+    size_t len = 0;
+    int err = 0;
+    char *text = plum_read_file(manifest, &len, &err);
+    if (text == NULL) {
+        fprintf(stderr,
+                "plum: error: '%s' is a directory without a plum.toml\n"
+                "  hint: run a .plum file, or add a plum.toml with [package] and entry = "
+                "\"main.plum\"\n",
+                dir);
+        free(manifest);
+        return NULL;
+    }
+    /* The few lines we need: key = "value" under [package]. */
+    char entry[512] = "";
+    bool in_package = false;
+    for (char *line = text; *line != '\0';) {
+        char *end = strchr(line, '\n');
+        size_t n = end != NULL ? (size_t)(end - line) : strlen(line);
+        while (n > 0 && (line[n - 1] == '\r' || line[n - 1] == ' ')) {
+            n--;
+        }
+        while (n > 0 && (*line == ' ' || *line == '\t')) {
+            line++;
+            n--;
+        }
+        if (n > 0 && line[0] == '[') {
+            in_package = n == 9 && strncmp(line, "[package]", 9) == 0;
+        } else if (in_package && n > 5 && strncmp(line, "entry", 5) == 0) {
+            const char *q1 = memchr(line, '"', n);
+            const char *q2 = q1 != NULL ? memchr(q1 + 1, '"', n - (size_t)(q1 + 1 - line)) : NULL;
+            if (q2 != NULL && (size_t)(q2 - q1 - 1) < sizeof entry) {
+                memcpy(entry, q1 + 1, (size_t)(q2 - q1 - 1));
+                entry[q2 - q1 - 1] = '\0';
+            }
+        }
+        line = end != NULL ? end + 1 : line + n;
+        if (end == NULL) {
+            break;
+        }
+    }
+    free(text);
+    if (entry[0] == '\0') {
+        fprintf(stderr,
+                "plum: error: %s has no entry under [package]\n"
+                "  hint: add the line: entry = \"main.plum\"\n",
+                manifest);
+        free(manifest);
+        return NULL;
+    }
+    free(manifest);
+    size_t elen = strlen(entry);
+    char *path = malloc(dlen + elen + 2);
+    if (path != NULL) {
+        snprintf(path, dlen + elen + 2, "%.*s/%s", (int)dlen, dir, entry);
+    }
+    return path;
+}
+
+/* plum check, dis and run: the program and every module it imports. */
+static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
+                     const PlumRunOptions *options) {
+    if (argc != 1) {
+        fprintf(stderr,
+                "plum: error: `plum %s` needs one file\n"
+                "  hint: plum %s hello.plum\n",
+                name, name);
+        return PLUM_EXIT_USAGE;
+    }
+    if (stage == STAGE_TOKENS || stage == STAGE_AST) {
+        return cmd_one_file(argv[0], stage);
+    }
+    char *entry = NULL;
+    const char *path = argv[0];
+    if (plum_os_is_dir(path)) {
+        entry = package_entry(path);
+        if (entry == NULL) {
+            return PLUM_EXIT_NOINPUT;
+        }
+        path = entry;
+    }
+    PlumModules modules;
+    int err = plum_modules_load(&modules, path);
+    if (err != 0) {
+        fprintf(stderr, "plum: error: cannot read '%s': %s\n", path, strerror(err));
+        free(entry);
+        return PLUM_EXIT_NOINPUT;
+    }
+
+    /* Each module in order, imports first: one that fails stops the rest,
+     * whose imports would only look wrong. */
+    bool ok = !plum_modules_failed(&modules);
+    for (size_t i = 0; ok && i < modules.count; i++) {
+        PlumModule *m = modules.items[i];
+        plum_resolve(&m->program, &modules.arena, &modules.names, &m->diags, &m->exports);
+        if (m->diags.errors == 0) {
+            plum_typecheck(&m->program, &modules.arena, &modules.names, &m->diags);
+        }
+        if (m->diags.errors == 0) {
+            plum_check_flow(&m->program, &m->diags);
+        }
+        ok = m->diags.errors == 0;
+    }
+    PlumCompiled compiled = {0};
+    if (ok && (stage == STAGE_DIS || stage == STAGE_RUN)) {
+        PlumCompileModule *list = calloc(modules.count, sizeof *list);
+        for (size_t i = 0; list != NULL && i < modules.count; i++) {
+            PlumModule *m = modules.items[i];
+            list[i].program = &m->program;
+            list[i].diags = &m->diags;
+            list[i].path = i + 1 < modules.count ? m->path : NULL;
+        }
+        if (list != NULL) {
+            compiled = plum_compile_modules(list, modules.count, &modules.names);
+        }
+        free(list);
+        if (compiled.main != NULL && stage == STAGE_DIS) {
+            plum_disassemble(stdout, compiled.main);
+        }
+    }
+    fflush(stdout);
+    /* Warnings and errors come before anything the program prints. */
+    plum_modules_print_diags(&modules, stderr, plum_diag_use_color(stderr));
+    int status = plum_modules_failed(&modules) ? PLUM_EXIT_FAILED : PLUM_EXIT_OK;
+    if (compiled.main != NULL && stage == STAGE_RUN && status == PLUM_EXIT_OK) {
+        fflush(stderr);
+        PlumModule *program = modules.items[modules.count - 1];
+        status = plum_vm_run(&compiled, &program->source, options, stdout, stderr);
+    }
+    plum_compiled_free(&compiled);
+    plum_modules_free(&modules);
+    free(entry);
     return status;
 }
 

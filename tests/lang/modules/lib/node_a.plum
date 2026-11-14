@@ -1,0 +1,5 @@
+# module: a tree called Node
+tree Node {
+    a: int = 1
+    branch which() -> str => "Node from node_a"
+}
