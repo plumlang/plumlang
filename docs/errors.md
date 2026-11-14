@@ -655,6 +655,13 @@ reference reads as `none` once its object is freed, so its type must be
 optional, like `parent: weak Node? = none`; numbers, strings and
 collections are values and can't be weak.
 
+### E0426
+
+A tree object given to `spawn`, as an argument or as the object whose
+method the task would run (also inside a list or map). Tasks don't share
+objects (spec 12.3): give the task the plain values it needs, and send
+results back through a `Channel`.
+
 ## Control flow
 
 ### E0501
@@ -706,9 +713,10 @@ with `_` to say it is unused on purpose.
 ### E0601
 
 A feature the compiler can't turn into bytecode yet. The program is
-correct (`plum check` accepts it), but it can't run until the roadmap item
-named in the message: today that is tree methods, `init`, kinds and
-`match` (#22), modules (#23) and tasks (#27).
+correct (`plum check` accepts it), but it can't run until the feature is
+built; the roadmap is issue #36. Today that is mostly using a function
+of a module, a method or a kind case as a value: wrap it in a lambda,
+like `plant f = (x: float) => math.sqrt(x)`.
 
 ### E0602
 

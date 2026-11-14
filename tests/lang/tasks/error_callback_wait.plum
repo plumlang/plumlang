@@ -1,0 +1,4 @@
+# Waiting needs the task to be the only thing running: not inside map.
+plant ch = Channel[int]()
+spawn (() => ch.send(1))()
+drop([1].map((x) => ch.receive() ?? 0))

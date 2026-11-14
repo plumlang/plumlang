@@ -1,0 +1,12 @@
+tree Box {
+    v: int = 0
+    branch bump() {
+        self.v += 1
+    }
+}
+branch work(b: Box) {}
+plant b = Box()
+spawn work(b)
+spawn work([b][0])
+plant boxes = [b]
+spawn b.bump()

@@ -1,0 +1,1 @@
+tests/lang/tasks/error_deadlock.plum: Error: deadlock: every task is waiting (for a channel or another task) and nothing is left to wake them

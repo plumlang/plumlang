@@ -1,0 +1,29 @@
+# Tasks take turns only where one waits: on a channel, a task, or sleep.
+seed time
+
+branch worker(name: str, out: Channel[str]) {
+    for step in 0..3 {
+        out.send("{name}:{step}")
+        time.sleep(0.0)     # let the others run
+    }
+}
+
+plant log = Channel[str]()
+plant jobs = [spawn worker("a", log), spawn worker("b", log), spawn worker("c", log)]
+spawn (() => {
+    for j in jobs {
+        j.wait()
+    }
+    log.close()
+})()
+plant lines: list[str] = []
+for line in log {
+    lines.push(line)
+}
+drop(lines)
+
+# without waiting, a task doesn't run until the spawner gives way
+plant flag = Channel[str]()
+spawn (() => flag.send("task ran"))()
+drop("spawned")
+drop(flag.receive())

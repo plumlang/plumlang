@@ -1,5 +1,5 @@
 # command: dis
-# Correct programs (plum check accepts them) using Stage 5 features.
-branch work() -> int => 1
-plant t = spawn work()
-drop(t.wait())
+# Correct programs (plum check accepts them) that the compiler can't build yet.
+seed math
+plant root2 = math.sqrt
+drop(root2(2.0))

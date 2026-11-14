@@ -1,0 +1,68 @@
+# Tasks: spawn and wait, channels, sleeping, errors from tasks, a channel with a capacity.
+seed time
+
+branch slow_square(n: int, delay: float) -> int {
+    time.sleep(delay)
+    drop("finished", n)
+    return n * n
+}
+
+plant a = spawn slow_square(3, 0.05)
+plant b = spawn slow_square(4, 0.01)
+drop("both started", a.done())
+drop(a.wait() + b.wait(), a.done())
+
+plant ch = Channel[int]()
+spawn (() => {
+    for i in 0..3 {
+        ch.send(i)
+    }
+    ch.close()
+})()
+for n in ch {
+    drop("got", n)
+}
+
+branch producer(out: Channel[str], name: str, count: int) {
+    for i in 0..count {
+        out.send("{name}{i}")
+        time.sleep(0.0)
+    }
+}
+plant mixed = Channel[str]()
+plant p1 = spawn producer(mixed, "a", 3)
+plant p2 = spawn producer(mixed, "b", 3)
+spawn (() => {
+    p1.wait()
+    p2.wait()
+    mixed.close()
+})()
+plant all: list[str] = []
+for s in mixed {
+    all.push(s)
+}
+drop(all)
+
+branch fails() -> int {
+    throw ValueError("task broke")
+}
+plant f = spawn fails()
+try {
+    drop(f.wait())
+} catch e: ValueError {
+    drop("caught from task:", e.message)
+}
+
+plant limited = Channel[int](capacity: 1)
+spawn (() => {
+    for i in 0..3 {
+        limited.send(i)
+        drop("sent", i)
+    }
+    limited.close()
+})()
+time.sleep(0.01)
+drop("receiver starts")
+for v in limited {
+    drop("received", v)
+}

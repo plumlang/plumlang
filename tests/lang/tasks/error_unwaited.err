@@ -1,0 +1,3 @@
+error in a task that nothing waited for:
+tests/lang/tasks/error_unwaited.plum:5: KeyError: a task failed
+  in failing, line 5

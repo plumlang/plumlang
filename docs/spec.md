@@ -1026,6 +1026,24 @@ for n in ch { drop(n) }          # 0 1 2
 So there are no data races by construction. All tasks run on one operating
 system thread in 1.0; using several cores is planned after 1.0.
 
+### 12.4 Taking turns
+
+A task runs until it waits: for a channel, another task, a timer, or
+input and output. Then the next task in line runs. `time.sleep(0)` gives
+the others a turn. `Channel[T]()` has no limit; `Channel[T](capacity: n)`
+makes `send` wait while `n` values wait to be received. `for x in ch`
+receives until the channel is closed and empty, and `receive()` gives
+`none` then.
+
+Waiting can't happen inside a callback the runtime is running (the
+function given to `map` or `filter`, a `to_str`): that is an `Error`.
+`time.sleep` inside one simply waits, holding up the other tasks.
+
+The program ends when its own code ends, stopping the tasks still running.
+A task's error is thrown by `wait()`; one that nothing waited for is
+printed when the program ends, and the exit code is 1. When every task
+waits and nothing can wake them, the program ends with a deadlock error.
+
 ## 13. The standard library
 
 Modules are imported with `seed`. The 1.0 library is planned as:
