@@ -262,6 +262,15 @@ static void free_object(PlumObj *obj, Pending *p) {
     case PLUM_OBJ_TASK:
         plum_task_destroy(obj);
         return;
+    case PLUM_OBJ_HANDLE: {
+        PlumHandle *h = (PlumHandle *)(void *)obj;
+        if (h->fd >= 0 && h->close != NULL) {
+            h->close(h);
+        }
+        plum_free(h->in);
+        plum_free(h);
+        return;
+    }
     case PLUM_OBJ_CHANNEL:
         plum_channel_destroy(obj);
         return;
