@@ -259,6 +259,12 @@ static void free_object(PlumObj *obj, Pending *p) {
         plum_free(o);
         return;
     }
+    case PLUM_OBJ_TASK:
+        plum_task_destroy(obj);
+        return;
+    case PLUM_OBJ_CHANNEL:
+        plum_channel_destroy(obj);
+        return;
     case PLUM_OBJ_WEAK: {
         PlumWeak *w = (PlumWeak *)obj;
         if (w->target != NULL) {
