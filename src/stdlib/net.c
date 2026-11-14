@@ -37,6 +37,10 @@ static bool would_block(int err) {
 static void close_socket(sock_t s) {
     closesocket(s);
 }
+/* A datagram bigger than the buffer: Windows says so, but fills the buffer. */
+static bool truncated(int err) {
+    return err == WSAEMSGSIZE;
+}
 static bool set_nonblocking(sock_t s) {
     u_long on = 1;
     return ioctlsocket(s, FIONBIO, &on) == 0;
@@ -78,6 +82,10 @@ static bool would_block(int err) {
 }
 static void close_socket(sock_t s) {
     close(s);
+}
+static bool truncated(int err) {
+    (void)err;
+    return false; /* POSIX just cuts the datagram short */
 }
 static bool set_nonblocking(sock_t s) {
     int flags = fcntl(s, F_GETFL, 0);
@@ -661,6 +669,9 @@ static bool u_receive(ARGS) {
         struct sockaddr_storage from;
         socklen_t len = sizeof from;
         int r = (int)recvfrom((sock_t)h->fd, buf, (int)max, 0, (struct sockaddr *)&from, &len);
+        if (r < 0 && truncated(last_error())) {
+            r = (int)max; /* the first max bytes, as everywhere else */
+        }
         if (r >= 0) {
             address_text((struct sockaddr *)&from, h->peer, sizeof h->peer);
             *result = plum_str_value(buf, (size_t)r);
