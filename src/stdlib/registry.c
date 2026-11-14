@@ -4,9 +4,10 @@
 #include <string.h>
 
 static const PlumNativeModule *const modules[] = {
-    &plum_module_math, &plum_module_str,        &plum_module_io,
-    &plum_module_os,   &plum_module_time,       &plum_module_fs,
-    &plum_module_json, &plum_module_json_value, &plum_module_tasks,
+    &plum_module_math,  &plum_module_str, &plum_module_io,       &plum_module_os,
+    &plum_module_time,  &plum_module_fs,  &plum_module_json,     &plum_module_json_value,
+    &plum_module_tasks, &plum_module_net, &plum_module_listener, &plum_module_connection,
+    &plum_module_udp,
 };
 
 #define MODULE_COUNT (sizeof modules / sizeof modules[0])
@@ -21,7 +22,15 @@ const PlumNativeModule *plum_native_module(const char *name) {
 }
 
 bool plum_native_is_methods(const PlumNativeModule *m) {
-    return m == &plum_module_str || m == &plum_module_json_value || m == &plum_module_tasks;
+    return m == &plum_module_str || m == &plum_module_json_value || m == &plum_module_tasks ||
+           m == &plum_module_listener || m == &plum_module_connection || m == &plum_module_udp;
+}
+
+const PlumNativeModule *plum_native_handle_methods(const char *name) {
+    return strcmp(name, "Listener") == 0     ? &plum_module_listener
+           : strcmp(name, "Connection") == 0 ? &plum_module_connection
+           : strcmp(name, "UdpSocket") == 0  ? &plum_module_udp
+                                             : NULL;
 }
 
 const PlumNativeModule *plum_native_module_at(size_t i) {

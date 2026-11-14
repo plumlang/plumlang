@@ -995,8 +995,9 @@ static void add_builtin(Resolver *r, PlumSymbolKind kind, const char *name) {
 }
 
 static void add_builtins(Resolver *r) {
-    static const char *const types[] = {"int",  "float", "bool", "str",  "byte",    "none",
-                                        "list", "map",   "set",  "Task", "Channel", "Json"};
+    static const char *const types[] = {"int",     "float", "bool",     "str",        "byte",
+                                        "none",    "list",  "map",      "set",        "Task",
+                                        "Channel", "Json",  "Listener", "Connection", "UdpSocket"};
     static const char *const functions[] = {"drop", "ask", "len", "type_of", "assert", "exit"};
     static const char *const errors[] = {
         "Error",         "ValueError",        "ParseError", "IndexError", "KeyError",
@@ -1149,6 +1150,11 @@ const PlumNativeFunction *plum_callee_native(const PlumExpr *callee, bool *is_me
     if (t != NULL && t->kind == PLUM_TY_JSON) {
         *is_method = true;
         return plum_native_function(&plum_module_json_value, callee->as.field.name);
+    }
+    if (t != NULL && t->kind == PLUM_TY_HANDLE) {
+        const PlumNativeModule *m = plum_native_handle_methods(t->as.handle);
+        *is_method = true;
+        return m != NULL ? plum_native_function(m, callee->as.field.name) : NULL;
     }
     if (t != NULL && (t->kind == PLUM_TY_TASK || t->kind == PLUM_TY_CHANNEL)) {
         const char *name = callee->as.field.name;

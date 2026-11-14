@@ -86,6 +86,8 @@ bool plum_ty_equal(const PlumTy *a, const PlumTy *b) {
     case PLUM_TY_TRAIT:
     case PLUM_TY_KIND:
         return a->as.decl == b->as.decl;
+    case PLUM_TY_HANDLE:
+        return strcmp(a->as.handle, b->as.handle) == 0;
     default:
         return true;
     }
@@ -214,6 +216,9 @@ static void text(const PlumTy *t, char *buf, size_t size, size_t *len) {
         return;
     case PLUM_TY_JSON:
         put(buf, size, len, "Json");
+        return;
+    case PLUM_TY_HANDLE:
+        put(buf, size, len, t->as.handle);
         return;
     case PLUM_TY_LIST:
     case PLUM_TY_SET:
