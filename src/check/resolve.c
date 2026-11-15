@@ -28,10 +28,11 @@ typedef struct Resolver {
     PlumInterner *names;
     PlumDiagList *diags;
     Scope *scope;
-    PlumMap cases;      /* bare kind-case names, for match patterns */
-    int function_depth; /* 0 at module level */
-    bool in_method;     /* inside a tree's method: self and super are allowed */
-    PlumSymbol *self;   /* the method's self (lambdas inside it capture it) */
+    PlumMap cases;                /* bare kind-case names, for match patterns */
+    const PlumMap *earlier_cases; /* the REPL: cases of earlier entries, else NULL */
+    int function_depth;           /* 0 at module level */
+    bool in_method;               /* inside a tree's method: self and super are allowed */
+    PlumSymbol *self;             /* the method's self (lambdas inside it capture it) */
 } Resolver;
 
 const char *plum_symbol_kind_text(PlumSymbolKind kind) {
@@ -402,6 +403,9 @@ static void bind_pattern_name(Resolver *r, PlumExpr *e) {
 static PlumSymbol *find_case(const Resolver *r, const char *name) {
     void *found = NULL;
     if (plum_map_get(&r->cases, name, strlen(name), &found)) {
+        return found;
+    }
+    if (r->earlier_cases != NULL && plum_map_get(r->earlier_cases, name, strlen(name), &found)) {
         return found;
     }
     return NULL;
@@ -1113,6 +1117,71 @@ void plum_resolve(const PlumProgram *program, PlumArena *arena, PlumInterner *na
     pop(&r);
     pop(&r);
     plum_map_free(&r.cases);
+}
+
+void plum_resolve_entry(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
+                        PlumDiagList *diags, const PlumReplScope *earlier, PlumReplScope *added) {
+    Resolver r;
+    memset(&r, 0, sizeof r);
+    r.arena = arena;
+    r.names = names;
+    r.diags = diags;
+    r.earlier_cases = &earlier->cases;
+    plum_map_init(&r.cases);
+
+    /* The earlier entries' names sit in a scope of their own around this
+     * entry's, so this entry may declare a name again: the new one hides
+     * the old from here on, while code already written keeps the old. */
+    Scope builtins, before, module;
+    push(&r, &builtins, SCOPE_BUILTIN);
+    add_builtins(&r);
+    push(&r, &before, SCOPE_MODULE);
+    size_t cursor = 0;
+    const PlumMapEntry *entry;
+    while ((entry = plum_map_next(&earlier->names, &cursor)) != NULL) {
+        plum_map_set(&before.names, entry->key, entry->len, entry->value);
+    }
+    push(&r, &module, SCOPE_MODULE);
+
+    declare_module(&r, program);
+    for (size_t i = 0; i < program->count; i++) {
+        resolve_stmt(&r, program->stmts[i]);
+    }
+
+    cursor = 0;
+    while ((entry = plum_map_next(&module.names, &cursor)) != NULL) {
+        plum_map_set(&added->names, entry->key, entry->len, entry->value);
+    }
+    cursor = 0;
+    while ((entry = plum_map_next(&r.cases, &cursor)) != NULL) {
+        plum_map_set(&added->cases, entry->key, entry->len, entry->value);
+    }
+    pop(&r);
+    pop(&r);
+    pop(&r);
+    plum_map_free(&r.cases);
+}
+
+void plum_repl_scope_init(PlumReplScope *scope) {
+    plum_map_init(&scope->names);
+    plum_map_init(&scope->cases);
+}
+
+void plum_repl_scope_merge(PlumReplScope *into, const PlumReplScope *from) {
+    size_t cursor = 0;
+    const PlumMapEntry *entry;
+    while ((entry = plum_map_next(&from->names, &cursor)) != NULL) {
+        plum_map_set(&into->names, entry->key, entry->len, entry->value);
+    }
+    cursor = 0;
+    while ((entry = plum_map_next(&from->cases, &cursor)) != NULL) {
+        plum_map_set(&into->cases, entry->key, entry->len, entry->value);
+    }
+}
+
+void plum_repl_scope_free(PlumReplScope *scope) {
+    plum_map_free(&scope->names);
+    plum_map_free(&scope->cases);
 }
 
 /* ------------------------------------------------------------------ */

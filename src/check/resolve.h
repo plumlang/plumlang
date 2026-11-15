@@ -62,6 +62,29 @@ struct PlumSymbol {
 void plum_resolve(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
                   PlumDiagList *diags, PlumMap *exports);
 
+/*
+ * The REPL: the names earlier entries declared (name -> PlumSymbol*) and
+ * their kinds' cases, which each new entry sees.
+ */
+typedef struct PlumReplScope {
+    PlumMap names;
+    PlumMap cases;
+} PlumReplScope;
+
+void plum_repl_scope_init(PlumReplScope *scope);
+/* Add (or replace) every name of `from` in `into`. */
+void plum_repl_scope_merge(PlumReplScope *into, const PlumReplScope *from);
+void plum_repl_scope_free(PlumReplScope *scope);
+
+/*
+ * Resolve one REPL entry, a program that sees the names in `earlier`. It
+ * may declare one of them again, hiding the old one. The names it
+ * declares go into `added` (an initialised, usually empty scope), for the
+ * caller to merge into `earlier` once the entry has run.
+ */
+void plum_resolve_entry(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
+                        PlumDiagList *diags, const PlumReplScope *earlier, PlumReplScope *added);
+
 /* "a variable", "a function", "a tree", ... for messages. */
 const char *plum_symbol_kind_text(PlumSymbolKind kind);
 
