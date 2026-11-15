@@ -246,6 +246,11 @@ There is no truthiness: `if count {` is a type error; write `if count > 0 {`.
 | list, map, set | `[1, 2]`, `{"a": 1}`, `set([1, 2])`, with strings inside quoted |
 | tree | its `to_str()` (trait `Show`), else `<TreeName>` |
 
+Values nested more than 256 deep (a long chain of kind values, say) print
+their outer 256 levels and `...` for what is inside, so printing never
+runs out of stack. The depth counts through `to_str()` methods that print
+values of their own.
+
 ### 3.3 Optional types
 
 `T?` is either a `T` or `none`. Only optional types can hold `none`, so a
@@ -1025,7 +1030,38 @@ leak check: 2 objects are still alive in reference cycles:
 No Plumlang program can read or write memory it does not own: every index
 is checked, there are no raw pointers, and objects are never used after
 they are freed. A program can run out of memory, which ends it with a
-runtime error.
+runtime error. Values may nest as deep as memory allows: comparing,
+copying and freeing them doesn't recurse in the runtime, and printing
+stops at a depth (section 3.2.1).
+
+### 11.5 Measuring memory
+
+`plum run --mem-stats program.plum` prints to standard error, when the
+program ends, how much memory the run used:
+
+```text
+memory used by this run (--mem-stats):
+  peak in use          82,456 bytes (80.5 KB)
+  allocated in all     167,008 bytes (163.1 KB)
+  still in use at exit 0 bytes
+  allocations          3,014
+  resizes              12
+  frees                3,014
+values made:
+  strings              2,001
+  lists                1
+  maps                 0
+  ...
+```
+
+Bytes are the sizes of the blocks the C library hands out, counted from
+the start of the run to its end (compiling comes before and isn't
+counted). "Still in use at exit" is what the run allocated and didn't
+free: more than 0 means objects left alive in reference cycles (find them
+with `--check-leaks`). Values made are counted by kind: strings, lists,
+maps, sets, tree objects, kind values, closures, captured variables, weak
+references, tasks and channels. Without `--mem-stats` nothing is counted
+and the run costs the same.
 
 ## 12. Tasks and concurrency (Stage 5)
 
@@ -1132,6 +1168,8 @@ the client (`http.get`, `http.post_json`, ...). Some standard modules, like
 
 ```
 plum run program.plum [args...]     # run a program
+plum run --check-leaks program.plum # ...and report objects left in cycles (11.3)
+plum run --mem-stats program.plum   # ...and print the memory it used (11.5)
 plum program.plum [args...]         # the same
 plum check program.plum             # check for errors without running
 plum test                           # run tests (Stage 5)
