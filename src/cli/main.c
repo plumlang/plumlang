@@ -11,6 +11,7 @@
  *   plum ast <file>          print the syntax tree of a file (for debugging)
  *   plum check <file>        report every error without running the program
  *   plum dis <file>          print the compiled bytecode (for debugging)
+ *   plum fmt <paths>         format source files (src/fmt/command.c)
  *
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
@@ -21,6 +22,7 @@
 #include "compiler/chunk.h"
 #include "compiler/compiler.h"
 #include "diag/diag.h"
+#include "fmt/format.h"
 #include "lexer/lexer.h"
 #include "module/loader.h"
 #include "parser/parser.h"
@@ -53,6 +55,9 @@ static void print_help(FILE *out) {
           "    --mem-stats               ...and print how much memory it used\n"
           "  plum <file.plum> [args...]  Same as `plum run`\n"
           "  plum check <file>           Report every error without running\n"
+          "  plum fmt <paths...>         Format files, and the .plum files in directories\n"
+          "    --check                   ...change nothing; list files that would change\n"
+          "  plum fmt -                  Format standard input to standard output\n"
           "  plum version                Show the version and build\n"
           "  plum tokens <file>          Print the tokens of a file (debugging)\n"
           "  plum ast <file>             Print the syntax tree of a file (debugging)\n"
@@ -426,6 +431,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "check") == 0) {
         return cmd_front("check", STAGE_CHECK, argc - 2, argv + 2, NULL);
+    }
+    if (strcmp(cmd, "fmt") == 0) {
+        return plum_fmt_command(argc - 2, argv + 2);
     }
     if (strcmp(cmd, "run") == 0) {
         return cmd_run(argc - 2, argv + 2);
