@@ -1,3 +1,3 @@
-only http:// URLs, not 'ftp://x/y'
+only http:// and https:// URLs, not 'ftp://x/y'
 no host in 'http://'
-https isn't supported yet (it needs TLS); use http://
+no host in 'https://'

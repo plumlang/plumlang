@@ -1,4 +1,4 @@
-# module: net.http, an HTTP/1.1 server and client, built into plum.
+# module: net.http, an HTTP/1.1 server and client (and HTTPS), built into plum.
 #
 # Written in Plumlang on top of net (sockets), tasks and json. Each
 # connection to a server gets a task of its own, so a slow client holds up
@@ -391,16 +391,20 @@ tree Server {
         conn.close()
     }
 
-    # Start serving in the background; the port (0 picks a free one).
-    branch start(port: int = 8080, host: str = "0.0.0.0") -> int {
-        plant l = net.listen(port, host: host)
+    # Take connections on l, each served by a task of its own. (Over TLS,
+    # the handshake is made in that task, so a slow client holds up nobody.)
+    branch accept_all(l: Listener) {
+        while good {
+            plant conn = l.accept()
+            spawn ((c: Connection) => self.serve(c))(conn)
+        }
+    }
+
+    branch run_in_background(l: Listener) -> int {
         self.listener = l
         spawn (() => {
             try {
-                while good {
-                    plant conn = l.accept()
-                    spawn ((c: Connection) => self.serve(c))(conn)
-                }
+                self.accept_all(l)
             } catch e {
                 # stop() closed the listener
             }
@@ -408,15 +412,30 @@ tree Server {
         return l.port()
     }
 
+    # Start serving in the background; the port (0 picks a free one).
+    branch start(port: int = 8080, host: str = "0.0.0.0") -> int {
+        return self.run_in_background(net.listen(port, host: host))
+    }
+
+    # start, over HTTPS: the certificate chain and private key are PEM files.
+    branch start_tls(port: int, cert_file: str, key_file: str, host: str = "0.0.0.0") -> int {
+        return self.run_in_background(net.listen_tls(port, cert_file, key_file, host: host))
+    }
+
     # Serve until the program ends.
     branch listen(port: int = 8080, host: str = "0.0.0.0") {
         plant l = net.listen(port, host: host)
         self.listener = l
         io_log("http: listening on {host}:{l.port()}")
-        while good {
-            plant conn = l.accept()
-            spawn ((c: Connection) => self.serve(c))(conn)
-        }
+        self.accept_all(l)
+    }
+
+    # listen, over HTTPS.
+    branch listen_tls(port: int, cert_file: str, key_file: str, host: str = "0.0.0.0") {
+        plant l = net.listen_tls(port, cert_file, key_file, host: host)
+        self.listener = l
+        io_log("http: listening on https://{host}:{l.port()}")
+        self.accept_all(l)
     }
 
     branch stop() {
@@ -440,17 +459,19 @@ tree Url {
     host: str
     port: int
     path: str
+    secure: bool = bad              # https://
 }
 
 branch parse_url(url: str) -> Url {
     plant rest = url
+    plant secure = bad
     if rest.starts_with("https://") {
-        throw ValueError("https isn't supported yet (it needs TLS); use http://")
-    }
-    if rest.starts_with("http://") {
+        rest = rest[8..len(rest)]
+        secure = good
+    } else if rest.starts_with("http://") {
         rest = rest[7..len(rest)]
     } else if rest.contains("://") {
-        throw ValueError("only http:// URLs, not '{url}'")
+        throw ValueError("only http:// and https:// URLs, not '{url}'")
     }
     plant path = "/"
     if plant slash = rest.find("/") {
@@ -458,7 +479,7 @@ branch parse_url(url: str) -> Url {
         rest = rest[0..slash]
     }
     plant host = rest
-    plant port = 80
+    plant port = if secure { 443 } else { 80 }
     if plant colon = rest.find(":") {
         host = rest[0..colon]
         port = int(rest[colon + 1..len(rest)])
@@ -466,15 +487,19 @@ branch parse_url(url: str) -> Url {
     if host == "" {
         throw ValueError("no host in '{url}'")
     }
-    return Url(host, port, path)
+    return Url(host, port, path, secure)
 }
 
-# A request to a server: its response (any status, 404 included).
+# A request to a server: its response (any status, 404 included). An
+# https:// server's certificate is checked against the system's trusted
+# CAs, or ca_file's, unless verify is bad.
 branch request(method: str, url: str, body: str = "", headers: map[str, str] = {:},
-               timeout: float = 30.0) -> Response {
+               timeout: float = 30.0, verify: bool = good, ca_file: str = "") -> Response {
     plant u = parse_url(url)
-    plant conn = net.connect(u.host, u.port, timeout: timeout)
-    plant out: map[str, str] = {"host": if u.port == 80 { u.host } else { "{u.host}:{u.port}" },
+    plant conn = if u.secure { net.tls_connect(u.host, u.port, timeout, verify, ca_file) }
+                 else { net.connect(u.host, u.port, timeout: timeout) }
+    plant usual = if u.secure { 443 } else { 80 }
+    plant out: map[str, str] = {"host": if u.port == usual { u.host } else { "{u.host}:{u.port}" },
                                 "user-agent": "plum", "accept": "*/*", "connection": "close"}
     for name, value in headers {
         out[name.lower()] = value
@@ -494,18 +519,21 @@ branch request(method: str, url: str, body: str = "", headers: map[str, str] = {
     return Response(code, text, got)
 }
 
-branch get(url: str, headers: map[str, str] = {:}, timeout: float = 30.0) -> Response {
-    return request("GET", url, "", headers, timeout)
+branch get(url: str, headers: map[str, str] = {:}, timeout: float = 30.0, verify: bool = good,
+           ca_file: str = "") -> Response {
+    return request("GET", url, "", headers, timeout, verify, ca_file)
 }
 
 branch post(url: str, body: str, content_type: str = "text/plain; charset=utf-8",
-            headers: map[str, str] = {:}, timeout: float = 30.0) -> Response {
+            headers: map[str, str] = {:}, timeout: float = 30.0, verify: bool = good,
+            ca_file: str = "") -> Response {
     plant all = headers
     all["content-type"] = content_type
-    return request("POST", url, body, all, timeout)
+    return request("POST", url, body, all, timeout, verify, ca_file)
 }
 
-branch post_json(url: str, value: Json, headers: map[str, str] = {:},
-                 timeout: float = 30.0) -> Response {
-    return post(url, jsonlib.stringify(value), "application/json", headers, timeout)
+branch post_json(url: str, value: Json, headers: map[str, str] = {:}, timeout: float = 30.0,
+                 verify: bool = good, ca_file: str = "") -> Response {
+    return post(url, jsonlib.stringify(value), "application/json", headers, timeout, verify,
+                ca_file)
 }

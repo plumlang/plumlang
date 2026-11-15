@@ -1,5 +1,5 @@
 # The server and client together: queries, JSON bodies, middleware, errors,
-# 405 and HEAD, static files, keep-alive, chunked responses, bad URLs.
+# 405 and HEAD, static files, keep-alive, chunked responses, refused connections.
 seed net
 seed net.http
 seed fs
@@ -61,11 +61,6 @@ spawn (() => {
 })()
 drop(http.get("http://127.0.0.1:{raw.port()}/").body)
 
-try {
-    http.get("https://example.com")
-} catch e: ValueError {
-    drop(e.message)
-}
 try {
     http.get("http://127.0.0.1:1/")
 } catch e: NetError {
