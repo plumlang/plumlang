@@ -28,8 +28,12 @@ typedef struct PlumModule {
     PlumTokenList tokens;
     PlumProgram program;
     PlumMap exports; /* name -> PlumSymbol*, after resolution */
-    int state;       /* while loading: 0 new, 1 being loaded, 2 done */
+    int state;       /* while loading: 0 new, 1 being loaded, 2 done; or PLUM_MODULE_FORGOTTEN */
 } PlumModule;
+
+/* A module the REPL dropped (its entry failed): kept in memory, since
+ * syntax trees may point into it, but a later `seed` loads the file again. */
+#define PLUM_MODULE_FORGOTTEN 3
 
 typedef struct PlumModules {
     PlumModule **items; /* imports first; the program's own file last */
@@ -38,6 +42,7 @@ typedef struct PlumModules {
     size_t all_count;
     PlumArena arena;
     PlumInterner names;
+    bool open; /* made by plum_modules_init: entries are added one at a time */
 } PlumModules;
 
 /*
@@ -46,6 +51,24 @@ typedef struct PlumModules {
  * Problems in the files go to each module's diagnostics.
  */
 int plum_modules_load(PlumModules *out, const char *path);
+
+/*
+ * The REPL's modules: an empty set, to which each entry is added as a
+ * module of its own with plum_modules_add. Free with plum_modules_free.
+ */
+void plum_modules_init(PlumModules *m);
+
+/*
+ * Add `text` (malloc'd; it moves here) as a new module called `path`,
+ * loading what it imports that isn't loaded yet. Returns the new module;
+ * `*added` receives every module this loaded, imports first and the new
+ * one last (an array the caller frees with plum_free), `*count` how many.
+ */
+PlumModule *plum_modules_add(PlumModules *m, const char *path, char *text, size_t len,
+                             PlumModule ***added, size_t *count);
+
+/* Forget modules whose entry failed: a later `seed` loads them afresh. */
+void plum_modules_forget(PlumModules *m, PlumModule *const *mods, size_t count);
 
 /* Did any module report an error? */
 bool plum_modules_failed(const PlumModules *m);

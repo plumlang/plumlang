@@ -150,7 +150,7 @@ typedef struct Loader {
 
 static PlumModule *find(Loader *l, const char *path) {
     for (size_t i = 0; i < l->m->all_count; i++) {
-        if (strcmp(l->m->all[i]->path, path) == 0) {
+        if (l->m->all[i]->state != PLUM_MODULE_FORGOTTEN && strcmp(l->m->all[i]->path, path) == 0) {
             return l->m->all[i];
         }
     }
@@ -292,6 +292,35 @@ int plum_modules_load(PlumModules *out, const char *path) {
     return 0;
 }
 
+void plum_modules_init(PlumModules *m) {
+    memset(m, 0, sizeof *m);
+    plum_arena_init(&m->arena);
+    plum_interner_init(&m->names);
+    m->open = true;
+}
+
+PlumModule *plum_modules_add(PlumModules *m, const char *path, char *text, size_t len,
+                             PlumModule ***added, size_t *count) {
+    Loader l;
+    memset(&l, 0, sizeof l);
+    l.m = m;
+    char *copy = plum_alloc(strlen(path) + 1);
+    memcpy(copy, path, strlen(path) + 1);
+    PlumModule *mod = add(&l, copy, text, len);
+    parse(&l, mod);
+    plum_array_free(&l.stack);
+    *added = l.order.items; /* the array moves to the caller */
+    *count = l.order.len;
+    return mod;
+}
+
+void plum_modules_forget(PlumModules *m, PlumModule *const *mods, size_t count) {
+    (void)m;
+    for (size_t i = 0; i < count; i++) {
+        mods[i]->state = PLUM_MODULE_FORGOTTEN;
+    }
+}
+
 bool plum_modules_failed(const PlumModules *m) {
     for (size_t i = 0; i < m->all_count; i++) {
         if (m->all[i]->diags.errors > 0) {
@@ -319,7 +348,7 @@ void plum_modules_free(PlumModules *m) {
     }
     plum_free(m->all);
     plum_free(m->items);
-    if (m->all_count > 0) {
+    if (m->all_count > 0 || m->open) {
         plum_interner_free(&m->names);
         plum_arena_free(&m->arena);
     }
