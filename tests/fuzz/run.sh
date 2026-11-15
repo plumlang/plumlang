@@ -14,8 +14,14 @@ build=${1:?usage: run.sh BUILD SECONDS NAME...}
 seconds=${2:?usage: run.sh BUILD SECONDS NAME...}
 shift 2
 here=$(dirname "$0")
+# stack traces for UBSan reports too
+UBSAN_OPTIONS=${UBSAN_OPTIONS:-print_stacktrace=1}
+export UBSAN_OPTIONS
 
-sh "$here/corpus.sh" "$build/seeds"
+# seeds of this run of its own, so runs side by side don't clash
+seeds="$build/seeds-$$"
+sh "$here/corpus.sh" "$seeds"
+trap 'rm -rf "$seeds"' EXIT
 
 status=0
 for t in "$@"; do
@@ -29,7 +35,7 @@ for t in "$@"; do
     if ! "$build/fuzz-$t" $dict -max_total_time="$seconds" -timeout=25 -rss_limit_mb=2560 \
         -malloc_limit_mb=1024 -max_len=16384 -print_final_stats=1 \
         -artifact_prefix="$build/crashes/$t/" $FUZZ_FLAGS \
-        "$build/corpus/$t" "$build/seeds/$t" >"$build/fuzz-$t.log" 2>&1; then
+        "$build/corpus/$t" "$seeds/$t" >"$build/fuzz-$t.log" 2>&1; then
         echo "fuzz: $t FAILED; see $build/fuzz-$t.log and $build/crashes/$t/"
         grep -E '^(==[0-9]+==ERROR|SUMMARY|.*runtime error)' "$build/fuzz-$t.log" | head -n 5
         status=1

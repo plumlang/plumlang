@@ -54,8 +54,10 @@ else ifeq ($(MODE),sanitize)
          -fno-sanitize-recover=all
   LDSAN := -fsanitize=address,undefined
 else
+  # Smaller largest values (vm/value.h), to stay within the fuzzer's memory
   OPT := -O1 -g3 -fno-omit-frame-pointer -fsanitize=fuzzer-no-link,address,undefined \
-         -fno-sanitize-recover=all
+         -fno-sanitize-recover=all '-DPLUM_MAX_STRING=((size_t)1 << 24)' \
+         '-DPLUM_MAX_LIST=((size_t)1 << 20)'
   LDSAN := -fsanitize=fuzzer,address,undefined
 endif
 

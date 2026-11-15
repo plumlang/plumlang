@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+#
+# Fuzz plum (tests/fuzz, issue #86): a minute per target on every pull
+# request, an hour per target every night. A crash, hang, leak or
+# sanitizer report fails the job, and the inputs that caused it are
+# uploaded as an artifact to reproduce with build/fuzz/fuzz-NAME FILE.
+name: Fuzz
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: fuzz / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 90 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [lexer, parser, check, run, json, format, http]
+    env:
+      FUZZ_TIME: ${{ github.event_name == 'pull_request' && 60 || 3600 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: clang --version
+      - run: make -j"$(nproc)" fuzz-build FUZZ_CC=clang
+      - run: make fuzz FUZZ_CC=clang FUZZ_TIME="$FUZZ_TIME" FUZZ_TARGETS=${{ matrix.target }}
+      - if: failure()
+        run: tail -n 80 build/fuzz/fuzz-${{ matrix.target }}.log
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: |
+            build/fuzz/crashes/${{ matrix.target }}/
+            build/fuzz/fuzz-${{ matrix.target }}.log
+          retention-days: 30
