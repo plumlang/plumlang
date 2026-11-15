@@ -484,7 +484,9 @@ n /= 2                      # error: '/=' makes a float; use '//='
 ### E0403
 
 An operator used on values it doesn't work on: adding text and a number,
-comparing values that are never equal, bitwise operators on floats.
+comparing values that are never equal, bitwise operators on floats. On
+objects, an operator needs its method in the object's tree (`plus` for
+`+`, `compare` for `<`, ... spec 8.5), taking the value on the right.
 
 ```plum
 drop("total: " + 5)         # error
@@ -646,7 +648,23 @@ methods (or those of trees extending it). The underscore makes it private.
 
 A method the language calls itself, written with the wrong shape:
 `to_str() -> str` (for printing), `equals(other: <this tree>) -> bool`
-(for `==`), and `init(...)` with no result.
+(for `==`), `compare(other: <this tree>) -> int` (for `<`, `<=`, `>`,
+`>=` and sorting), the operator methods `plus`, `minus` (`+`, `-`),
+`times`, `divided_by` (`*`, `/`) taking `<this tree>` (`times` and
+`divided_by` may take an `int` or `float` instead) and returning
+`<this tree>`, `negate() -> <this tree>` (unary `-`), and `init(...)`
+with no result. `<this tree>` means the tree, a tree it extends or a
+trait it has.
+
+```plum
+tree Money {
+    cents: int
+    branch plus(other: int) -> Money => Money(self.cents + other)   # E0424
+}
+```
+
+Write `plus(other: Money) -> Money`; to add a number, give the tree
+another method (`add_cents(n: int)`) and call it by name.
 
 ### E0425
 

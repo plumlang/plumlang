@@ -355,12 +355,17 @@ Compound assignment applies an operator and assigns:
 Integer overflow, `//` or `%` by zero, and `int ** negative` are runtime
 errors. Float division by zero follows IEEE 754 (`inf`, `nan`).
 
+`+ - * /` and `-a` also work on objects whose tree has the matching
+method (`plus`, `minus`, `times`, `divided_by`, `negate`; section 8.5).
+
 ### 4.5 Comparison
 
 `==` `!=` `<` `<=` `>` `>=`. Both sides must have the same type, except that
 `int` and `float` compare by value. Strings compare by Unicode code point;
 lists and maps compare element by element with `==`. Trees compare by
-identity unless they implement `Equal` (section 8.5).
+identity unless they implement `Equal` (section 8.5). `<` `<=` `>` `>=`
+work on numbers, on strings, and on objects whose tree implements
+`Order` (a `compare` method, section 8.5).
 
 Comparisons do not chain: `a < b < c` is a syntax error; write
 `a < b and b < c`.
@@ -744,12 +749,53 @@ Some methods the language calls itself:
   prints as `<TreeName>`.
 - `equals(other: T) -> bool`, where `T` is the tree or one it extends, is
   what `a == b` and `a != b` mean when `a`'s type is a tree with
-  `equals`. Without it, `==` asks whether both are the same object.
-  (Comparisons inside collections, like `list.contains`, still compare
-  objects by identity.)
+  `equals` (trait `Equal`). Without it, `==` asks whether both are the
+  same object. In a list whose item type has `equals` (also lists of
+  such lists), `contains`, `index_of`, `x in list` and `==` between
+  lists use it too, calling each item's `equals`. Elsewhere in
+  collections (map keys and values, sets, a list of a parent tree whose
+  subclass alone has `equals`) objects compare by identity.
+- `compare(other: T) -> int` (trait `Order`) is what `a < b`, `a <= b`,
+  `a > b` and `a >= b` mean: it returns a negative number if `self`
+  comes before `other`, zero if neither does, and a positive number if
+  `self` comes after. A list whose item type has `compare` can `sort()`
+  and `sorted()`; the sort is stable. A `compare` that throws stops the
+  sort with its error.
+- The arithmetic operators call these methods (on the left object):
 
-`Order` (`compare`, for `<` and sorting), `Hash` (`hash`, for map keys)
-and `Iterable` (`iter`, for `for`) come with the standard library.
+  | Operator | Method |
+  |---|---|
+  | `a + b` | `plus(other: T) -> T` |
+  | `a - b` | `minus(other: T) -> T` |
+  | `a * b` | `times(other: T) -> T`, or `times(k: int)` / `times(k: float)` |
+  | `a / b` | `divided_by(other: T) -> T`, or `divided_by(k: int)` / `divided_by(k: float)` |
+  | `-a` | `negate() -> T` |
+
+  `T` is the tree or one it extends (or a trait it has), and the result
+  is too; `times` and `divided_by` may take a number instead, to scale.
+  Compound assignment uses them as well: `v += w` is `v = v + w`. The
+  object must be on the left: `v * 2.0` works, `2.0 * v` doesn't.
+
+```plum
+tree Vector {
+    x: float
+    y: float
+    branch plus(other: Vector) -> Vector => Vector(self.x + other.x, self.y + other.y)
+    branch times(k: float) -> Vector => Vector(self.x * k, self.y * k)
+    branch negate() -> Vector => Vector(-self.x, -self.y)
+}
+
+plant v = Vector(1.0, 2.0) + Vector(3.0, 4.0) * 2.0    # (7.0, 10.0)
+v += -v                                                # (0.0, 0.0)
+```
+
+These methods are found in the object's own tree, so a subclass that
+overrides one changes what the operator does, even where the object's
+type is the parent. Their shapes are fixed (E0424), and an override has
+the same parameters and result as the method it overrides (E0421).
+
+`Hash` (`hash`, for map keys) and `Iterable` (`iter`, for `for`) come
+with the standard library.
 
 Fields and methods whose names start with `_` are private to the tree and
 the trees that extend it (section 9.4).
