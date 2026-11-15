@@ -48,6 +48,6 @@ for repo in "$@"; do
     done
 done
 if [ $check -eq 1 ] && [ $status -eq 0 ]; then
-    echo "workflows: in sync with $*"
+    echo ".github: in sync with $*"
 fi
 exit $status
