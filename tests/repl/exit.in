@@ -1,0 +1,9 @@
+# exit: 3
+# exit() ends the session with its code; nothing after it runs. ask() reads
+# the next line of the same input.
+plant x = 1
+ask("who? ")
+Ada
+x + 1
+exit(3)
+drop("not printed")

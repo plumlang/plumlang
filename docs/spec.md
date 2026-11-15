@@ -1176,7 +1176,8 @@ plum test                           # run tests (Stage 5)
 plum fmt files-or-directories...    # format source files in place (14.1)
 plum fmt --check paths...           # ...change nothing; list files that would change
 plum fmt -                          # format standard input to standard output
-plum                                # interactive prompt (Stage 6)
+plum                                # interactive prompt, on a terminal (14.2)
+plum repl                           # the interactive prompt, also with piped input
 ```
 
 Exit codes: 0 success, 1 the program failed (compile or runtime error, or
@@ -1210,6 +1211,34 @@ The layout:
 
 Formatting never changes what a program means, and formatting a formatted
 file changes nothing.
+
+### 14.2 The interactive prompt
+
+`plum` with no arguments, when standard input is a terminal, starts a REPL;
+with piped input it prints the help instead (`plum repl` reads piped input
+as entries, without prompts). Each entry, a line, or several lines while a
+bracket is open, a line ends with an operator, `,` or `=>`, or a `"""`
+string is open, is checked and run at once, as if it were the next part of
+one program:
+
+- What an entry declares (variables, functions, trees, traits, kinds and
+  `seed` imports) is there for the entries after it. An entry may declare
+  a name again; the new declaration hides the old one from then on, while
+  code written before keeps the old one.
+- An entry that is one expression prints its value as `drop` would (an
+  object through its `to_str`) and its type: `= 42 : int`. A `none` value
+  prints nothing. Such an expression is not an unused value (5.7).
+- An entry with a compile error or a runtime error reports it and leaves
+  nothing it declared behind; what earlier entries made is kept. Imported
+  files are loaded and run once, by the first entry that imports them.
+- Tasks run while an entry runs, and the entry ends when its own code
+  does; tasks still running carry on while later entries run (12).
+- `exit(n)` ends the session with exit code `n`; otherwise it ends with 0
+  at the end of the input, `:quit` or Ctrl-D.
+
+Commands start with `:`: `:help`, `:type expr` (the expression's type,
+without running it), `:load file.plum` (run a file's code as an entry),
+`:reset` (forget every declaration) and `:quit` (or `:q`).
 
 ## 15. Changes from the Python prototype
 

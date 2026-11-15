@@ -16,10 +16,11 @@ fail=0
 
 # check NAME EXPECTED_EXIT GREP_PATTERN STREAM -- ARGS...
 #   STREAM is out or err; GREP_PATTERN must appear in it ("": it must be empty).
+#   Standard input is $STDIN, or empty.
 check() {
     name=$1 want=$2 pattern=$3 stream=$4
     shift 5
-    "$PLUM" "$@" >"$tmp/out" 2>"$tmp/err"
+    "$PLUM" "$@" <"${STDIN:-/dev/null}" >"$tmp/out" 2>"$tmp/err"
     got=$?
     if [ "$got" -ne "$want" ]; then
         echo "FAIL $name: exit $got, expected $want"
@@ -73,6 +74,12 @@ check "fmt formats in place"        0 ""                    out -- fmt "$tmp/mes
 check "fmt --check after formatting" 0 ""                   out -- fmt --check "$tmp/messy.plum"
 check "fmt --check a directory"     0 ""                    out -- fmt --check "$tmp"
 check "fmt --stdout"                0 "^plant x = 1$"       out -- fmt --stdout "$tmp/messy.plum"
+printf 'plant x = 20\nx * 2 + 2\n:type x\nexit(4)\n' >"$tmp/repl.in"
+printf 'plant x = 1 +\n  "two"\n:q\n' >"$tmp/repl-error.in"
+STDIN="$tmp/repl.in" check "repl echoes a value"   4 "^= 42 : int$"  out -- repl
+STDIN="$tmp/repl.in" check "repl prints a type"    4 "^int$"         out -- repl
+STDIN="$tmp/repl.in" check "repl without prompts"  4 ""              err -- repl
+STDIN="$tmp/repl-error.in" check "repl reports an error" 0 "E0403" err -- repl
 
 echo "smoke: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

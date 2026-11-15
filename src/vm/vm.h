@@ -43,4 +43,26 @@ typedef struct PlumRunOptions {
 int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
                 const PlumRunOptions *options, FILE *out, FILE *err);
 
+/*
+ * The REPL: one VM for a whole session, running one entry after another.
+ * The globals stay from entry to entry (new ones start as none). Each
+ * entry runs until its main task ends; tasks it spawned that are still
+ * running carry on while later entries run. `options` must outlive the VM.
+ */
+typedef struct PlumVM PlumVM;
+
+PlumVM *plum_vm_new(const PlumRunOptions *options, FILE *out, FILE *err);
+
+/*
+ * Run an entry: program->main, with the globals and error trees `program`
+ * describes. Errors are reported like plum_vm_run's. Returns 0, 1 after
+ * an error, or the code given to exit() (then plum_vm_exited is true).
+ */
+int plum_vm_run_entry(PlumVM *vm, const PlumCompiled *program, const PlumSource *source);
+
+/* Has a program called exit()? */
+bool plum_vm_exited(const PlumVM *vm);
+
+void plum_vm_free(PlumVM *vm);
+
 #endif /* PLUM_VM_VM_H */

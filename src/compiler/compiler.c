@@ -1020,6 +1020,8 @@ static void fill_method_tables(Compiler *c) {
         PlumSymbol *tree = c->user_trees.items[i].sym;
         PlumTreeInfo *info = c->user_trees.items[i].info;
         int n = c->method_id_count;
+        plum_free(info->methods); /* the REPL fills the tables again after each entry */
+        plum_free(info->traits);
         info->method_count = n;
         info->methods = plum_alloc_zeroed(n > 0 ? (size_t)n : 1, sizeof(PlumFunction *));
         size_t cursor = 0;
@@ -2556,23 +2558,65 @@ static const char *module_function_name(Compiler *c, const char *path) {
     return plum_intern_cstr(c->names, name);
 }
 
-PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count,
-                                  PlumInterner *names) {
-    Compiler c;
-    memset(&c, 0, sizeof c);
-    c.names = names;
-    plum_map_init(&c.trees);
-    plum_map_init(&c.method_ids);
-    size_t errors_before = 0;
+static void compiler_init(Compiler *c, PlumInterner *names) {
+    memset(c, 0, sizeof *c);
+    c->names = names;
+    plum_map_init(&c->trees);
+    plum_map_init(&c->method_ids);
+}
+
+static size_t error_count(const PlumCompileModule *modules, size_t count) {
+    size_t errors = 0;
     for (size_t m = 0; m < count; m++) {
-        errors_before += modules[m].diags->errors;
+        errors += modules[m].diags->errors;
     }
+    return errors;
+}
+
+/*
+ * The REPL prints the value of an entry that is one expression, with its
+ * type: `= 42 : int`, through drop (so objects print with their to_str()).
+ * A none value prints nothing.
+ */
+static void compile_echo(Compiler *c, const PlumStmt *s) {
+    const PlumExpr *e = s->as.expr;
+    uint32_t line = s->span.line;
+    compile_expr(c, e);
+    if (e->ty == NULL || e->ty->kind == PLUM_TY_NONE) {
+        op(c, PLUM_OP_POP, line);
+        return;
+    }
+    uint16_t slot = new_local(c, NULL, s->span);
+    op1(c, PLUM_OP_SET_LOCAL, slot, line);
+    op1(c, PLUM_OP_GET_LOCAL, slot, line);
+    op(c, PLUM_OP_IS_NONE, line);
+    size_t skip = emit_jump(c, PLUM_OP_JUMP_IF_TRUE_KEEP, line);
+    op(c, PLUM_OP_POP, line);
+    char type[128] = ": ";
+    plum_ty_text(e->ty, type + 2, sizeof type - 2);
+    emit_const(c, plum_obj(&plum_string_new("=", 1)->obj), s->span);
+    op1(c, PLUM_OP_GET_LOCAL, slot, line);
+    emit_const(c, plum_obj(&plum_string_new(type, strlen(type))->obj), s->span);
+    op2(c, PLUM_OP_CALL_BUILTIN, (uint16_t)builtin_id("drop"), 3, line);
+    patch_jump(c, skip, s->span);
+    op(c, PLUM_OP_POP, line);
+}
+
+/*
+ * Compile `modules` (imports first, the program's own last) into `c`,
+ * whose global slots, trees and methods may already hold earlier ones.
+ * With `echo`, a last module that is one expression prints its value.
+ * Returns the new <main>, or NULL after errors.
+ */
+static PlumFunction *compile_program(Compiler *c, const PlumCompileModule *modules, size_t count,
+                                     bool echo) {
+    size_t errors_before = error_count(modules, count);
 
     PlumFunction *main = plum_function_new("<main>", 0);
     FnState fs;
     memset(&fs, 0, sizeof fs);
     fs.fn = main;
-    c.fs = &fs;
+    c->fs = &fs;
 
     /* Every module variable and function gets a global slot. */
     for (size_t m = 0; m < count; m++) {
@@ -2581,7 +2625,13 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
             PlumSymbol *sym = program->stmts[i]->symbol;
             PlumStmtKind k = program->stmts[i]->kind;
             if (sym != NULL && (k == PLUM_STMT_DECL || k == PLUM_STMT_BRANCH)) {
-                sym->slot = c.global_count++;
+                if (c->global_count >= MAX_SLOTS) {
+                    plum_diag_error(modules[m].diags, program->stmts[i]->span, "E0602",
+                                    "the program has more than 65535 module variables and "
+                                    "functions");
+                    break;
+                }
+                sym->slot = c->global_count++;
                 sym->has_slot = true;
             }
         }
@@ -2591,18 +2641,18 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
      * be called before their declaration. */
     for (size_t m = 0; m < count; m++) {
         const PlumProgram *program = modules[m].program;
-        c.diags = modules[m].diags;
-        c.path = modules[m].path;
+        c->diags = modules[m].diags;
+        c->path = modules[m].path;
         for (size_t i = 0; i < program->count; i++) {
             const PlumStmt *s = program->stmts[i];
-            if (s->kind != PLUM_STMT_BRANCH || s->symbol == NULL) {
+            if (s->kind != PLUM_STMT_BRANCH || s->symbol == NULL || !s->symbol->has_slot) {
                 continue;
             }
             PlumFunction *fn = plum_function_new(s->as.branch.name, (int)s->as.branch.param_count);
             plum_retain(plum_obj(&fn->obj));
-            emit_const(&c, plum_obj(&fn->obj), s->span);
-            op1(&c, PLUM_OP_SET_GLOBAL, (uint16_t)s->symbol->slot, s->span.line);
-            compile_function(&c, fn, &s->as.branch, 1,
+            emit_const(c, plum_obj(&fn->obj), s->span);
+            op1(c, PLUM_OP_SET_GLOBAL, (uint16_t)s->symbol->slot, s->span.line);
+            compile_function(c, fn, &s->as.branch, 1,
                              s->symbol->ty != NULL ? s->symbol->ty->as.func.result : NULL, NULL);
             plum_release(plum_obj(&fn->obj));
         }
@@ -2610,7 +2660,7 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
         for (size_t i = 0; i < program->count; i++) {
             const PlumStmt *s = program->stmts[i];
             if (s->kind == PLUM_STMT_TREE || s->kind == PLUM_STMT_TRAIT) {
-                compile_methods(&c, s);
+                compile_methods(c, s);
             }
         }
     }
@@ -2621,48 +2671,80 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
      */
     for (size_t m = 0; m < count; m++) {
         const PlumProgram *program = modules[m].program;
-        c.diags = modules[m].diags;
-        c.path = modules[m].path;
+        c->diags = modules[m].diags;
+        c->path = modules[m].path;
         bool last = m + 1 == count;
         PlumFunction *body = main;
         FnState module_fs;
         if (!last) {
-            body = plum_function_new(module_function_name(&c, modules[m].path), 0);
+            body = plum_function_new(module_function_name(c, modules[m].path), 0);
             body->path = modules[m].path;
             memset(&module_fs, 0, sizeof module_fs);
             module_fs.fn = body;
             module_fs.enclosing = &fs;
-            c.fs = &module_fs;
+            c->fs = &module_fs;
         }
         for (size_t i = 0; i < program->count; i++) {
             const PlumStmt *s = program->stmts[i];
-            if (s->kind != PLUM_STMT_BRANCH) {
-                compile_stmt(&c, s);
+            if (last && echo && program->count == 1 && s->kind == PLUM_STMT_EXPR) {
+                compile_echo(c, s);
+            } else if (s->kind != PLUM_STMT_BRANCH) {
+                compile_stmt(c, s);
             }
         }
         uint32_t end = program->count > 0 ? program->stmts[program->count - 1]->span.line : 1;
-        op(&c, PLUM_OP_RETURN_NONE, end);
+        op(c, PLUM_OP_RETURN_NONE, end);
         if (!last) {
-            c.fs = &fs;
-            c.path = NULL;
-            emit_const(&c, plum_obj(&body->obj), (PlumSpan){0, 0, 1, 1}); /* the constant owns it */
-            op1(&c, PLUM_OP_CALL, 0, 1);
-            op(&c, PLUM_OP_POP, 1);
+            c->fs = &fs;
+            c->path = NULL;
+            emit_const(c, plum_obj(&body->obj), (PlumSpan){0, 0, 1, 1}); /* the constant owns it */
+            op1(c, PLUM_OP_CALL, 0, 1);
+            op(c, PLUM_OP_POP, 1);
         }
     }
-    c.path = NULL;
+    c->path = NULL;
+    c->fs = NULL;
+
+    /* The built-in error trees, and the numbers of the methods printing,
+     * comparing and sorting call. */
+    for (int k = 0; k < PLUM_ERROR_COUNT; k++) {
+        builtin_error_info(c, plum_error_name((PlumErrorKind)k));
+    }
+    method_id(c, "to_str");
+    method_id(c, "equals");
+    method_id(c, "compare");
+
+    if (error_count(modules, count) != errors_before) {
+        plum_release(plum_obj(&main->obj));
+        return NULL;
+    }
+    return main;
+}
+
+/* What the VM needs besides <main>; the error trees are borrowed from `c`. */
+static void describe(Compiler *c, PlumCompiled *out) {
+    out->global_count = c->global_count;
+    for (int k = 0; k < PLUM_ERROR_COUNT; k++) {
+        out->errors[k] = builtin_error_info(c, plum_error_name((PlumErrorKind)k));
+    }
+    out->to_str = method_id(c, "to_str");
+    out->equals = method_id(c, "equals");
+    out->compare = method_id(c, "compare");
+}
+
+PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count,
+                                  PlumInterner *names) {
+    Compiler c;
+    compiler_init(&c, names);
+    PlumFunction *main = compile_program(&c, modules, count, false);
 
     PlumCompiled out;
     memset(&out, 0, sizeof out);
     out.main = main;
-    out.global_count = c.global_count;
+    describe(&c, &out);
     for (int k = 0; k < PLUM_ERROR_COUNT; k++) {
-        out.errors[k] = builtin_error_info(&c, plum_error_name((PlumErrorKind)k));
         plum_retain(plum_obj(&out.errors[k]->obj));
     }
-    out.to_str = method_id(&c, "to_str");
-    out.equals = method_id(&c, "equals");
-    out.compare = method_id(&c, "compare");
     fill_method_tables(&c);
     /* The program keeps the methods; trees' tables only point at them. */
     out.method_count = (int)c.methods.len;
@@ -2680,14 +2762,6 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
         plum_release(plum_obj(&((PlumTreeInfo *)entry->value)->obj));
     }
     plum_map_free(&c.trees);
-    size_t errors_after = 0;
-    for (size_t m = 0; m < count; m++) {
-        errors_after += modules[m].diags->errors;
-    }
-    if (errors_after != errors_before) {
-        plum_release(plum_obj(&main->obj));
-        out.main = NULL;
-    }
     return out;
 }
 
@@ -2708,4 +2782,58 @@ void plum_compiled_free(PlumCompiled *compiled) {
             compiled->errors[k] = NULL;
         }
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The REPL: one compiler for the whole session                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Global slots, tree infos, method numbers and methods stay here from one
+ * entry to the next, so an object made by an earlier entry has the same
+ * tree, and finds the same methods, as the code of a later one.
+ */
+struct PlumReplCompiler {
+    Compiler c;
+};
+
+PlumReplCompiler *plum_repl_compiler_new(PlumInterner *names) {
+    PlumReplCompiler *rc = plum_alloc_zeroed(1, sizeof *rc);
+    compiler_init(&rc->c, names);
+    return rc;
+}
+
+bool plum_repl_compile(PlumReplCompiler *rc, const PlumCompileModule *modules, size_t count,
+                       bool echo, PlumCompiled *out) {
+    memset(out, 0, sizeof *out);
+    PlumFunction *main = compile_program(&rc->c, modules, count, echo);
+    /* Every tree's table again, even after errors: this entry may have
+     * added trees, and method names the older tables need room for. */
+    fill_method_tables(&rc->c);
+    if (main == NULL) {
+        return false;
+    }
+    out->main = main;
+    describe(&rc->c, out);
+    return true;
+}
+
+void plum_repl_compiler_free(PlumReplCompiler *rc) {
+    if (rc == NULL) {
+        return;
+    }
+    Compiler *c = &rc->c;
+    for (size_t i = 0; i < c->methods.len; i++) {
+        plum_release(plum_obj(&c->methods.items[i].fn->obj));
+    }
+    plum_array_free(&c->methods);
+    plum_array_free(&c->user_trees);
+    plum_map_free(&c->method_ids);
+    size_t cursor = 0;
+    const PlumMapEntry *entry;
+    while ((entry = plum_map_next(&c->trees, &cursor)) != NULL) {
+        plum_release(plum_obj(&((PlumTreeInfo *)entry->value)->obj));
+    }
+    plum_map_free(&c->trees);
+    plum_free(rc);
 }

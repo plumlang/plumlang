@@ -51,7 +51,7 @@ typedef struct ProgramData {
     void (*free_fn)(void *);
 } ProgramData;
 
-typedef struct VM {
+typedef struct PlumVM {
     PlumValue *stack;
     size_t top;
     size_t capacity;
@@ -97,6 +97,12 @@ typedef struct VM {
     bool yielded;                         /* the running task gave way: it waits, or sleeps */
     uint64_t timer_order;                 /* how many times a task has gone to sleep */
     PLUM_ARRAY(ProgramData) data;         /* what native modules keep for the whole run */
+    /* The REPL: runs one entry after another, keeping the globals and the
+     * tasks still running. An entry's main task that couldn't finish is
+     * parked here until the session ends, since channels and other tasks
+     * may still point at it. */
+    bool session;
+    PLUM_ARRAY(struct PlumTask *) parked;
 } VM;
 
 typedef PLUM_ARRAY(struct PlumTask *) TaskList;
@@ -1732,6 +1738,11 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
         vm->handler_count = 0;
         save_task(vm, t);
         if (t == main) {
+            /* Who else is in line keeps their place: in the REPL, they
+             * carry on when the next entry runs. */
+            memmove(vm->ready.items, vm->ready.items + next,
+                    (vm->ready.len - next) * sizeof *vm->ready.items);
+            vm->ready.len -= next;
             return true;
         }
         task_finished(vm, t);
@@ -2956,51 +2967,103 @@ static void print_mem_stats(FILE *err, const PlumAllocStats *s) {
     }
 }
 
-int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
-                const PlumRunOptions *options, FILE *out, FILE *err) {
-    /* --mem-stats: the run's own counters, which the allocator counts into
-     * until the run is over (util/alloc.h). */
-    PlumAllocStats stats;
-    if (options->mem_stats) {
-        plum_alloc_set_stats(&stats);
-    }
+static VM *vm_create(const PlumRunOptions *options, FILE *out, FILE *err) {
     VM *vm = plum_alloc_zeroed(1, sizeof *vm);
-    vm->source = source;
     vm->out = out;
     vm->err = err;
-    vm->global_count = program->global_count;
     plum_random_key(vm->seed);
-    vm->globals = plum_alloc_zeroed(program->global_count > 0 ? (size_t)program->global_count : 1,
-                                    sizeof(PlumValue));
-
-    vm->errors = program->errors;
+    vm->globals = plum_alloc_zeroed(1, sizeof(PlumValue));
     vm->options = options;
     uint64_t key[2];
     plum_random_key(key);
     plum_native_seed_random((PlumNative *)(void *)vm, key[0] ^ key[1]);
-    vm->to_str = program->to_str;
-    vm->equals = program->equals;
-    vm->compare = program->compare;
     vm->text_hook = (PlumTextHook){object_text, vm, &vm->text_depth};
     vm->thrown = plum_none();
     vm->trace_of = plum_none();
+    return vm;
+}
 
-    /* The program's own code is the first task; <main> sits at the bottom
+/* Take in what a compiled program (or REPL entry) needs: room for its
+ * globals (new ones start as none), its error trees and method numbers. */
+static void vm_load(VM *vm, const PlumCompiled *program, const PlumSource *source) {
+    vm->source = source;
+    if (program->global_count > vm->global_count) {
+        vm->globals =
+            plum_realloc_array(vm->globals, (size_t)program->global_count, sizeof(PlumValue));
+        for (int i = vm->global_count; i < program->global_count; i++) {
+            vm->globals[i] = plum_none();
+        }
+        vm->global_count = program->global_count;
+    }
+    vm->errors = program->errors;
+    vm->to_str = program->to_str;
+    vm->equals = program->equals;
+    vm->compare = program->compare;
+}
+
+/* The REPL: an entry's main task that couldn't finish (a deadlock) is
+ * stopped. Channels and other tasks may still point at it, so it stays
+ * allocated (parked) until the session ends; it never runs again. */
+static void park_task(VM *vm, PlumTask *t) {
+    for (size_t i = 0; i < t->top; i++) {
+        plum_release(t->stack[i]);
+    }
+    t->top = 0;
+    if (t->call_state != NULL && t->call_state_free != NULL) {
+        t->call_state_free(t->call_state);
+    }
+    t->call_state = NULL;
+    t->call_state_free = NULL;
+    t->waiters.len = 0;
+    t->queued = false;
+    t->state = TASK_FAILED; /* so nothing wakes it */
+    t->waited = true;
+    plum_array_push(&vm->parked, t); /* the reference moves */
+}
+
+/* What's still running when the program (or REPL session) ends is dropped. */
+static void drop_tasks(VM *vm) {
+    plum_poller_free(vm->poller);
+    vm->poller = NULL;
+    for (size_t i = 0; i < vm->timers.len; i++) {
+        plum_release(plum_obj(&vm->timers.items[i].task->obj));
+    }
+    plum_array_free(&vm->timers);
+    for (size_t i = 0; i < vm->tasks.len; i++) {
+        plum_release(plum_obj(&vm->tasks.items[i]->obj));
+    }
+    plum_array_free(&vm->tasks);
+    plum_array_free(&vm->ready);
+    for (size_t i = 0; i < vm->parked.len; i++) {
+        plum_release(plum_obj(&vm->parked.items[i]->obj));
+    }
+    plum_array_free(&vm->parked);
+}
+
+/* Run `main_fn` as the main task, until it ends; report what went wrong.
+ * Returns 0, 1 after an error, or the code given to exit(). */
+static int vm_run_main(VM *vm, PlumFunction *main_fn) {
+    FILE *out = vm->out;
+    FILE *err = vm->err;
+    vm->exit_code = 0;
+    /* The program's own code is the main task; <main> sits at the bottom
      * of its stack, like any called function. */
-    push(vm, plum_retain(plum_obj(&program->main->obj)));
-    vm->poller = plum_poller_new();
+    push(vm, plum_retain(plum_obj(&main_fn->obj)));
+    if (vm->poller == NULL) {
+        vm->poller = plum_poller_new();
+    }
     vm->main_task = spawn(vm, 0);
     PlumTask *main = vm->main_task;
     plum_free(vm->stack); /* it only carried <main> into the first task */
     vm->stack = NULL;
     vm->top = 0;
     vm->capacity = 0;
-    if (!run_tasks(vm, program->main)) {
+    if (!run_tasks(vm, main_fn)) {
         fflush(out);
         fprintf(err,
                 "%s: Error: deadlock: every task is waiting (for a channel or another task) "
                 "and nothing is left to wake them\n",
-                source->path);
+                vm->source->path);
         vm->exit_code = 1;
     } else if (!vm->stopped && main->state == TASK_FAILED) {
         fflush(out);
@@ -3023,32 +3086,43 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
             }
         }
     }
-    /* What's still running when the program ends is dropped. */
-    plum_poller_free(vm->poller);
-    for (size_t i = 0; i < vm->timers.len; i++) {
-        plum_release(plum_obj(&vm->timers.items[i].task->obj));
-    }
-    plum_array_free(&vm->timers);
-    for (size_t i = 0; i < vm->tasks.len; i++) {
-        plum_release(plum_obj(&vm->tasks.items[i]->obj));
-    }
     for (size_t i = 0; i < vm->failed.len; i++) {
         plum_release(plum_obj(&vm->failed.items[i]->obj));
     }
-    plum_release(plum_obj(&main->obj));
-    plum_array_free(&vm->tasks);
     plum_array_free(&vm->failed);
-    plum_array_free(&vm->ready);
-
+    if (!vm->session || vm->stopped) {
+        drop_tasks(vm);
+    } else {
+        /* The REPL: the other tasks carry on in the next entry; the main
+         * task leaves (it is still in the task list when it ends). */
+        PlumTask *last = vm->tasks.items[--vm->tasks.len];
+        vm->tasks.items[main->index] = last;
+        last->index = main->index;
+        if (task_ended(main)) {
+            plum_release(plum_obj(&main->obj));
+        } else {
+            park_task(vm, main);
+        }
+    }
+    plum_release(plum_obj(&main->obj));
+    vm->main_task = NULL;
+    vm->current = NULL;
+    vm->yielded = false;
     unwind_to(vm, 0);
+    return vm->exit_code;
+}
+
+/* Release the globals and free the VM; with --check-leaks, report what
+ * cycles kept alive. Returns `code`, or 1 if the leak check failed. */
+static int vm_destroy(VM *vm, int code) {
+    drop_tasks(vm);
     for (int i = 0; i < vm->global_count; i++) {
         plum_release(vm->globals[i]);
     }
     plum_release(vm->thrown);
     plum_release(vm->trace_of);
-    int code = vm->exit_code;
-    if (options->check_leaks) {
-        fflush(out);
+    if (vm->options->check_leaks) {
+        fflush(vm->out);
         if (check_leaks(vm) > 0 && code == 0) {
             code = 1;
         }
@@ -3072,10 +3146,55 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     }
     plum_free(vm->stack);
     plum_free(vm);
+    return code;
+}
+
+int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
+                const PlumRunOptions *options, FILE *out, FILE *err) {
+    /* --mem-stats: the run's own counters, which the allocator counts into
+     * until the run is over (util/alloc.h). */
+    PlumAllocStats stats;
+    if (options->mem_stats) {
+        plum_alloc_set_stats(&stats);
+    }
+    VM *vm = vm_create(options, out, err);
+    vm_load(vm, program, source);
+    int code = vm_run_main(vm, program->main);
+    code = vm_destroy(vm, code);
     if (options->mem_stats) {
         plum_alloc_set_stats(NULL);
         fflush(out);
         print_mem_stats(err, &stats);
     }
     return code;
+}
+
+PlumVM *plum_vm_new(const PlumRunOptions *options, FILE *out, FILE *err) {
+    VM *vm = vm_create(options, out, err);
+    vm->session = true;
+    return vm;
+}
+
+int plum_vm_run_entry(PlumVM *vm, const PlumCompiled *program, const PlumSource *source) {
+    vm_load(vm, program, source);
+    /* What the last entry threw is gone; this one starts clean. */
+    plum_release(vm->thrown);
+    vm->thrown = plum_none();
+    plum_release(vm->trace_of);
+    vm->trace_of = plum_none();
+    vm->trace_len = 0;
+    if (vm->trace != NULL) {
+        vm->trace[0] = '\0';
+    }
+    return vm_run_main(vm, program->main);
+}
+
+bool plum_vm_exited(const PlumVM *vm) {
+    return vm->stopped;
+}
+
+void plum_vm_free(PlumVM *vm) {
+    if (vm != NULL) {
+        vm_destroy(vm, 0);
+    }
 }

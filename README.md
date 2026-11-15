@@ -75,6 +75,7 @@ On Windows with MSVC, use CMake: `cmake -B build && cmake --build build --config
 ## Usage
 
 ```bash
+plum                                # the interactive prompt (REPL), see docs/repl.md
 plum run program.plum [args...]     # run a program (or a directory with a plum.toml)
 plum check program.plum             # report every error without running
 plum fmt .                          # format every .plum file here (--check: only list them)
@@ -92,6 +93,7 @@ plum run --mem-stats program.plum   # report how much memory the program used
 | [Error codes](docs/errors.md) | Every compile error, with examples and fixes. |
 | [Examples](examples/README.md) | Small complete programs, including a REST API and a multi-file package. |
 | [Bytecode](docs/bytecode.md) | The instruction set of the virtual machine. |
+| [REPL](docs/repl.md) | The interactive prompt: entries, commands and keys. |
 
 The same documentation, with a guided tour, is published at [plum.elixpo.com](https://plum.elixpo.com/docs/).
 

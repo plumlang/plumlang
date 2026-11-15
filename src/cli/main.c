@@ -2,7 +2,8 @@
 /*
  * The `plum` command.
  *
- *   plum                     help
+ *   plum                     the REPL on a terminal; help otherwise
+ *   plum repl                the REPL (also with piped input)
  *   plum help                help
  *   plum version             version and build information
  *   plum run <file> [args]   run a program
@@ -27,6 +28,8 @@
 #include "module/loader.h"
 #include "parser/parser.h"
 #include "plum/version.h"
+#include "repl/line.h"
+#include "repl/repl.h"
 #include "stdlib/native.h"
 #include "stdlib/platform.h"
 #include "util/arena.h"
@@ -58,6 +61,7 @@ static void print_help(FILE *out) {
           "  plum fmt <paths...>         Format files, and the .plum files in directories\n"
           "    --check                   ...change nothing; list files that would change\n"
           "  plum fmt -                  Format standard input to standard output\n"
+          "  plum repl                   Type and run code interactively (also plain `plum`)\n"
           "  plum version                Show the version and build\n"
           "  plum tokens <file>          Print the tokens of a file (debugging)\n"
           "  plum ast <file>             Print the syntax tree of a file (debugging)\n"
@@ -403,6 +407,10 @@ static int cmd_stdlib(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
+        /* On a terminal, the REPL; with piped input, the help. */
+        if (plum_line_input_is_terminal()) {
+            return plum_repl_main();
+        }
         print_help(stdout);
         return PLUM_EXIT_OK;
     }
@@ -437,6 +445,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "run") == 0) {
         return cmd_run(argc - 2, argv + 2);
+    }
+    if (strcmp(cmd, "repl") == 0) {
+        return plum_repl_main();
     }
     if (ends_with(cmd, ".plum")) {
         return cmd_run(argc - 1, argv + 1);

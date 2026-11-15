@@ -1,0 +1,54 @@
+<repl>:1:21: error[E0402]: expected int, found str
+1 | plant broken: int = "three"
+  |                     ^~~~~~~
+1 error
+= 4 : int
+<repl>:1:1: error[E0301]: unknown name 'broken'
+1 | broken
+  | ^~~~~~
+1 error
+<repl>:1:1: error[E0301]: unknown name 'nope'; did you mean 'none'?
+1 | nope(1)
+  | ^~~~
+1 error
+<repl>:1: IndexError: index 10 is out of range: the list has 3 items (0 to 2)
+  in <main>, line 1
+= [1, 2, 3] : list[int]
+<repl>:1: ZeroDivisionError: division by zero: 7 // 0
+  in <main>, line 1
+<repl>:1:1: error[E0301]: unknown name 'half'
+1 | half
+  | ^~~~
+1 error
+= 6 : int
+<repl>:2: ValueError: no 2
+  in fails, line 2
+  in <main>, line 1
+caught: no 3
+<repl>:2:1: error[E0201]: expected ',' or ']' in the list, found a number
+2 | 3]
+  | ^
+1 error
+<repl>:1:1: error[E0301]: unknown name 'nope'; did you mean 'none'?
+1 | nope
+  | ^~~~
+1 error
+error: :type needs an expression, like :type len("abc")
+error: :type needs an expression, like :type len("abc")
+error: there is no command ':frobnicate'; :help lists them
+Type Plumlang and press Enter: each entry runs at once, and what it declares
+stays for the entries after it. An entry that is one expression prints its
+value and type. An entry goes on to the next line while a bracket is open or
+a line ends with an operator, ',' or '=>'.
+
+Commands:
+  :help           this help
+  :type <expr>    the type of an expression, without running it
+  :load <file>    run a file's code in this session
+  :reset          forget everything declared so far
+  :quit           leave (also :q, Ctrl-D or exit())
+
+Keys: left/right, Home/End (Ctrl-A/E), Backspace/Delete, up/down for earlier
+lines, Ctrl-U/Ctrl-K delete to the start/end, Ctrl-W the word before the
+cursor, Ctrl-L clears the screen, Ctrl-C cancels the entry.
+= 3 : int

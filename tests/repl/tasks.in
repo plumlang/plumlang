@@ -1,0 +1,42 @@
+# Tasks: the scheduler runs while an entry runs, and tasks left running carry
+# on in later entries. A deadlock ends only its entry. A TCP server and client.
+seed time
+branch work(n: int) -> int {
+    time.sleep(0.01)
+    return n * 2
+}
+plant t = spawn work(21)
+t.wait()
+plant ch = Channel[int]()
+spawn (() => {
+    for i in 0..3 {
+        ch.send(i)
+    }
+})()
+ch.receive()
+ch.receive()
+plant late = spawn work(1)
+late.done()
+late.wait()
+plant stuck = spawn (() => ch.receive() ?? -1)()
+ch.receive()
+ch.send(7)
+stuck.done()
+stuck.wait()
+plant boom = spawn (() => 1 // 0)()
+boom.wait()
+spawn (() => 1 // 0)()
+drop("an entry after a task failed")
+seed net
+plant server = net.listen(0, host: "127.0.0.1")
+plant port = server.port()
+spawn (() => {
+    plant conn = server.accept()
+    conn.write("hi {conn.read_line() ?? ""}\n")
+    conn.close()
+})()
+plant c = net.connect("127.0.0.1", port)
+c.write("there\n")
+c.read_line()
+c.close()
+server.close()

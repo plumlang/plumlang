@@ -1,0 +1,56 @@
+# seed imports, trees and kinds across entries, :load and :reset.
+seed ./shapes
+plant p = shapes.Point(1, 2)
+p
+p + shapes.origin()
+seed ./shapes { Point, area, Shape }
+Point(3, 4)
+area(Shape.Square(3.0))
+:type shapes.origin
+seed ./missing
+seed math
+math.sqrt(16.0)
+seed math as m
+m.sqrt(9.0)
+tree Counter {
+    count: int = 0
+
+    branch bump() -> int {
+        self.count = self.count + 1
+        return self.count
+    }
+}
+plant c = Counter()
+c.bump()
+c.bump()
+c
+tree Named {
+    name: str
+
+    branch to_str() -> str => "Named({self.name})"
+}
+plant n = Named("ada")
+n
+plant later = [n, Named("bo")]
+later
+tree Counter {
+    branch to_str() -> str => "a new Counter"
+}
+Counter()
+c.bump()
+kind Light {
+    Red
+    Green
+}
+plant l = Light.Red
+l
+match l {
+    Red => "stop"
+    Green => "go"
+}
+:load shapes.plum
+origin()
+:reset
+p
+seed ./shapes
+shapes.origin()
