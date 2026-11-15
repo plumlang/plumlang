@@ -17,6 +17,7 @@ Format for a new entry:
 ## Unreleased
 
 - **CLI**: `plum fmt` formats source files in one canonical layout (spec 14.1), in place or `--stdout`, files or whole directories; `--check` lists the files that would change, for CI; `plum fmt -` formats standard input. Comments are kept, literals keep their spelling, and a file with syntax errors is left alone. `net.http` is formatted with it.
+- **Releases**: a tagged release builds static Linux binaries (x86_64, arm64, riscv64), a universal macOS binary and Windows x64 and ARM64 binaries, checks each by installing it, and publishes them with `SHA256SUMS` and build attestations; `install.sh` and `install.ps1`; a Homebrew formula and winget manifests; signing for macOS and Windows once its secrets are set. See `docs/releasing.md`.
 - **Spec**: `docs/spec.md`, the language specification v0.1 draft.
 - **CLI**: the `plum` command with `help`, `version` and `run`; `run` reads the source file until the compiler lands.
 - **Build**: Makefile (release, debug, sanitize) and CMake (MSVC, IDEs); warnings are errors.

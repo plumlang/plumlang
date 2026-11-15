@@ -1,0 +1,371 @@
+# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+#
+# Build Plumlang for every platform and publish a GitHub release.
+#
+#   git tag v1.2.3 && git push origin v1.2.3   build, check, publish
+#   pull requests touching the release files   build and check, publish nothing
+#   Actions > Release > Run workflow           the same dry run, on demand
+#
+# Every archive is checked by installing it with install.sh / install.ps1 on
+# a clean runner before anything is published. The release carries
+# SHA256SUMS and a GitHub build attestation for each file
+# (gh attestation verify <file> --repo plumlang/plumlang).
+#
+# Signing and package managers switch on when their secrets exist (see
+# docs/releasing.md); without them those steps say so and are skipped.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - tools/release/**
+      - tools/install/**
+      - packaging/**
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - id: v
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            version=$(sh tools/release/version.sh "$GITHUB_REF_NAME")
+            sh tools/release/notes.sh "$version" > /dev/null
+          else
+            version=$(sh tools/release/version.sh)
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Plumlang $version (publish: $PUBLISH)" >> "$GITHUB_STEP_SUMMARY"
+
+  linux:
+    name: ${{ matrix.target }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.emulated && 90 || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x86_64, runner: ubuntu-latest, platform: linux/amd64, emulated: false }
+          - { target: linux-arm64, runner: ubuntu-24.04-arm, platform: linux/arm64, emulated: false }
+          - { target: linux-riscv64, runner: ubuntu-latest, platform: linux/riscv64, emulated: true }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - if: matrix.emulated
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: riscv64
+      # A static binary against musl: it runs on any Linux, whatever its libc.
+      # Under emulation the full suite is too slow; the examples still run.
+      - name: Build and test (static, musl)
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src \
+            -e COMMIT="${GITHUB_SHA::7}" -e FULL="${{ !matrix.emulated }}" alpine:3.22 sh -euc '
+              apk add --no-cache build-base git > /dev/null
+              git config --global --add safe.directory /src
+              LDFLAGS=-static make -j"$(nproc)" COMMIT="$COMMIT"
+              if [ "$FULL" = true ]; then LDFLAGS=-static make test COMMIT="$COMMIT"
+              else sh tests/golden.sh ./plum examples; fi
+              strip plum
+              ./plum version'
+      - run: sh tools/release/package.sh plum ${{ matrix.target }} dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: plum-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    name: macos-universal
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 25
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build and test (arm64)
+        run: |
+          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}"
+          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" test
+          cp plum plum-arm64
+      - name: Build (x86_64)
+        run: |
+          make clean
+          make CC="clang -arch x86_64" COMMIT="${GITHUB_SHA::7}"
+          cp plum plum-x86_64
+      - name: Universal binary
+        run: |
+          lipo -create -output plum plum-arm64 plum-x86_64
+          strip -x plum
+          lipo -info plum
+          ./plum version
+          sh tests/golden.sh ./plum examples
+      - name: Sign and notarize
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "::notice::macOS signing skipped: APPLE_CERTIFICATE is not set (docs/releasing.md)"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain"
+          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" plum
+          codesign --verify --strict --verbose=2 plum
+          ditto -c -k plum "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          rm -f "$RUNNER_TEMP/cert.p12"
+      - run: sh tools/release/package.sh plum macos-universal dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: plum-macos-universal
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: ${{ matrix.target }}
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: windows-x86_64, arch: x64, test: true }
+          - { target: windows-arm64, arch: ARM64, test: false }
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # The C runtime linked in statically: plum.exe needs no redistributable.
+      - run: cmake -S . -B build -A ${{ matrix.arch }} -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - run: cmake --build build --config Release
+      - if: matrix.test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - if: matrix.test
+        run: build\Release\plum.exe version
+        shell: cmd
+      - name: Sign
+        shell: pwsh
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            Write-Host "::notice::Windows signing skipped: WINDOWS_CERTIFICATE is not set (docs/releasing.md)"
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'cert.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+            /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD build\Release\plum.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $signtool.FullName verify /pa build\Release\plum.exe
+          Remove-Item $pfx
+      - run: sh tools/release/package.sh build/Release/plum.exe ${{ matrix.target }} dist
+        shell: bash
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: plum-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # Install every archive the way users will, on clean runners.
+  install:
+    name: install / ${{ matrix.os }}
+    needs: [version, linux, macos, windows]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: plum-*
+          merge-multiple: true
+          path: serve/v${{ needs.version.outputs.version }}
+      - name: Checksums and a release list, as GitHub would serve them
+        shell: bash
+        run: |
+          cd "serve/v$VERSION"
+          sha256sum * > SHA256SUMS 2>/dev/null || shasum -a 256 * > SHA256SUMS
+          echo "[{\"tag_name\": \"v$VERSION\"}]" > ../releases.json
+      - if: runner.os != 'Windows'
+        name: install.sh
+        run: |
+          python3 -m http.server 8765 --directory serve > /dev/null 2>&1 &
+          sleep 2
+          PLUM_DOWNLOAD_BASE=http://127.0.0.1:8765 PLUM_API=http://127.0.0.1:8765/releases.json \
+            PLUM_INSTALL="$RUNNER_TEMP/plum" sh tools/install/install.sh
+          "$RUNNER_TEMP/plum/bin/plum" version | grep -F "plum $VERSION "
+          printf 'drop("hello")\n' > "$RUNNER_TEMP/hello.plum"
+          test "$("$RUNNER_TEMP/plum/bin/plum" run "$RUNNER_TEMP/hello.plum")" = hello
+      - if: runner.os == 'Windows'
+        name: install.ps1
+        shell: pwsh
+        run: |
+          Start-Process python -ArgumentList '-m', 'http.server', '8765', '--directory', 'serve' -WindowStyle Hidden
+          Start-Sleep -Seconds 3
+          $env:PLUM_DOWNLOAD_BASE = 'http://127.0.0.1:8765'
+          $env:PLUM_API = 'http://127.0.0.1:8765/releases.json'
+          $env:PLUM_INSTALL = Join-Path $env:RUNNER_TEMP 'plum'
+          ./tools/install/install.ps1
+          $exe = Join-Path $env:PLUM_INSTALL 'bin\plum.exe'
+          $v = & $exe version
+          if (-not $v.StartsWith("plum $env:VERSION ")) { throw "unexpected version: $v" }
+          Set-Content -Path (Join-Path $env:RUNNER_TEMP 'hello.plum') -Value 'drop("hello")'
+          $out = & $exe run (Join-Path $env:RUNNER_TEMP 'hello.plum')
+          if ($out -ne 'hello') { throw "unexpected output: $out" }
+
+  publish:
+    name: publish
+    needs: [version, install]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: plum-*
+          merge-multiple: true
+          path: dist
+      - name: Checksums
+        run: |
+          cp tools/install/install.sh tools/install/install.ps1 dist/
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: Package-manager manifests
+        run: sh tools/release/packaging.sh "$VERSION" dist/SHA256SUMS packaging-out
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packaging
+          path: packaging-out
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sh tools/release/notes.sh "$VERSION" > notes.md
+          cat >> notes.md <<EOF
+
+          ## Install
+
+          \`\`\`sh
+          curl -fsSL https://github.com/plumlang/plumlang/releases/latest/download/install.sh | sh     # Linux, macOS
+          irm https://github.com/plumlang/plumlang/releases/latest/download/install.ps1 | iex          # Windows
+          \`\`\`
+
+          Every file is listed in \`SHA256SUMS\` and has a build attestation:
+          \`gh attestation verify <file> --repo plumlang/plumlang\`.
+          EOF
+          gh release create "v$VERSION" dist/* --title "Plumlang $VERSION" \
+            --notes-file notes.md --verify-tag
+
+  homebrew:
+    name: homebrew
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: packaging
+          path: packaging-out
+      - name: Update plumlang/homebrew-tap
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::notice::Homebrew skipped: HOMEBREW_TAP_TOKEN is not set (docs/releasing.md)"
+            exit 0
+          fi
+          git clone --depth 1 "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/plumlang/homebrew-tap" tap
+          mkdir -p tap/Formula
+          cp packaging-out/homebrew/plum.rb tap/Formula/plum.rb
+          cd tap
+          git config user.name "plumlang-release"
+          git config user.email "hello@elixpo.com"
+          git add Formula/plum.rb
+          git commit -m "plum $VERSION"
+          git push
+
+  winget:
+    name: winget
+    needs: [version, publish]
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: packaging
+          path: packaging-out
+      - name: Submit to microsoft/winget-pkgs
+        shell: pwsh
+        run: |
+          if (-not $env:WINGET_TOKEN) {
+            Write-Host "::notice::winget skipped: WINGET_TOKEN is not set (docs/releasing.md)"
+            exit 0
+          }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe submit --token $env:WINGET_TOKEN `
+            "packaging-out\winget\manifests\e\Elixpo\Plumlang\$env:VERSION"
