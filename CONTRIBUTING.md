@@ -39,7 +39,7 @@ flowchart LR
 |---|---|---|
 | Fix a bug | [Bug report](https://github.com/plumlang/plumlang/issues/new?template=bug_report.yml) | [good first issues](https://github.com/plumlang/plumlang/issues?q=is%3Aopen+label%3A%22good+first+issue%22) |
 | Change the language | [Language proposal](https://github.com/plumlang/plumlang/issues/new?template=language_proposal.yml) | [`docs/spec.md`](docs/spec.md) |
-| Add to the standard library | [Library proposal](https://github.com/plumlang/plumlang/issues/new?template=stdlib_proposal.yml) | `src/stdlib/` |
+| Add to the standard library | [Library proposal](https://github.com/plumlang/plumlang/issues/new?template=stdlib_proposal.yml) | `src/stdlib/`, and [writing a module](docs/stdlib/writing-a-module.md) |
 | Build a roadmap item | Comment on its issue in [#36](https://github.com/plumlang/plumlang/issues/36) | The issue's scope and "done when" list |
 
 Anything else (tooling, docs, the website) goes in the

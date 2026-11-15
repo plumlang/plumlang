@@ -31,3 +31,5 @@ In signatures, `num` means an `int` or a `float`: a `num` result is an
 `= default` can be left out.
 
 Errors that the functions throw are listed with each module.
+
+To add a module, see [writing a module](writing-a-module.md).
