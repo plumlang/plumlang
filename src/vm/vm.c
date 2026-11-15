@@ -83,6 +83,7 @@ typedef struct VM {
     uint64_t rng[4];                /* math.random: xoshiro256** */
     PLUM_ARRAY(PlumWeak *) tracked; /* --check-leaks: a weak box for every tree object */
     PlumTextHook text_hook;         /* objects become text through their to_str() */
+    int text_depth;                 /* how deep the value being printed is (text_hook) */
     /* Tasks (spec 12): all run on this thread, one at a time. The VM's
      * stack, frames and handlers above are the running task's; the others
      * keep theirs in their PlumTask until they run again. */
@@ -2980,7 +2981,7 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     vm->to_str = program->to_str;
     vm->equals = program->equals;
     vm->compare = program->compare;
-    vm->text_hook = (PlumTextHook){object_text, vm};
+    vm->text_hook = (PlumTextHook){object_text, vm, &vm->text_depth};
     vm->thrown = plum_none();
     vm->trace_of = plum_none();
 

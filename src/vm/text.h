@@ -32,6 +32,10 @@ PlumString *plum_value_text(PlumValue v, const char *format, char *error, size_t
 typedef struct PlumTextHook {
     bool (*object_text)(void *ctx, PlumValue object, PlumString **out);
     void *ctx;
+    /* How deep the value being printed is nested, counting through the
+     * to_str() calls that print values inside values (NULL: from 0). Past
+     * a limit, nested values print as "...". */
+    int *depth;
 } PlumTextHook;
 
 /* plum_value_text with objects' to_str(). NULL with an empty `error`: to_str()
