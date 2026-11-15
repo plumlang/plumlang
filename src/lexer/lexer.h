@@ -13,6 +13,9 @@
  *
  * Errors are added to the diagnostics list and lexing carries on, so one
  * run reports every problem; the token list stays usable.
+ *
+ * Comments produce no tokens. `plum fmt` asks for them on the side, with
+ * plum_lex_comments, so it can put them back.
  */
 #ifndef PLUM_LEXER_LEXER_H
 #define PLUM_LEXER_LEXER_H
@@ -25,11 +28,23 @@
 
 typedef PLUM_ARRAY(PlumToken) PlumTokenList;
 
+/* A `#` comment: its span runs from the '#' to the end of the line. */
+typedef struct PlumComment {
+    PlumSpan span;
+    bool own_line; /* nothing but spaces before it on its line */
+} PlumComment;
+
+typedef PLUM_ARRAY(PlumComment) PlumCommentList;
+
 /*
  * Lex `source` into `out`. Decoded string text lives in `arena`; names are
  * interned in `names`; errors go to `diags`.
  */
 void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, PlumDiagList *diags,
               PlumTokenList *out);
+
+/* The same, and every comment, in source order, into `comments`. */
+void plum_lex_comments(const PlumSource *source, PlumArena *arena, PlumInterner *names,
+                       PlumDiagList *diags, PlumTokenList *out, PlumCommentList *comments);
 
 #endif /* PLUM_LEXER_LEXER_H */
