@@ -1,0 +1,41 @@
+# An operator calls the method of the object's own tree: a subclass that
+# overrides plus changes what + does, even through the parent's type.
+seed math
+
+tree Amount {
+    n: int
+    branch plus(other: Amount) -> Amount => Amount(self.n + other.n)
+    branch to_str() -> str => "{self.n}"
+}
+tree Capped : Amount {
+    branch plus(other: Amount) -> Amount {
+        plant sum = self.n + other.n
+        return Capped(math.min(sum, 100))
+    }
+    branch to_str() -> str => "{self.n} (capped)"
+}
+
+plant plain: Amount = Amount(70)
+plant capped: Amount = Capped(70)
+drop(plain + Amount(50), capped + Amount(50), Amount(50) + capped)
+
+# a trait can promise an operator method; + works on the trait's type
+trait Addable {
+    branch plus(other: Addable) -> Addable
+    branch show() -> str
+}
+tree Word : Addable {
+    text: str
+    branch plus(other: Addable) -> Addable => Word(self.text + other.show())
+    branch show() -> str => self.text
+}
+plant w: Addable = Word("tree")
+drop((w + Word("house")).show())
+
+# an operator inside a method, on self
+tree Counter {
+    n: int
+    branch plus(other: Counter) -> Counter => Counter(self.n + other.n)
+    branch twice() -> Counter => self + self
+}
+drop(Counter(4).twice().n)

@@ -77,6 +77,8 @@ typedef struct VM {
     size_t trace_cap;
     PlumTreeInfo *const *errors; /* the built-in error trees */
     int to_str;                  /* the method number of to_str */
+    int equals;                  /* of equals (lists of objects compare with it) */
+    int compare;                 /* of compare (sorting objects calls it) */
     const PlumRunOptions *options;
     uint64_t rng[4];                /* math.random: xoshiro256** */
     PLUM_ARRAY(PlumWeak *) tracked; /* --check-leaks: a weak box for every tree object */
@@ -792,8 +794,116 @@ static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, Pl
     return true;
 }
 
+static PlumFunction *method_of(const PlumTreeInfo *tree, int id);
+
 /*
- * map, filter, reduce, any, all, find and sorted_by. They hold their own
+ * a == b for values of a list type whose objects have equals (spec 8.5):
+ * lists item by item, tree objects with the left one's equals. The checker
+ * made sure every object here has an equals taking the other. Sets *same;
+ * false if an equals threw.
+ */
+static bool equal_by_equals(VM *vm, PlumValue a, PlumValue b, bool *same) {
+    if (plum_is_obj(a, PLUM_OBJ_LIST) && plum_is_obj(b, PLUM_OBJ_LIST)) {
+        /* the caller holds the outer lists, so these can't change under us */
+        const PlumList *x = plum_as_list(a), *y = plum_as_list(b);
+        *same = x->len == y->len;
+        for (size_t i = 0; *same && i < x->len; i++) {
+            if (!equal_by_equals(vm, x->items[i], y->items[i], same)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (plum_is_obj(a, PLUM_OBJ_OBJECT) && plum_is_obj(b, PLUM_OBJ_OBJECT)) {
+        PlumFunction *fn = method_of(plum_as_object(a)->tree, vm->equals);
+        if (fn != NULL) {
+            PlumValue pair[2] = {a, b};
+            PlumValue r;
+            if (!call_value(vm, plum_obj(&fn->obj), pair, 2, &r)) {
+                return false;
+            }
+            *same = r.as.b;
+            return true;
+        }
+    }
+    *same = plum_values_equal(a, b);
+    return true;
+}
+
+/* Does sort() or sorted() on this list order objects, by their compare()? */
+static bool sorts_objects(PlumMethod m, PlumValue list) {
+    if (m != PLUM_METHOD_LIST_SORT && m != PLUM_METHOD_LIST_SORTED) {
+        return false;
+    }
+    const PlumList *l = plum_as_list(list);
+    return l->len > 0 && plum_is_obj(l->items[0], PLUM_OBJ_OBJECT);
+}
+
+/*
+ * A sorted copy of a list of objects, ordered by their compare(): a stable
+ * merge sort. It sorts its own copy of the items, which compare() can't
+ * reach, so whatever compare() does to the list doesn't matter here.
+ */
+static bool sort_objects(VM *vm, const PlumList *list, PlumList **out) {
+    size_t n = list->len;
+    PlumList *items = plum_list_new(n);
+    for (size_t i = 0; i < n; i++) {
+        plum_list_push(items, plum_retain(list->items[i]));
+    }
+    size_t *order = plum_alloc_zeroed(n > 0 ? n : 1, sizeof(size_t));
+    size_t *tmp = plum_alloc_zeroed(n > 0 ? n : 1, sizeof(size_t));
+    for (size_t i = 0; i < n; i++) {
+        order[i] = i;
+    }
+    bool ok = true;
+    for (size_t width = 1; ok && width < n; width *= 2) {
+        for (size_t lo = 0; ok && lo < n; lo += 2 * width) {
+            size_t mid = lo + width < n ? lo + width : n;
+            size_t hi = lo + 2 * width < n ? lo + 2 * width : n;
+            size_t i = lo, j = mid, k = lo;
+            while (i < mid && j < hi) {
+                PlumValue pair[2] = {items->items[order[i]], items->items[order[j]]};
+                PlumFunction *fn = method_of(plum_as_object(pair[0])->tree, vm->compare);
+                PlumValue r;
+                if (fn == NULL) {
+                    runtime_error(vm, PLUM_ERROR_ERROR, "internal error: %s has no compare",
+                                  plum_as_object(pair[0])->tree->name);
+                    ok = false;
+                    break;
+                }
+                if (!call_value(vm, plum_obj(&fn->obj), pair, 2, &r)) {
+                    ok = false;
+                    break;
+                }
+                /* <= keeps equal items in their original order */
+                tmp[k++] = r.as.i <= 0 ? order[i++] : order[j++];
+            }
+            while (ok && i < mid) {
+                tmp[k++] = order[i++];
+            }
+            while (ok && j < hi) {
+                tmp[k++] = order[j++];
+            }
+        }
+        if (ok) {
+            memcpy(order, tmp, n * sizeof(size_t));
+        }
+    }
+    if (ok) {
+        *out = plum_list_new(n);
+        for (size_t i = 0; i < n; i++) {
+            plum_list_push(*out, plum_retain(items->items[order[i]]));
+        }
+    }
+    plum_free(order);
+    plum_free(tmp);
+    plum_release(plum_obj(&items->obj));
+    return ok;
+}
+
+/*
+ * map, filter, reduce, any, all, find and sorted_by, and the lookups by
+ * equals (contains, index_of, ==) on lists of objects. They hold their own
  * references to the list and the function: a callback may grow the stack,
  * so nothing here points into it across a call.
  */
@@ -895,6 +1005,30 @@ static bool run_higher_order(VM *vm, PlumMethod m, PlumList *list, const PlumVal
         plum_free(tmp);
         plum_release(plum_obj(&keys->obj));
         *result = plum_obj(&out->obj);
+        return true;
+    }
+    case PLUM_METHOD_LIST_CONTAINS_EQUALS:
+    case PLUM_METHOD_LIST_INDEX_OF_EQUALS: {
+        bool contains = m == PLUM_METHOD_LIST_CONTAINS_EQUALS;
+        for (size_t i = 0; i < list->len; i++) {
+            bool same;
+            if (!equal_by_equals(vm, list->items[i], args[0], &same)) {
+                return false;
+            }
+            if (same) {
+                *result = contains ? plum_bool(true) : plum_int((int64_t)i);
+                return true;
+            }
+        }
+        *result = contains ? plum_bool(false) : plum_none();
+        return true;
+    }
+    case PLUM_METHOD_LIST_EQUAL_ITEMS: {
+        bool same;
+        if (!equal_by_equals(vm, plum_obj(&list->obj), args[0], &same)) {
+            return false;
+        }
+        *result = plum_bool(same);
         return true;
     }
     default:
@@ -2146,6 +2280,36 @@ static bool execute(VM *vm) {
                                PLACE_KIND(op, PLUM_OP_METHOD_LOCAL, PLUM_OP_METHOD_GLOBAL), slot);
             PlumValue result;
             char error[256];
+            if (sorts_objects((PlumMethod)m, *receiver)) {
+                /* compare() runs: own the list, then off the stack */
+                PlumValue list = plum_retain(*receiver);
+                unwind_to(vm, vm->top - argc - (op == PLUM_OP_METHOD ? 1 : 0));
+                SAVE_IP();
+                PlumList *sorted = NULL;
+                bool done = sort_objects(vm, plum_as_list(list), &sorted);
+                plum_release(list);
+                if (!done) {
+                    goto thrown;
+                }
+                if (m == PLUM_METHOD_LIST_SORTED) {
+                    push(vm, plum_obj(&sorted->obj));
+                    break;
+                }
+                if (op == PLUM_OP_METHOD) {
+                    plum_release(plum_obj(&sorted->obj)); /* sorting a temporary */
+                } else {
+                    /* the variable again (compare may have moved the stack or
+                     * changed it): it holds the sorted list now */
+                    receiver =
+                        place_of(vm, frame,
+                                 PLACE_KIND(op, PLUM_OP_METHOD_LOCAL, PLUM_OP_METHOD_GLOBAL), slot);
+                    PlumValue old = *receiver;
+                    *receiver = plum_obj(&sorted->obj);
+                    plum_release(old);
+                }
+                push(vm, plum_none());
+                break;
+            }
             if (plum_method_calls_back((PlumMethod)m)) {
                 /* own references to everything, then off the stack: the
                  * callbacks may move it */
@@ -2257,6 +2421,40 @@ static bool execute(VM *vm) {
             }
             PlumValue result;
             char error[256];
+            if (sorts_objects((PlumMethod)m, *receiver)) {
+                /* m["k"].sort() on objects: compare() runs, then down the
+                 * path again, since it may have moved the stack or changed
+                 * what is there */
+                PlumValue list = plum_retain(*receiver);
+                PlumList *sorted = NULL;
+                bool done = sort_objects(vm, plum_as_list(list), &sorted);
+                plum_release(list);
+                if (!done) {
+                    goto thrown;
+                }
+                keys = &vm->stack[vm->top - (size_t)argc - (size_t)depth];
+                root = under ? &plum_as_object(keys[-1])->fields[slot]
+                             : place_of(vm, frame,
+                                        PLACE_KIND(op, PLUM_OP_METHOD_PATH_LOCAL,
+                                                   PLUM_OP_METHOD_PATH_GLOBAL),
+                                        slot);
+                receiver = walk_path(vm, root, keys, depth);
+                if (receiver == NULL) {
+                    plum_release(plum_obj(&sorted->obj));
+                    goto thrown;
+                }
+                if (m == PLUM_METHOD_LIST_SORTED) {
+                    result = plum_obj(&sorted->obj);
+                } else {
+                    PlumValue old = *receiver;
+                    *receiver = plum_obj(&sorted->obj);
+                    plum_release(old);
+                    result = plum_none();
+                }
+                unwind_to(vm, vm->top - (size_t)argc - (size_t)depth - under);
+                push(vm, result);
+                break;
+            }
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - (size_t)argc],
                                       argc, &result, error, sizeof error);
             unwind_to(vm, vm->top - (size_t)argc - (size_t)depth - under);
@@ -2716,6 +2914,8 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     plum_random_key(key);
     plum_native_seed_random((PlumNative *)(void *)vm, key[0] ^ key[1]);
     vm->to_str = program->to_str;
+    vm->equals = program->equals;
+    vm->compare = program->compare;
     vm->text_hook = (PlumTextHook){object_text, vm};
     vm->thrown = plum_none();
     vm->trace_of = plum_none();

@@ -252,6 +252,25 @@ static const PlumBranch *find_method(const PlumSymbol *decl, const char *name, i
     return NULL;
 }
 
+/* The declared type of a tree's or trait's method `name`, or NULL. */
+static PlumTy *method_signature(Checker *c, const PlumSymbol *decl, const char *name) {
+    const PlumBranch *m = find_method(decl, plum_intern_cstr(c->names, name), 0);
+    if (m == NULL) {
+        return NULL;
+    }
+    return m->ty != NULL ? m->ty : signature(c, m);
+}
+
+/* Can objects of type `t` be ordered: has it compare(other) -> int taking a `t`? */
+static bool orderable_object(Checker *c, const PlumTy *t) {
+    if (t->kind != PLUM_TY_TREE && t->kind != PLUM_TY_TRAIT) {
+        return false;
+    }
+    const PlumTy *f = method_signature(c, t->as.decl, "compare");
+    return f != NULL && f->as.func.param_count == 1 && f->as.func.result->kind == PLUM_TY_INT &&
+           plum_ty_assignable(t, f->as.func.params[0].ty);
+}
+
 /* The built-in error trees all have `message: str`. */
 static bool is_builtin_error(const PlumSymbol *tree) {
     return tree->kind == PLUM_SYM_TREE && tree->decl == NULL;
@@ -372,10 +391,12 @@ static PlumTy *list_method(Checker *c, PlumExpr *e, PlumTy *list, const char *na
         return method_type(c, c->t.none, NULL, NULL, false, NULL, NULL);
     case PLUM_METHOD_LIST_SORT:
     case PLUM_METHOD_LIST_SORTED:
-        if (!plum_ty_is_loose(elem) && !plum_ty_is_numeric(elem) && elem->kind != PLUM_TY_STR) {
+        if (!plum_ty_is_loose(elem) && !plum_ty_is_numeric(elem) && elem->kind != PLUM_TY_STR &&
+            !orderable_object(c, elem)) {
             plum_diag_error(c->diags, e->span, "E0415",
-                            "%s() orders numbers or strings, but this list holds %s", name,
-                            tx(elem, a));
+                            "%s() orders numbers, strings or objects with compare(), but "
+                            "this list holds %s",
+                            name, tx(elem, a));
             return NULL;
         }
         return method_type(c, m == PLUM_METHOD_LIST_SORT ? c->t.none : list, NULL, NULL, false,
@@ -1177,6 +1198,64 @@ static void expect_bool(Checker *c, PlumExpr *e, const char *where) {
     }
 }
 
+/* The method an operator calls on a tree's objects (spec 8.5), or NULL. */
+const char *plum_operator_method(PlumTokenKind op) {
+    switch (op) {
+    case PLUM_TOK_PLUS:
+        return "plus";
+    case PLUM_TOK_MINUS:
+        return "minus";
+    case PLUM_TOK_STAR:
+        return "times";
+    case PLUM_TOK_SLASH:
+        return "divided_by";
+    case PLUM_TOK_LESS:
+    case PLUM_TOK_LESS_EQ:
+    case PLUM_TOK_GREATER:
+    case PLUM_TOK_GREATER_EQ:
+        return "compare";
+    default:
+        return NULL;
+    }
+}
+
+/*
+ * `left op right` where left is a tree object: the operator calls left's
+ * method (plus for +, compare for <, ...), so its type is the method's
+ * result. Returns NULL if `op` has no method.
+ */
+static PlumTy *object_operator(Checker *c, PlumTokenKind op, PlumTy *l, PlumTy *r, PlumSpan span) {
+    const char *name = plum_operator_method(op);
+    if (name == NULL) {
+        return NULL;
+    }
+    char a[TYBUF], b[TYBUF];
+    const char *opt = plum_token_kind_text(op);
+    bool order = strcmp(name, "compare") == 0;
+    PlumTy *f = method_signature(c, l->as.decl, name);
+    if (f == NULL || f->as.func.param_count != 1) {
+        if (order) {
+            plum_diag_error(c->diags, span, "E0403",
+                            "can't order %s with '%s'; give %s a method "
+                            "compare(other: %s) -> int",
+                            tx(l, a), opt, tx(l, b), tx(l, b));
+        } else {
+            plum_diag_error(c->diags, span, "E0403",
+                            "'%s' can't be used on %s; give %s a method %s(other: %s) -> %s", opt,
+                            tx(l, a), tx(l, b), name, tx(l, b), tx(l, b));
+        }
+        return c->t.error;
+    }
+    if (!plum_ty_assignable(r, f->as.func.params[0].ty)) {
+        char p[TYBUF];
+        plum_diag_error(c->diags, span, "E0403",
+                        "'%s' on %s calls %s(other: %s), which can't take %s", opt, tx(l, a), name,
+                        tx(f->as.func.params[0].ty, p), tx(r, b));
+        return c->t.error;
+    }
+    return order ? c->t.boolean : f->as.func.result;
+}
+
 /*
  * The type of `left op right`, or an error at `span`. Shared by binary
  * expressions and compound assignment.
@@ -1214,6 +1293,13 @@ static PlumTy *binary_type(Checker *c, PlumTokenKind op, PlumTy *l, PlumTy *r, P
                         "check it with 'if plant' first",
                         opt, tx(l->kind == PLUM_TY_OPTIONAL ? l : r, a));
         return c->t.error;
+    }
+
+    if (l->kind == PLUM_TY_TREE || l->kind == PLUM_TY_TRAIT) {
+        PlumTy *t = object_operator(c, op, l, r, span);
+        if (t != NULL) {
+            return t;
+        }
     }
 
     switch (op) {
@@ -1382,6 +1468,17 @@ static PlumTy *check_unary(Checker *c, PlumExpr *e) {
     }
     if (op == PLUM_TOK_TILDE && is_int_like(t)) {
         return c->t.integer;
+    }
+    if (op == PLUM_TOK_MINUS && (t->kind == PLUM_TY_TREE || t->kind == PLUM_TY_TRAIT)) {
+        PlumTy *f = method_signature(c, t->as.decl, "negate");
+        if (f != NULL && f->as.func.param_count == 0) {
+            return f->as.func.result;
+        }
+        char b[TYBUF];
+        plum_diag_error(c->diags, e->span, "E0403",
+                        "'-' can't be used on %s; give %s a method negate() -> %s", tx(t, a),
+                        tx(t, b), tx(t, b));
+        return c->t.error;
     }
     plum_diag_error(c->diags, e->span, "E0403", "'%s' can't be used on %s",
                     plum_token_kind_text(op), tx(t, a));
@@ -2312,6 +2409,12 @@ static void expect_same_signature(Checker *c, const PlumBranch *m, const PlumBra
                     "%s must have the same parameters and result as in %s: %s", a, base_owner, b);
 }
 
+/* Is `t` the tree `tree` or a tree or trait it extends? */
+static bool own_type(const PlumSymbol *tree, const PlumTy *t) {
+    return t != NULL && (t->kind == PLUM_TY_TREE || t->kind == PLUM_TY_TRAIT) &&
+           plum_tree_extends(tree, t->as.decl);
+}
+
 /* Methods the language calls itself have a fixed shape. */
 static void check_special_method(Checker *c, const PlumSymbol *tree, const PlumBranch *m,
                                  PlumSpan span) {
@@ -2323,14 +2426,44 @@ static void check_special_method(Checker *c, const PlumSymbol *tree, const PlumB
         }
     } else if (strcmp(m->name, "equals") == 0) {
         const PlumTy *p = f->as.func.param_count == 1 ? f->as.func.params[0].ty : NULL;
-        if (p == NULL || f->as.func.result->kind != PLUM_TY_BOOL ||
-            !((p->kind == PLUM_TY_TREE || p->kind == PLUM_TY_TRAIT) &&
-              plum_tree_extends(tree, p->as.decl))) {
+        if (!own_type(tree, p) || f->as.func.result->kind != PLUM_TY_BOOL) {
             want = "equals(other: <this tree>) -> bool";
         }
     } else if (strcmp(m->name, "init") == 0) {
         if (f->as.func.result->kind != PLUM_TY_NONE) {
             want = "init(...) with no result";
+        }
+    } else if (strcmp(m->name, "compare") == 0) {
+        const PlumTy *p = f->as.func.param_count == 1 ? f->as.func.params[0].ty : NULL;
+        if (!own_type(tree, p) || f->as.func.result->kind != PLUM_TY_INT) {
+            want = "compare(other: <this tree>) -> int";
+        }
+    } else if (strcmp(m->name, "negate") == 0) {
+        if (f->as.func.param_count != 0 || !own_type(tree, f->as.func.result)) {
+            want = "negate() -> <this tree>";
+        }
+    } else {
+        /* plus, minus, times, divided_by: the operators + - * / */
+        static const struct {
+            const char *name, *shape;
+            bool number; /* may take a number instead, for scaling */
+        } ops[] = {
+            {"plus", "plus(other: <this tree>) -> <this tree>", false},
+            {"minus", "minus(other: <this tree>) -> <this tree>", false},
+            {"times", "times(other: <this tree, int or float>) -> <this tree>", true},
+            {"divided_by", "divided_by(other: <this tree, int or float>) -> <this tree>", true},
+        };
+        for (size_t i = 0; i < sizeof ops / sizeof ops[0]; i++) {
+            if (strcmp(m->name, ops[i].name) != 0) {
+                continue;
+            }
+            const PlumTy *p = f->as.func.param_count == 1 ? f->as.func.params[0].ty : NULL;
+            bool param_ok =
+                own_type(tree, p) || (ops[i].number && p != NULL &&
+                                      (p->kind == PLUM_TY_INT || p->kind == PLUM_TY_FLOAT));
+            if (!param_ok || !own_type(tree, f->as.func.result)) {
+                want = ops[i].shape;
+            }
         }
     }
     if (want != NULL) {

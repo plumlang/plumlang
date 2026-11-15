@@ -5,6 +5,9 @@
  *
  * X(ID, receiver, name, changes the receiver)
  *
+ * The rows named "... (by equals)" have no name a program can write: the
+ * compiler picks them for lists of objects with equals (spec 8.5).
+ *
  * A method that changes its receiver, called on a variable (`xs.push(1)`),
  * works on the variable's own value in place, copying it first only if
  * another variable shares it (copy-on-write, spec 11.1).
@@ -14,33 +17,36 @@
 
 #include <stdbool.h>
 
-#define PLUM_METHODS(X)                         \
-    X(LIST_PUSH, LIST, "push", true)            \
-    X(LIST_POP, LIST, "pop", true)              \
-    X(LIST_INSERT, LIST, "insert", true)        \
-    X(LIST_REMOVE_AT, LIST, "remove_at", true)  \
-    X(LIST_CLEAR, LIST, "clear", true)          \
-    X(LIST_REVERSE, LIST, "reverse", true)      \
-    X(LIST_SORT, LIST, "sort", true)            \
-    X(LIST_CONTAINS, LIST, "contains", false)   \
-    X(LIST_INDEX_OF, LIST, "index_of", false)   \
-    X(LIST_SORTED, LIST, "sorted", false)       \
-    X(LIST_JOIN, LIST, "join", false)           \
-    X(LIST_MAP, LIST, "map", false)             \
-    X(LIST_FILTER, LIST, "filter", false)       \
-    X(LIST_REDUCE, LIST, "reduce", false)       \
-    X(LIST_ANY, LIST, "any", false)             \
-    X(LIST_ALL, LIST, "all", false)             \
-    X(LIST_FIND, LIST, "find", false)           \
-    X(LIST_SORTED_BY, LIST, "sorted_by", false) \
-    X(MAP_GET, MAP, "get", false)               \
-    X(MAP_REMOVE, MAP, "remove", true)          \
-    X(MAP_KEYS, MAP, "keys", false)             \
-    X(MAP_VALUES, MAP, "values", false)         \
-    X(MAP_CLEAR, MAP, "clear", true)            \
-    X(SET_ADD, SET, "add", true)                \
-    X(SET_REMOVE, SET, "remove", true)          \
-    X(SET_CONTAINS, SET, "contains", false)     \
+#define PLUM_METHODS(X)                                          \
+    X(LIST_PUSH, LIST, "push", true)                             \
+    X(LIST_POP, LIST, "pop", true)                               \
+    X(LIST_INSERT, LIST, "insert", true)                         \
+    X(LIST_REMOVE_AT, LIST, "remove_at", true)                   \
+    X(LIST_CLEAR, LIST, "clear", true)                           \
+    X(LIST_REVERSE, LIST, "reverse", true)                       \
+    X(LIST_SORT, LIST, "sort", true)                             \
+    X(LIST_CONTAINS, LIST, "contains", false)                    \
+    X(LIST_INDEX_OF, LIST, "index_of", false)                    \
+    X(LIST_SORTED, LIST, "sorted", false)                        \
+    X(LIST_JOIN, LIST, "join", false)                            \
+    X(LIST_MAP, LIST, "map", false)                              \
+    X(LIST_FILTER, LIST, "filter", false)                        \
+    X(LIST_REDUCE, LIST, "reduce", false)                        \
+    X(LIST_ANY, LIST, "any", false)                              \
+    X(LIST_ALL, LIST, "all", false)                              \
+    X(LIST_FIND, LIST, "find", false)                            \
+    X(LIST_SORTED_BY, LIST, "sorted_by", false)                  \
+    X(LIST_CONTAINS_EQUALS, LIST, "contains (by equals)", false) \
+    X(LIST_INDEX_OF_EQUALS, LIST, "index_of (by equals)", false) \
+    X(LIST_EQUAL_ITEMS, LIST, "== (by equals)", false)           \
+    X(MAP_GET, MAP, "get", false)                                \
+    X(MAP_REMOVE, MAP, "remove", true)                           \
+    X(MAP_KEYS, MAP, "keys", false)                              \
+    X(MAP_VALUES, MAP, "values", false)                          \
+    X(MAP_CLEAR, MAP, "clear", true)                             \
+    X(SET_ADD, SET, "add", true)                                 \
+    X(SET_REMOVE, SET, "remove", true)                           \
+    X(SET_CONTAINS, SET, "contains", false)                      \
     X(SET_CLEAR, SET, "clear", true)
 
 typedef enum PlumMethod {

@@ -1,0 +1,16 @@
+tree Box {
+    n: int
+}
+tree V {
+    x: int
+    branch plus(other: V) -> V => V(self.x + other.x)
+}
+plant a = Box(1)
+plant v = V(1)
+drop(a + a)
+drop(a < a)
+drop(-a)
+drop(v + 1)
+drop(v * v)
+drop([a].sorted())
+v -= v

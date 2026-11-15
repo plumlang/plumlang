@@ -32,7 +32,7 @@ const char *plum_method_name(PlumMethod m) {
 }
 
 bool plum_method_calls_back(PlumMethod m) {
-    return m >= PLUM_METHOD_LIST_MAP && m <= PLUM_METHOD_LIST_SORTED_BY;
+    return m >= PLUM_METHOD_LIST_MAP && m <= PLUM_METHOD_LIST_EQUAL_ITEMS;
 }
 
 bool plum_method_mutates(PlumMethod m) {

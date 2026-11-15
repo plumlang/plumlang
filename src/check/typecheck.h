@@ -20,4 +20,9 @@
 void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
                     PlumDiagList *diags);
 
+/* The method an operator calls on a tree's objects (spec 8.5): "plus" for
+ * +, "minus" for -, "times" for *, "divided_by" for /, "compare" for
+ * < <= > >=; else NULL. */
+const char *plum_operator_method(PlumTokenKind op);
+
 #endif /* PLUM_CHECK_TYPECHECK_H */
