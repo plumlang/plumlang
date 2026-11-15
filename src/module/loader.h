@@ -86,6 +86,14 @@ PlumModule *plum_modules_add(PlumModules *m, const char *path, char *text, size_
 /* Forget modules whose entry failed: a later `seed` loads them afresh. */
 void plum_modules_forget(PlumModules *m, PlumModule *const *mods, size_t count);
 
+/*
+ * plum_modules_load, for a program whose text is already in memory (the fuzz
+ * targets, tests/fuzz): `text` is malloc'd, NUL-terminated at `len`, and
+ * becomes the modules' to free. `path` names the program in messages, and
+ * relative imports are found from it.
+ */
+void plum_modules_load_text(PlumModules *out, const char *path, char *text, size_t len);
+
 /* Did any module report an error? */
 bool plum_modules_failed(const PlumModules *m);
 
