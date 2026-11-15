@@ -13,6 +13,7 @@ PlumString *plum_string_alloc(size_t len) {
     PlumString *s = plum_alloc(plum_add_size(sizeof(PlumString), plum_add_size(len, 1)));
     s->obj.refcount = 1;
     s->obj.type = PLUM_OBJ_STRING;
+    plum_alloc_count(PLUM_MADE_STRING);
     s->len = len;
     s->chars = (char *)(s + 1);
     s->chars[len] = '\0';
@@ -57,6 +58,7 @@ PlumList *plum_list_new(size_t cap) {
     PlumList *list = plum_alloc_zeroed(1, sizeof *list);
     list->obj.refcount = 1;
     list->obj.type = PLUM_OBJ_LIST;
+    plum_alloc_count(PLUM_MADE_LIST);
     if (cap > 0) {
         list->items = plum_alloc_zeroed(cap, sizeof(PlumValue));
         list->cap = cap;
@@ -112,6 +114,7 @@ PlumObject *plum_object_new(PlumTreeInfo *tree) {
     PlumObject *o = plum_alloc(plum_add_size(sizeof *o, plum_mul_size(n, sizeof(PlumValue))));
     o->obj.refcount = 1;
     o->obj.type = PLUM_OBJ_OBJECT;
+    plum_alloc_count(tree->kind != NULL ? PLUM_MADE_KIND : PLUM_MADE_OBJECT);
     o->tree = tree;
     o->weak = NULL;
     tree->obj.refcount++;
@@ -139,6 +142,7 @@ PlumWeak *plum_weak_of(PlumObject *o) {
     PlumWeak *w = plum_alloc_zeroed(1, sizeof *w);
     w->obj.refcount = 1;
     w->obj.type = PLUM_OBJ_WEAK;
+    plum_alloc_count(PLUM_MADE_WEAK);
     w->target = o;
     o->weak = w;
     return w;
@@ -157,6 +161,7 @@ PlumCell *plum_cell_new(PlumValue v) {
     PlumCell *cell = plum_alloc(sizeof *cell);
     cell->obj.refcount = 1;
     cell->obj.type = PLUM_OBJ_CELL;
+    plum_alloc_count(PLUM_MADE_CELL);
     cell->value = v;
     return cell;
 }
@@ -165,6 +170,7 @@ PlumClosure *plum_closure_new(PlumFunction *fn) {
     PlumClosure *c = plum_alloc_zeroed(1, sizeof *c);
     c->obj.refcount = 1;
     c->obj.type = PLUM_OBJ_CLOSURE;
+    plum_alloc_count(PLUM_MADE_CLOSURE);
     c->fn = fn;
     fn->obj.refcount++;
     c->count = fn->capture_count;

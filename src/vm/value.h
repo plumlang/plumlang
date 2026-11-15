@@ -37,6 +37,25 @@ typedef enum PlumObjType {
     PLUM_OBJ_HANDLE,    /* a resource of the operating system: a socket */
 } PlumObjType;
 
+/*
+ * What `plum run --mem-stats` counts as a run makes values: the counters
+ * of PlumAllocStats (util/alloc.h), through plum_alloc_count.
+ */
+typedef enum PlumMadeKind {
+    PLUM_MADE_STRING,
+    PLUM_MADE_LIST,
+    PLUM_MADE_MAP,
+    PLUM_MADE_SET,
+    PLUM_MADE_OBJECT, /* of a tree */
+    PLUM_MADE_KIND,   /* a kind value with contents */
+    PLUM_MADE_CLOSURE,
+    PLUM_MADE_CELL, /* a variable a closure captured */
+    PLUM_MADE_WEAK,
+    PLUM_MADE_TASK,
+    PLUM_MADE_CHANNEL,
+    PLUM_MADE_COUNT
+} PlumMadeKind;
+
 /* The header every heap object starts with. */
 typedef struct PlumObj {
     uint32_t refcount;
