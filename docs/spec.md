@@ -603,7 +603,7 @@ Functions are values. A lambda is written `(params) => expression` or
 ```plum
 plant double = (x: int) => x * 2
 plant evens = numbers.filter((n) => n % 2 == 0)
-plant sorted = people.sort_by((p) => p.age)
+plant sorted = people.sorted_by((p) => p.age)
 ```
 
 Lambda parameter types can be left out when the context gives them, as in
@@ -693,8 +693,9 @@ tree Temperature {
 
 Tree objects are reference values: assigning or passing one shares the same
 object, and changes through one name are seen through every name. Every
-other value in Plumlang is copied (section 11). Two names refer to the same
-object when `a is b`.
+other value in Plumlang is copied (section 11). For a tree without
+`equals`, `a == b` asks whether two names refer to the same object
+(section 4.5).
 
 ### 8.4 Inheritance
 
