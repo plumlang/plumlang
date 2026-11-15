@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
 #
 # Keep the workflows the three Plumlang repositories share identical:
-# plumlang (this one, the source), plum-webapp and plum-branding. The
+# plumlang (this one, the source), plum.elixpo and branding. The
 # Elixpoo callers come from elixpo/agent.elixpo's distribution/workflows;
 # the rest are the Elixpo CI files kept here.
 #
-#   sh tools/sync-workflows.sh ../plum-webapp ../plum-branding     copy them over
-#   sh tools/sync-workflows.sh --check ../plum-webapp ...           only report differences
+#   sh tools/sync-workflows.sh ../plum.elixpo ../branding     copy them over
+#   sh tools/sync-workflows.sh --check ../plum.elixpo ...           only report differences
 #
 # Each repository keeps its own files beside these (plumlang's build matrix,
-# plum-webapp's deploy, plum-branding's extension publishing).
+# plum.elixpo's deploy, branding's extension publishing).
 SHARED="elixpo-ci.yml quality-gate.yml pr-management.yml stale-management.yml
 elixpoo-mentions.yml elixpoo-merge-memory.yml elixpoo-review.yml elixpoo-triage.yml"
 
