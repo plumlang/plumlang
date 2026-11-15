@@ -11,6 +11,9 @@
 # `plum NAME [OPTIONS]` instead
 # of `plum run` (for example `tokens` to test the lexer). An `# exit: N`
 # line expects exit code N instead (say 0 for a .err file of warnings).
+# An `# ignore: REGEX` line leaves out the output lines that match the
+# extended regular expression, for output that differs between machines
+# (like byte counts); the expectation file doesn't have them either.
 #
 # A file whose first line is `# module: ...` is a module that tests import
 # with `seed`; it isn't run on its own.
@@ -100,6 +103,11 @@ for test in $(find "$DIR" -name '*.plum' | sort); do
     run_plum ${subcommand:-run} "$test" >"$tmp/out" 2>"$tmp/err" </dev/null
     got_exit=$?
     tr -d '\r' <"$tmp/$stream" >"$tmp/actual"
+    ignore=$(head -n 3 "$test" | sed -n 's/^# ignore: *//p' | head -n 1)
+    if [ -n "$ignore" ]; then
+        grep -v -E -- "$ignore" "$tmp/actual" >"$tmp/kept"
+        mv "$tmp/kept" "$tmp/actual"
+    fi
     tr -d '\r' <"$expect" >"$tmp/expected"
 
     ok=1

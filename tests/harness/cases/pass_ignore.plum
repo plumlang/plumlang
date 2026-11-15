@@ -1,0 +1,4 @@
+# ignore: ^noise
+#> kept
+#> noise 12345
+#> also kept
