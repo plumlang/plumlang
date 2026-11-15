@@ -1057,6 +1057,9 @@ static PlumStmt *parse_tree(PlumParser *p, bool is_trait) {
                     if (match(p, PLUM_TOK_EQ)) {
                         field.fallback = plum_parse_expr(p);
                     }
+                } else {
+                    /* the tree still has the field, of no type yet */
+                    field.type = new_type(p, PLUM_TYPE_ERROR, name->span);
                 }
                 field.span = join(name->span, previous(p)->span);
                 plum_array_push(&fields, field);

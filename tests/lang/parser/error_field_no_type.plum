@@ -1,0 +1,6 @@
+# command: ast
+# A field with no type (found by fuzzing, #86): an error, and the tree still prints.
+tree Greeter {
+    greet
+    name: str
+}
