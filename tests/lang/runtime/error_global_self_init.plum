@@ -1,0 +1,6 @@
+# A module variable whose own initial value calls a function that reads it
+# (#94): a runtime error naming the line, not a crash.
+branch twice() -> list[int] => seen + seen
+
+plant seen: list[int] = twice()
+drop(seen)

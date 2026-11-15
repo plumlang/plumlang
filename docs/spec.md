@@ -574,7 +574,20 @@ A function body that is a single expression can use `=>`:
 branch square(x: int) -> int => x * x
 ```
 
-Functions can be called before their declaration in the same module.
+Functions can be called before their declaration in the same module. A
+function may use module variables declared anywhere in the module, but
+using one before its `plant` or `root` line has run (a call made above
+the declaration) is a runtime `Error`, not a value of the wrong type:
+
+```plum
+branch greet() -> str => "Hello, {name}"
+drop(greet())        # Error: a module variable was used before its `plant` line ran
+plant name = "Ada"
+drop(greet())        # Hello, Ada
+```
+
+Using a module variable above its declaration outside a function is a
+compile error (E0303).
 
 ### 6.2 Default and named arguments
 
@@ -839,7 +852,9 @@ Shape.Rect(2.0, 3.0)`), and they print as written: `Direction.North`,
 
 Every `.plum` file is a module. Its top-level statements run once, in order,
 the first time it is imported, or when it is the program being run. A
-program needs no `main` function.
+program needs no `main` function. A module's functions exist before its
+first statement runs; its variables exist once their declaration has run
+(section 6.1).
 
 ### 9.2 seed
 
@@ -984,7 +999,7 @@ and `AssertError`. The errors the language itself raises are these:
 | `ParseError` | `int(text)` or `float(text)` of text that isn't a number |
 | `ValueError` | `byte(n)` out of 0 to 255; an int power with a negative exponent; a shift count out of 0 to 63; a format that doesn't fit the value |
 | `AssertError` | `assert(condition)` when the condition is `bad` |
-| `Error` | too much recursion |
+| `Error` | too much recursion; a module variable used before its declaration ran (6.1) |
 
 ## 11. Values and memory
 

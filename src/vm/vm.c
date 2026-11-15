@@ -163,6 +163,21 @@ typedef struct PlumChannel {
     TaskList senders;   /* waiting for room */
 } PlumChannel;
 
+/*
+ * What a global slot holds until its `plant` line (or function) sets it: a
+ * none no program can make (plum_none's payload is 0), so reading it is a
+ * runtime error and never a value of the wrong type.
+ */
+static inline PlumValue unset(void) {
+    PlumValue v = plum_none();
+    v.as.i = 1;
+    return v;
+}
+
+static inline bool is_unset(PlumValue v) {
+    return v.type == PLUM_VAL_NONE && v.as.i == 1;
+}
+
 static inline Frame *FRAME(VM *vm, int i) {
     return &vm->segs[i / FRAME_SEG][i % FRAME_SEG];
 }
@@ -1889,6 +1904,15 @@ static bool execute(VM *vm) {
         }                                                                                     \
         push(vm, plum_int(r));                                                                \
     } while (0)
+/* A module variable read before its `plant` line ran (spec 9.1). */
+#define CHECK_GLOBAL(n)                                                                     \
+    do {                                                                                    \
+        if (is_unset(vm->globals[(n)])) {                                                   \
+            FAIL(PLUM_ERROR_ERROR,                                                          \
+                 "a module variable was used before its `plant` line ran: declare it above " \
+                 "the code that calls this function");                                      \
+        }                                                                                   \
+    } while (0)
 #define STR_COMPARE(test)                                              \
     do {                                                               \
         PlumValue b = pop(vm);                                         \
@@ -1972,9 +1996,12 @@ static bool execute(VM *vm) {
             push(vm, plum_obj(&closure->obj));
             break;
         }
-        case PLUM_OP_GET_GLOBAL:
-            push(vm, plum_retain(vm->globals[READ_U16()]));
+        case PLUM_OP_GET_GLOBAL: {
+            uint16_t n = READ_U16();
+            CHECK_GLOBAL(n);
+            push(vm, plum_retain(vm->globals[n]));
             break;
+        }
         case PLUM_OP_SET_GLOBAL: {
             uint16_t n = READ_U16();
             PlumValue v = pop(vm);
@@ -2328,6 +2355,9 @@ static bool execute(VM *vm) {
             uint16_t slot = op == PLUM_OP_METHOD ? 0 : READ_U16();
             uint16_t m = READ_U16();
             uint16_t argc = READ_U16();
+            if (op == PLUM_OP_METHOD_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue *receiver =
                 op == PLUM_OP_METHOD
                     ? peek(vm, argc)
@@ -2398,6 +2428,9 @@ static bool execute(VM *vm) {
         case PLUM_OP_SET_INDEX_GLOBAL:
         case PLUM_OP_SET_INDEX_CAPTURE: {
             uint16_t slot = READ_U16();
+            if (op == PLUM_OP_SET_INDEX_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue value = pop(vm);
             PlumValue *place = place_of(
                 vm, frame, PLACE_KIND(op, PLUM_OP_SET_INDEX_LOCAL, PLUM_OP_SET_INDEX_GLOBAL), slot);
@@ -2423,6 +2456,9 @@ static bool execute(VM *vm) {
         case PLUM_OP_SET_PATH_FIELD: {
             uint16_t slot = READ_U16();
             uint16_t depth = READ_U16();
+            if (op == PLUM_OP_SET_PATH_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue value = pop(vm);
             PlumValue *keys = &vm->stack[vm->top - depth];
             /* a field's object sits under the keys */
@@ -2463,6 +2499,9 @@ static bool execute(VM *vm) {
             uint16_t packed = READ_U16();
             int depth = packed >> 8, argc = packed & 0xFF;
             size_t under = op == PLUM_OP_METHOD_PATH_FIELD ? 1 : 0; /* the field's object */
+            if (op == PLUM_OP_METHOD_PATH_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue *keys = &vm->stack[vm->top - (size_t)argc - (size_t)depth];
             PlumValue *root = under ? &plum_as_object(keys[-1])->fields[slot]
                                     : place_of(vm, frame,
@@ -3036,14 +3075,14 @@ static VM *vm_create(const PlumRunOptions *options, FILE *out, FILE *err) {
 }
 
 /* Take in what a compiled program (or REPL entry) needs: room for its
- * globals (new ones start as none), its error trees and method numbers. */
+ * globals (new ones start unset), its error trees and method numbers. */
 static void vm_load(VM *vm, const PlumCompiled *program, const PlumSource *source) {
     vm->source = source;
     if (program->global_count > vm->global_count) {
         vm->globals =
             plum_realloc_array(vm->globals, (size_t)program->global_count, sizeof(PlumValue));
         for (int i = vm->global_count; i < program->global_count; i++) {
-            vm->globals[i] = plum_none();
+            vm->globals[i] = unset();
         }
         vm->global_count = program->global_count;
     }
