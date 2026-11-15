@@ -32,8 +32,9 @@ case $target in
         if command -v zip >/dev/null 2>&1; then
             zip -qr "$outdir/$name.zip" "$name"
         else
-            # Windows runners: PowerShell instead of zip
-            powershell -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '$(cygpath -w "$outdir")\\$name.zip'"
+            # Windows runners: PowerShell 7 instead of zip (5.1 writes
+            # backslashes into the paths)
+            pwsh -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '$(cygpath -w "$outdir")\\$name.zip'"
         fi
         echo "$outdir/$name.zip" ;;
     *)

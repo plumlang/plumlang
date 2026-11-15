@@ -2,7 +2,7 @@
 #
 # Install Plumlang on Windows:
 #
-#   irm https://plum.elixpo.com/install.ps1 | iex
+#   irm https://github.com/plumlang/plumlang/releases/latest/download/install.ps1 | iex
 #
 # Settings, as environment variables:
 #   PLUM_VERSION   the version to install, e.g. 1.2.3 (default: the newest release)
