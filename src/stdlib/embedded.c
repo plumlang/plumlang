@@ -1191,3 +1191,7 @@ const PlumEmbeddedModule *plum_embedded_module(const char *name) {
     }
     return NULL;
 }
+
+const PlumEmbeddedModule *plum_embedded_module_at(size_t i) {
+    return i < sizeof modules / sizeof modules[0] ? &modules[i] : NULL;
+}

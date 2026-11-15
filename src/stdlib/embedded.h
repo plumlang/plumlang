@@ -20,4 +20,7 @@ typedef struct PlumEmbeddedModule {
 /* The module `name`, or NULL. */
 const PlumEmbeddedModule *plum_embedded_module(const char *name);
 
+/* Every module, for listing; NULL past the end. */
+const PlumEmbeddedModule *plum_embedded_module_at(size_t i);
+
 #endif /* PLUM_STDLIB_EMBEDDED_H */

@@ -12,6 +12,7 @@ each one, with an example that causes it and the fix.
 | E05xx | Control flow |
 | W05xx | Control-flow warnings (the program still runs) |
 | E06xx | Compiling to bytecode |
+| E09xx | Packages: `plum.toml`, `plum.lock`, seeding packages and the `plum add` family ([orchard.md](orchard.md)) |
 
 Codes never change meaning. A retired code is marked retired, not reused.
 `make test` checks that every code in the compiler is documented here and
@@ -741,3 +742,76 @@ like `plant f = (x: float) => math.sqrt(x)`.
 A limit of the bytecode format: a function with more than 65,535 constants
 or local variables, or a block or loop too long to jump over. Split the
 function into smaller ones.
+
+## Packages
+
+Errors in `plum.toml` and `plum.lock` are shown like compile errors, at
+their line and column. They stop `plum run` of a package directory, every
+`seed` of a package, and the package commands. See
+[orchard.md](orchard.md).
+
+### E0901
+
+`plum.toml` or `plum.lock` isn't in the TOML that Plumlang reads: a small,
+strict part of TOML with `[tables]`, `key = "strings"`, `'literal
+strings'`, lists of strings and `#` comments. Numbers, booleans, inline
+tables, `[[arrays of tables]]`, dotted keys and multi-line strings are
+not accepted; write every value as a string.
+
+```toml
+version = 1.0       # error
+version = "1.0.0"   # fix
+```
+
+### E0902
+
+A key set twice in one table, a `[table]` declared twice, or a name used
+both as a key and as a table. Keep one.
+
+### E0903
+
+A table or key `plum.toml` doesn't have, usually a misspelling. The
+tables are `[package]` and `[dependencies]`; the keys of `[package]` are
+`name`, `version`, `entry`, `lib`, `description`, `license`, `authors`,
+`repository`, `keywords` and `plum`.
+
+### E0904
+
+A field that is missing or of the wrong shape: `[package]` needs `name`,
+`version` and `entry`; `authors` and `keywords` are lists of strings, the
+others strings. A description has at most 300 bytes, and a package at
+most 10 keywords of 1 to 30 lowercase letters, digits and `-`.
+
+### E0905
+
+A package name that can't be used, as the package's own name or a
+dependency's: a name has 2 to 40 lowercase letters, digits and single
+`-`, starts with a letter, and doesn't end with `-`. It can't be a
+standard module's name (`json`, `net`, `hash`...), `plum`, `std`,
+`stdlib` or `orchard`, or a keyword once its `-` become `_`. A package
+can't depend on itself.
+
+### E0906
+
+A version that isn't three numbers, `MAJOR.MINOR.PATCH`, like `"1.4.0"`.
+Numbers have no leading zeros; pre-release labels (`1.0.0-beta`) aren't
+supported.
+
+### E0907
+
+A version range that isn't one of `^1.2` (compatible: the same left-most
+non-zero number), `~1.2.3` (the same minor version), `=1.2.3` (exactly),
+`>=1.2` (at least) or `*` (any). A bare version, `"1.2"`, means `^1.2`.
+
+### E0910
+
+A `plum.lock` that `plum` didn't write: every table is
+`[packages.NAME]` with a `version`, a `sha256` of 64 lowercase hex
+digits, and `dependencies`, a list of names. Delete it and run
+`plum install` to write it again.
+
+### E0911
+
+An `entry` or `lib` that doesn't name a `.plum` file inside the package:
+a relative path with `/` between its parts, without `..`, a drive letter
+or a part starting with `.`.

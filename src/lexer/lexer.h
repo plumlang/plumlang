@@ -47,4 +47,7 @@ void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, P
 void plum_lex_comments(const PlumSource *source, PlumArena *arena, PlumInterner *names,
                        PlumDiagList *diags, PlumTokenList *out, PlumCommentList *comments);
 
+/* Is the word (of `len` bytes) a keyword, like `plant` or `true`? */
+bool plum_is_keyword(const char *word, size_t len);
+
 #endif /* PLUM_LEXER_LEXER_H */
