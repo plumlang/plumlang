@@ -1,0 +1,65 @@
+# Certificate checks: the test CA isn't trusted by the system, so the
+# server's certificate fails to verify until ca_file names it, or verify
+# is turned off. Every failure is a NetError.
+seed net
+
+plant server = net.listen_tls(0, "tests/tls/server.pem", "tests/tls/server.key", host: "127.0.0.1")
+plant port = server.port()
+plant seen = Channel[str]()
+
+# the server answers each client with one line, and says how the
+# handshake went on its side
+spawn (() => {
+    while good {
+        plant conn = server.accept()
+        spawn ((c: Connection) => {
+            try {
+                c.write("hi\n")
+                seen.send("server: ok")
+            } catch e: NetError {
+                seen.send("server: {e.message.starts_with("write: ")} {type_of(e)}")
+            }
+            c.close()
+        })(conn)
+    }
+})()
+
+branch where(message: str) -> str => message.replace("port {port}", "port PORT")
+
+branch attempt(label: str, verify: bool, ca_file: str) {
+    try {
+        plant c = net.tls_connect("127.0.0.1", port, timeout: 5, verify: verify, ca_file: ca_file)
+        drop(label, "->", c.read_line() ?? "?")
+        c.close()
+    } catch e: NetError {
+        plant m = where(e.message)
+        drop(label, "->", m.split(": ")[0], "/", m.split(": ")[1])
+    }
+    drop(seen.receive())
+}
+
+attempt("system CAs", good, "")
+attempt("ca_file", good, "tests/tls/ca.pem")
+attempt("not a CA", good, "tests/tls/server.pem")
+attempt("verify: bad", bad, "")
+
+try {
+    net.tls_connect("127.0.0.1", port, ca_file: "tests/tls/no-such-file.pem")
+} catch e: NetError {
+    drop(where(e.message))
+}
+try {
+    net.listen_tls(0, "tests/tls/no-such-file.pem", "tests/tls/server.key")
+} catch e: NetError {
+    drop(e.message.starts_with("listen_tls: can't read the certificate 'tests/tls/no-such-file.pem'"))
+}
+try {
+    net.listen_tls(0, "tests/tls/server.pem", "tests/tls/ca.pem")
+} catch e: NetError {
+    drop(e.message.starts_with("listen_tls: can't read the private key 'tests/tls/ca.pem'"))
+}
+try {
+    net.tls_connect("127.0.0.1", 0)
+} catch e: ValueError {
+    drop(e.message)
+}

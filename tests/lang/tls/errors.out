@@ -1,0 +1,6 @@
+tls_connect to 127.0.0.1 port PORT: timed out
+not TLS: NetError good
+server: NetError good
+read: timed out
+write: the Connection is closed
+timeout must be 0 (no limit) or more

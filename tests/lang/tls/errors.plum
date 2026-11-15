@@ -1,0 +1,79 @@
+# TLS failures are NetError: a server that never answers the handshake
+# (timeout), a server that isn't TLS at all, a client that isn't TLS, a
+# read that waits too long, and a connection used after closing.
+seed net
+
+root CA = "tests/tls/ca.pem"
+
+# a plain TCP server that takes connections and says nothing
+plant silent = net.listen(0, host: "127.0.0.1")
+plant held = Channel[Connection]()
+spawn (() => {
+    while good {
+        held.send(silent.accept())
+    }
+})()
+try {
+    net.tls_connect("127.0.0.1", silent.port(), timeout: 0.2, ca_file: CA)
+} catch e: NetError {
+    drop(e.message.replace("{silent.port()}", "PORT"))
+}
+
+# a plain TCP server that answers the handshake with text
+plant plain = net.listen(0, host: "127.0.0.1")
+spawn (() => {
+    plant conn = plain.accept()
+    conn.write("HTTP/1.1 400 Bad Request\r\n\r\nthis is not TLS\n")
+    conn.close()
+})()
+try {
+    net.tls_connect("127.0.0.1", plain.port(), timeout: 5, ca_file: CA)
+} catch e: NetError {
+    drop("not TLS:", type_of(e), e.message.starts_with("tls_connect to 127.0.0.1 port {plain.port()}: "))
+}
+
+# a TLS server, and a client that writes plain text to it
+plant server = net.listen_tls(0, "tests/tls/server.pem", "tests/tls/server.key", host: "127.0.0.1")
+plant seen = Channel[str]()
+spawn (() => {
+    while good {
+        plant conn = server.accept()
+        spawn ((c: Connection) => {
+            try {
+                plant line = c.read_line(timeout: 5)
+                if line == "slow" {
+                    c.read_line(timeout: 5)        # the client gives up first
+                } else {
+                    seen.send("server read: {line ?? "end"}")
+                }
+            } catch e: NetError {
+                seen.send("server: {type_of(e)} {e.message.starts_with("read: TLS handshake failed: ")}")
+            }
+            c.close()
+        })(conn)
+    }
+})()
+plant p = net.connect("127.0.0.1", server.port())
+p.write("GET / HTTP/1.1\r\n\r\n")
+drop(seen.receive())
+p.close()
+
+# a TLS read with a time limit
+plant c = net.tls_connect("127.0.0.1", server.port(), ca_file: CA)
+c.write("slow\n")
+try {
+    c.read(timeout: 0.1)
+} catch e: NetError {
+    drop(e.message)
+}
+c.close()
+try {
+    c.write("more\n")
+} catch e: NetError {
+    drop(e.message)
+}
+try {
+    net.tls_connect("127.0.0.1", server.port(), timeout: -1)
+} catch e: ValueError {
+    drop(e.message)
+}
