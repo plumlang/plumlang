@@ -1,0 +1,50 @@
+# In lists of objects whose tree has equals, contains, index_of, `in` and
+# == use it too.
+tree Point {
+    x: int
+    y: int
+    branch equals(other: Point) -> bool => self.x == other.x and self.y == other.y
+    branch to_str() -> str => "({self.x}, {self.y})"
+}
+plant ps = [Point(1, 2), Point(3, 4)]
+drop(ps.contains(Point(3, 4)), ps.contains(Point(4, 3)))
+drop(ps.index_of(Point(3, 4)), ps.index_of(Point(9, 9)))
+drop(Point(1, 2) in ps, Point(2, 1) in ps)
+drop(ps == [Point(1, 2), Point(3, 4)], ps != [Point(1, 2), Point(3, 4)])
+drop(ps == [Point(1, 2)], ps == [Point(3, 4), Point(1, 2)])
+
+# lists inside lists too
+plant grid = [[Point(0, 0)], [Point(1, 1), Point(2, 2)]]
+drop(grid == [[Point(0, 0)], [Point(1, 1), Point(2, 2)]], [Point(0, 0)] in grid)
+
+# without equals, objects in lists are compared by identity
+tree Box {
+    v: int
+}
+plant box = Box(1)
+plant boxes = [box]
+drop(boxes.contains(box), boxes.contains(Box(1)), Box(1) in boxes, boxes == [box])
+
+# a subclass's equals is only used where its own type is in the list
+tree Animal {
+    name: str
+}
+tree Dog : Animal {
+    branch equals(other: Dog) -> bool => self.name == other.name
+}
+plant dogs = [Dog("Rex")]
+plant animals: list[Animal] = [Dog("Rex")]
+drop(dogs.contains(Dog("Rex")), animals.contains(Dog("Rex")))
+
+# an equals that throws: the error comes out of contains
+tree Strict {
+    n: int
+    branch equals(other: Strict) -> bool {
+        throw ValueError("no comparing {self.n}")
+    }
+}
+try {
+    drop([Strict(1)].contains(Strict(2)))
+} catch e: ValueError {
+    drop(e.message)
+}

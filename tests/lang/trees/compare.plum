@@ -1,0 +1,93 @@
+# compare (trait Order) gives objects < <= > >= and lets lists of them sort.
+tree Version {
+    major: int
+    minor: int
+    branch compare(other: Version) -> int {
+        if self.major != other.major {
+            return self.major - other.major
+        }
+        return self.minor - other.minor
+    }
+    branch to_str() -> str => "{self.major}.{self.minor}"
+}
+
+plant a = Version(1, 2)
+plant b = Version(1, 10)
+drop(a < b, a <= b, a > b, a >= b, b > a)
+drop(a <= Version(1, 2), a >= Version(1, 2), a < Version(1, 2))
+
+plant versions = [Version(2, 0), Version(1, 10), Version(1, 2), Version(0, 9)]
+drop(versions.sorted())
+drop(versions)               # sorted() leaves the list as it was
+versions.sort()
+drop(versions)
+
+# stable: equal items keep their order
+tree Task {
+    priority: int
+    name: str
+    branch compare(other: Task) -> int => other.priority - self.priority
+    branch to_str() -> str => self.name
+}
+plant tasks = [Task(1, "dust"), Task(3, "fire"), Task(2, "mail"), Task(3, "flood"), Task(1, "nap")]
+tasks.sort()
+drop(tasks)
+
+# sorting in place everywhere a list can live
+tree Board {
+    tasks: list[Task]
+}
+plant board = Board([Task(1, "a"), Task(2, "b")])
+board.tasks.sort()
+drop(board.tasks)
+plant lanes = {"todo": [Task(1, "x"), Task(5, "y")]}
+lanes["todo"].sort()
+drop(lanes["todo"])
+
+# a trait can ask for compare, and a subclass inherits it
+trait Ranked {
+    branch compare(other: Ranked) -> int
+    branch rank() -> int
+}
+tree Card : Ranked {
+    value: int
+    branch rank() -> int => self.value
+    branch compare(other: Ranked) -> int => self.rank() - other.rank()
+    branch to_str() -> str => "card {self.value}"
+}
+tree Ace : Card {
+    branch init() {
+        self.value = 14
+    }
+    branch to_str() -> str => "ace"
+}
+plant hand: list[Ranked] = [Ace(), Card(7), Card(10)]
+drop(hand.sorted())
+drop(Ace() > Card(13))
+
+# compare that throws stops the sort with its error
+tree Bad {
+    n: int
+    branch compare(other: Bad) -> int {
+        throw ValueError("can't compare {self.n} and {other.n}")
+    }
+}
+plant broken = [Bad(1), Bad(2)]
+try {
+    broken.sort()
+} catch e: ValueError {
+    drop(e.message, len(broken))
+}
+
+# a compare that changes the list while it is sorted doesn't disturb the sort
+tree Noisy {
+    n: int
+    branch compare(other: Noisy) -> int {
+        noisy.clear()
+        return self.n - other.n
+    }
+    branch to_str() -> str => "{self.n}"
+}
+plant noisy = [Noisy(3), Noisy(1), Noisy(2)]
+noisy.sort()
+drop(noisy)

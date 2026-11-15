@@ -1,0 +1,9 @@
+tree V {
+    x: int
+    branch plus(other: int) -> V => V(self.x + other)
+    branch minus(other: V) -> int => self.x - other.x
+    branch times(k: str) -> V => self
+    branch divided_by(other: V, more: V) -> V => self
+    branch negate(by: int) -> V => self
+    branch compare(other: V) -> bool => good
+}

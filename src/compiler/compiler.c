@@ -2,6 +2,7 @@
 #include "compiler/compiler.h"
 
 #include "check/resolve.h"
+#include "check/typecheck.h"
 #include "check/types.h"
 #include "compiler/chunk.h"
 #include "stdlib/native.h"
@@ -79,6 +80,8 @@ static void compile_expr(Compiler *c, const PlumExpr *e);
 static void compile_stmt(Compiler *c, const PlumStmt *s);
 static uint16_t method_id(Compiler *c, const char *name);
 static const PlumBranch *method_decl(const PlumSymbol *decl, const char *name, int depth);
+static const PlumTy *operator_param(const PlumTy *t, const char *name, const PlumTy *arg);
+static bool items_have_equals(const PlumTy *list);
 static void compile_method_body(Compiler *c, PlumFunction *fn, const PlumBranch *m);
 static const PlumCase *named_case(const PlumExpr *callee, PlumSymbol **kind);
 static void compile_case_value(Compiler *c, const PlumExpr *e, const PlumExpr *callee,
@@ -348,6 +351,17 @@ static PlumOpcode compare_op(PlumTokenKind tok, int kind /* 0 int, 1 float, 2 st
  */
 static void arithmetic(Compiler *c, PlumTokenKind tok, const PlumExpr *left, const PlumTy *lty,
                        const PlumExpr *right, uint32_t line) {
+    const char *name = plum_operator_method(tok);
+    const PlumTy *param = name != NULL ? operator_param(lty, name, right->ty) : NULL;
+    if (param != NULL) {
+        /* v + w on objects is v.plus(w), found in v's own tree's table */
+        if (left != NULL) {
+            compile_expr(c, left);
+        }
+        compile_as(c, right, param);
+        op2(c, PLUM_OP_INVOKE, method_id(c, name), 1, line);
+        return;
+    }
     bool fl = tok == PLUM_TOK_SLASH || ty_is(lty, PLUM_TY_FLOAT) || ty_is(right->ty, PLUM_TY_FLOAT);
     if (left != NULL) {
         compile_expr(c, left);
@@ -413,6 +427,16 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
             }
             return;
         }
+        if (ty_is(l->ty, PLUM_TY_LIST) && items_have_equals(l->ty)) {
+            /* lists of objects with equals: item by item with it */
+            compile_expr(c, l);
+            compile_expr(c, r);
+            op2(c, PLUM_OP_METHOD, PLUM_METHOD_LIST_EQUAL_ITEMS, 1, line);
+            if (!eq) {
+                op(c, PLUM_OP_NOT, line);
+            }
+            return;
+        }
         /* Numbers compare with a typed instruction; anything else, generically. */
         bool ints = int_like(l->ty) && int_like(r->ty);
         bool floats = !ints && (int_like(l->ty) || ty_is(l->ty, PLUM_TY_FLOAT)) &&
@@ -435,6 +459,16 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
     case PLUM_TOK_LESS_EQ:
     case PLUM_TOK_GREATER:
     case PLUM_TOK_GREATER_EQ: {
+        const PlumTy *param = operator_param(l->ty, "compare", r->ty);
+        if (param != NULL) {
+            /* a < b on objects is a.compare(b) < 0 */
+            compile_expr(c, l);
+            compile_as(c, r, param);
+            op2(c, PLUM_OP_INVOKE, method_id(c, "compare"), 1, line);
+            emit_const(c, plum_int(0), e->span);
+            op(c, compare_op(tok, 0), line);
+            return;
+        }
         int kind = ty_is(l->ty, PLUM_TY_STR)                                    ? 2
                    : ty_is(l->ty, PLUM_TY_FLOAT) || ty_is(r->ty, PLUM_TY_FLOAT) ? 1
                                                                                 : 0;
@@ -465,6 +499,18 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
             compile_expr(c, r->as.range.high);
             op(c, r->as.range.inclusive ? PLUM_OP_LE_INT : PLUM_OP_LT_INT, line);
             patch_jump(c, skip, e->span);
+            c->fs->next_slot = saved;
+            return;
+        }
+        if (ty_is(r->ty, PLUM_TY_LIST) && items_have_equals(r->ty)) {
+            /* x in xs: xs.contains(x) by equals, x computed first */
+            int saved = c->fs->next_slot;
+            uint16_t x = new_local(c, NULL, e->span);
+            compile_as(c, l, r->ty->as.elem);
+            op1(c, PLUM_OP_SET_LOCAL, x, line);
+            compile_expr(c, r);
+            op1(c, PLUM_OP_GET_LOCAL, x, line);
+            op2(c, PLUM_OP_METHOD, PLUM_METHOD_LIST_CONTAINS_EQUALS, 1, line);
             c->fs->next_slot = saved;
             return;
         }
@@ -1023,6 +1069,36 @@ static PlumSymbol *object_decl(const PlumTy *t) {
 }
 
 /*
+ * The parameter type of the method `name` an operator calls on objects of
+ * type `t` (plus for +, ...), if `t` is a tree or trait with that method
+ * taking an `arg`; else NULL. The checker allowed exactly these.
+ */
+static const PlumTy *operator_param(const PlumTy *t, const char *name, const PlumTy *arg) {
+    if (!ty_is(t, PLUM_TY_TREE) && !ty_is(t, PLUM_TY_TRAIT)) {
+        return NULL;
+    }
+    const PlumBranch *m = method_decl(t->as.decl, name, 0);
+    if (m == NULL || m->ty == NULL || m->ty->as.func.param_count != 1 ||
+        !plum_ty_assignable(arg, m->ty->as.func.params[0].ty)) {
+        return NULL;
+    }
+    return m->ty->as.func.params[0].ty;
+}
+
+/*
+ * Does a list type hold (perhaps in lists inside it) objects whose type
+ * has equals taking that type? Then every object in such a list has an
+ * equals that takes any other, whatever tree it is.
+ */
+static bool items_have_equals(const PlumTy *list) {
+    const PlumTy *t = list;
+    while (ty_is(t, PLUM_TY_LIST)) {
+        t = t->as.elem;
+    }
+    return t != list && operator_param(t, "equals", t) != NULL;
+}
+
+/*
  * obj.method(args), obj?.method(args) and super.method(args). The
  * receiver goes first, as the method's self; INVOKE puts the method found
  * in the object's table under it.
@@ -1453,6 +1529,12 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
         unsupported(c, e->span, "this method", 36);
         return;
     }
+    if ((m == PLUM_METHOD_LIST_CONTAINS || m == PLUM_METHOD_LIST_INDEX_OF) &&
+        items_have_equals(rty)) {
+        /* objects with equals are found with it (the VM calls back) */
+        m = m == PLUM_METHOD_LIST_CONTAINS ? PLUM_METHOD_LIST_CONTAINS_EQUALS
+                                           : PLUM_METHOD_LIST_INDEX_OF_EQUALS;
+    }
     uint32_t line = e->span.line;
     uint16_t argc = (uint16_t)fty->as.func.param_count;
     PlumSymbol *place = plum_method_mutates((PlumMethod)m) ? place_of(c, obj) : NULL;
@@ -1647,6 +1729,10 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
     }
     case PLUM_EXPR_UNARY:
         compile_expr(c, e->as.unary.operand);
+        if (e->as.unary.op == PLUM_TOK_MINUS && object_decl(e->as.unary.operand->ty) != NULL) {
+            op2(c, PLUM_OP_INVOKE, method_id(c, "negate"), 0, line); /* -v is v.negate() */
+            return;
+        }
         switch (e->as.unary.op) {
         case PLUM_TOK_MINUS:
             op(c, ty_is(e->ty, PLUM_TY_FLOAT) ? PLUM_OP_NEG_FLOAT : PLUM_OP_NEG_INT, line);
@@ -2575,6 +2661,8 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
         plum_retain(plum_obj(&out.errors[k]->obj));
     }
     out.to_str = method_id(&c, "to_str");
+    out.equals = method_id(&c, "equals");
+    out.compare = method_id(&c, "compare");
     fill_method_tables(&c);
     /* The program keeps the methods; trees' tables only point at them. */
     out.method_count = (int)c.methods.len;

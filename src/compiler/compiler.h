@@ -23,7 +23,9 @@ typedef struct PlumCompiled {
     PlumTreeInfo *errors[PLUM_ERROR_COUNT];
     PlumFunction **methods; /* every tree's methods; trees' tables point into these */
     int method_count;
-    int to_str; /* the method number of to_str, which printing an object calls */
+    int to_str;  /* the method number of to_str, which printing an object calls */
+    int equals;  /* of equals, which lists of objects compare items with */
+    int compare; /* of compare, which sorting objects calls */
 } PlumCompiled;
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags);

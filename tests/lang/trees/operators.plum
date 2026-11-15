@@ -1,0 +1,52 @@
+# + - * / and unary - on objects call plus, minus, times, divided_by and negate.
+tree Vector {
+    x: float
+    y: float
+    branch plus(other: Vector) -> Vector => Vector(self.x + other.x, self.y + other.y)
+    branch minus(other: Vector) -> Vector => Vector(self.x - other.x, self.y - other.y)
+    branch times(k: float) -> Vector => Vector(self.x * k, self.y * k)
+    branch divided_by(k: float) -> Vector => Vector(self.x / k, self.y / k)
+    branch negate() -> Vector => Vector(-self.x, -self.y)
+    branch equals(other: Vector) -> bool => self.x == other.x and self.y == other.y
+    branch to_str() -> str => "({self.x}, {self.y})"
+}
+
+plant a = Vector(1.0, 2.0)
+plant b = Vector(3.0, 5.0)
+drop(a + b, b - a, a * 3, b / 2.0, -a)
+drop(a + b * 2.0 - a)        # usual precedence: * before + and -
+drop(a + b == Vector(4.0, 7.0), -(-a) == a)
+
+# compound assignment works through the same methods
+plant v = Vector(0.0, 0.0)
+v += a
+v += b
+v -= Vector(1.0, 1.0)
+v *= 2
+drop(v)
+
+# on fields and list items too
+tree Body {
+    pos: Vector
+    vel: Vector
+}
+plant body = Body(Vector(0.0, 0.0), Vector(1.0, 0.5))
+for _ in 0..3 {
+    body.pos += body.vel
+}
+drop(body.pos)
+plant path = [a, b]
+path[1] += a
+drop(path)
+
+# Money: the tree a value type wants, with int cents
+tree Money {
+    cents: int
+    branch plus(other: Money) -> Money => Money(self.cents + other.cents)
+    branch minus(other: Money) -> Money => Money(self.cents - other.cents)
+    branch times(n: int) -> Money => Money(self.cents * n)
+    branch to_str() -> str => "${self.cents // 100}.{self.cents % 100:02}"
+}
+plant price = Money(1999)
+plant total = price * 3 - Money(500)
+drop(total, total + Money(1))

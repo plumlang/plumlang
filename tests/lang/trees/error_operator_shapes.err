@@ -1,0 +1,19 @@
+tests/lang/trees/error_operator_shapes.plum:3:37: error[E0424]: the method plus must be written plus(other: <this tree>) -> <this tree>
+3 |     branch plus(other: int) -> V => V(self.x + other)
+  |                                     ^~~~~~~~~~~~~~~~~
+tests/lang/trees/error_operator_shapes.plum:4:38: error[E0424]: the method minus must be written minus(other: <this tree>) -> <this tree>
+4 |     branch minus(other: V) -> int => self.x - other.x
+  |                                      ^~~~~~~~~~~~~~~~
+tests/lang/trees/error_operator_shapes.plum:5:34: error[E0424]: the method times must be written times(other: <this tree, int or float>) -> <this tree>
+5 |     branch times(k: str) -> V => self
+  |                                  ^~~~
+tests/lang/trees/error_operator_shapes.plum:6:50: error[E0424]: the method divided_by must be written divided_by(other: <this tree, int or float>) -> <this tree>
+6 |     branch divided_by(other: V, more: V) -> V => self
+  |                                                  ^~~~
+tests/lang/trees/error_operator_shapes.plum:7:36: error[E0424]: the method negate must be written negate() -> <this tree>
+7 |     branch negate(by: int) -> V => self
+  |                                    ^~~~
+tests/lang/trees/error_operator_shapes.plum:8:41: error[E0424]: the method compare must be written compare(other: <this tree>) -> int
+8 |     branch compare(other: V) -> bool => good
+  |                                         ^~~~
+6 errors

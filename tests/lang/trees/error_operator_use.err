@@ -1,0 +1,22 @@
+tests/lang/trees/error_operator_use.plum:10:6: error[E0403]: '+' can't be used on Box; give Box a method plus(other: Box) -> Box
+10 | drop(a + a)
+   |      ^~~~~
+tests/lang/trees/error_operator_use.plum:11:6: error[E0403]: can't order Box with '<'; give Box a method compare(other: Box) -> int
+11 | drop(a < a)
+   |      ^~~~~
+tests/lang/trees/error_operator_use.plum:12:6: error[E0403]: '-' can't be used on Box; give Box a method negate() -> Box
+12 | drop(-a)
+   |      ^~
+tests/lang/trees/error_operator_use.plum:13:6: error[E0403]: '+' on V calls plus(other: V), which can't take int
+13 | drop(v + 1)
+   |      ^~~~~
+tests/lang/trees/error_operator_use.plum:14:6: error[E0403]: '*' can't be used on V; give V a method times(other: V) -> V
+14 | drop(v * v)
+   |      ^~~~~
+tests/lang/trees/error_operator_use.plum:15:6: error[E0415]: sorted() orders numbers, strings or objects with compare(), but this list holds Box
+15 | drop([a].sorted())
+   |      ^~~~~~~~~~
+tests/lang/trees/error_operator_use.plum:16:1: error[E0403]: '-' can't be used on V; give V a method minus(other: V) -> V
+16 | v -= v
+   | ^~~~~~
+7 errors
