@@ -43,8 +43,10 @@ Perl.
 
 Every `.c` file above is compiled by the repository's `Makefile` and
 `CMakeLists.txt` with the upstream code's own, relaxed warnings (our code
-keeps `-Werror`), and kept out of `make format`. The configuration is the
-upstream default, trimmed by two files of ours that are read after it:
+keeps `-Werror`), each function in a section of its own so the linker
+drops what plum never calls, and kept out of `make format`. The
+configuration is the upstream default, trimmed by two files of ours that
+are read after it:
 
 - `src/stdlib/tls/mbedtls_user_config.h` (`MBEDTLS_USER_CONFIG_FILE`):
   no DTLS, no TLS 1.2 pre-shared keys, no server session cache or tickets,

@@ -55,10 +55,18 @@ VENDOR_INCLUDE := -I$(MBEDTLS)/include -I$(MBEDTLS)/library -I$(TFPSA)/include \
                   -I$(TFPSA)/drivers/builtin/include -I$(TFPSA)/core \
                   -I$(TFPSA)/drivers/builtin/src -I$(TFPSA)/dispatch -I$(TFPSA)/extras \
                   -I$(TFPSA)/platform -I$(TFPSA)/utilities -Isrc/stdlib/tls
-VENDOR_CFLAGS := $(STD) $(OPT) $(VENDOR_INCLUDE) $(TLS_DEFS) -MMD -MP
+# Each function in a section of its own, so the linker drops what plum
+# never calls (about 120 KB of the library).
+VENDOR_CFLAGS := $(STD) $(OPT) $(VENDOR_INCLUDE) $(TLS_DEFS) -ffunction-sections \
+                 -fdata-sections -MMD -MP
+ifeq ($(shell uname -s 2>/dev/null),Darwin)
+  LDGC := -Wl,-dead_strip
+else
+  LDGC := -Wl,--gc-sections
+endif
 
 CFLAGS  += $(STD) $(WARN) $(OPT) $(INCLUDE) $(TLS_INCLUDE) $(TLS_DEFS) $(DEFS) -MMD -MP
-LDFLAGS += $(LDSAN)
+LDFLAGS += $(LDSAN) $(LDGC)
 LDLIBS  += -lm
 ifeq ($(OS),Windows_NT)
 # Winsock for the net module; BCrypt (random numbers) and Crypt32 (the
