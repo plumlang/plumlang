@@ -17,6 +17,8 @@ body:
       options:
         - The plum command
         - Editor support
+        - The website or the playground
+        - Brand assets
         - Docs
         - Build and CI
         - Releases and installers

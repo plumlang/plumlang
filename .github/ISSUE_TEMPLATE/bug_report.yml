@@ -1,5 +1,5 @@
 name: Bug report
-description: The compiler, the virtual machine, the standard library or the plum command does not behave as the spec says.
+description: Plumlang, the website or the VS Code extension doesn't behave as it should.
 title: "bug: "
 labels: ["bug"]
 body:
@@ -22,6 +22,8 @@ body:
         - The plum command (run, repl, fmt, ...)
         - Building Plumlang from source
         - Docs or spec
+        - The website (plum.elixpo.com) or the playground
+        - The VS Code extension or brand assets
         - Not sure
     validations:
       required: true
@@ -30,24 +32,25 @@ body:
     id: version
     attributes:
       label: Plumlang version
-      description: The output of `plum version`, or the commit you built.
+      description: The output of `plum version`, or the commit you built. For the website or the extension, the page or the extension version.
       placeholder: "e.g. plum 0.1.0 (abc1234)"
     validations:
-      required: true
+      required: false
 
   - type: input
     id: platform
     attributes:
-      label: Operating system and compiler
-      description: Your OS and CPU, and the C compiler if you built from source.
+      label: Operating system, and compiler or browser
+      description: Your OS and CPU, and the C compiler if you built from source, or the browser or editor.
       placeholder: "e.g. Ubuntu 24.04 x86_64, GCC 14"
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: program
     attributes:
-      label: Smallest program that shows it
+      label: Smallest program that shows it, or the steps
+      description: For the website or the extension, the page or the steps to see it.
       render: plum
     validations:
       required: true

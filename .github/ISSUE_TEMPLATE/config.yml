@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Language change or standard library module
+    url: https://github.com/plumlang/plumlang/issues/new/choose
+    about: Proposals for the language and its library have their own forms in plumlang/plumlang.
   - name: Questions and ideas (Discussions)
     url: https://github.com/plumlang/plumlang/discussions
     about: Ask a question or talk an idea through before opening an issue.

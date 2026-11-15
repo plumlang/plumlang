@@ -9,9 +9,9 @@
 ## Checklist
 
 - [ ] I read [CONTRIBUTING.md](https://github.com/plumlang/plumlang/blob/main/CONTRIBUTING.md) and the rules in [PREAMBLE.md](https://github.com/plumlang/plumlang/blob/main/PREAMBLE.md).
-- [ ] `make`, `make test` and `make sanitize test` pass with no warnings.
+- [ ] This repository's checks pass with no warnings: `make`, `make test` and `make sanitize test` in plumlang; `npm run lint` and `npm run build` in plum.elixpo and branding.
 - [ ] New behaviour has a test; a fix has the test that would have caught it.
-- [ ] A change to the language updates `docs/spec.md` in this pull request.
+- [ ] A change to the language updates `docs/spec.md` in this pull request (plumlang).
 - [ ] User-visible changes have a line under `## Unreleased` in `CHANGELOG.md`.
 - [ ] My commits are signed off (`git commit -s`).
 
