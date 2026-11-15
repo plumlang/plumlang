@@ -120,6 +120,9 @@ static inline PlumRunOptions fuzz_run_options(void) {
     o.max_steps = 200000;
     o.max_memory = 256 * 1024 * 1024;
     o.sandbox = true;
+    /* Objects left in reference cycles are leaks by design (spec 11.3): the
+     * leak check reports them, then frees them. */
+    o.check_leaks = true;
     return o;
 }
 

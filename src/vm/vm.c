@@ -1851,6 +1851,18 @@ static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
 
 #define PLACE_KIND(op, local, global) ((op) == (local) ? 0 : (op) == (global) ? 1 : 2)
 
+/* Can `m` run on `receiver` without making a list longer than PLUM_MAX_LIST?
+ * If not, a ValueError is thrown. */
+static bool list_has_room(VM *vm, PlumMethod m, PlumValue receiver) {
+    if ((m == PLUM_METHOD_LIST_PUSH || m == PLUM_METHOD_LIST_INSERT) &&
+        plum_as_list(receiver)->len >= PLUM_MAX_LIST) {
+        runtime_error(vm, PLUM_ERROR_VALUE, "%s(): the list has %zu items, the most a list can hold",
+                      m == PLUM_METHOD_LIST_PUSH ? "push" : "insert", PLUM_MAX_LIST);
+        return false;
+    }
+    return true;
+}
+
 /* Does `fn` reach outside the process? (PlumRunOptions.sandbox) */
 static bool outside_world(const PlumNativeFunction *fn) {
     static const PlumNativeModule *const modules[] = {
@@ -2149,6 +2161,11 @@ static bool execute(VM *vm) {
             break;
 
         case PLUM_OP_CONCAT: {
+            if (plum_as_string(*peek(vm, 1))->len >
+                PLUM_MAX_STRING - plum_as_string(*peek(vm, 0))->len) {
+                FAIL(PLUM_ERROR_VALUE, "+: the text would be longer than %zu bytes, the most a "
+                     "str can hold", PLUM_MAX_STRING);
+            }
             PlumValue b = pop(vm);
             PlumValue a = pop(vm);
             PlumString *s = concat(plum_as_string(a), plum_as_string(b));
@@ -2196,6 +2213,10 @@ static bool execute(VM *vm) {
             size_t total = 0;
             for (uint16_t i = 0; i < n; i++) {
                 total = plum_add_size(total, plum_as_string(*peek(vm, i))->len);
+            }
+            if (total > PLUM_MAX_STRING) {
+                FAIL(PLUM_ERROR_VALUE, "the text would be longer than %zu bytes, the most a "
+                     "str can hold", PLUM_MAX_STRING);
             }
             PlumString *s = plum_string_alloc(total);
             size_t at = total;
@@ -2340,6 +2361,10 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_CONCAT_LIST: {
+            if (plum_as_list(*peek(vm, 1))->len > PLUM_MAX_LIST - plum_as_list(*peek(vm, 0))->len) {
+                FAIL(PLUM_ERROR_VALUE, "+: the list would have more than %zu items, the most a "
+                     "list can hold", PLUM_MAX_LIST);
+            }
             PlumValue b = pop(vm);
             PlumValue a = pop(vm);
             PlumList *out = concat_lists(plum_as_list(a), plum_as_list(b));
@@ -2414,6 +2439,10 @@ static bool execute(VM *vm) {
                 }
                 push(vm, result);
                 break;
+            }
+            if (!list_has_room(vm, (PlumMethod)m, *receiver)) {
+                SAVE_IP();
+                goto thrown;
             }
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - argc], argc,
                                       &result, error, sizeof error);
@@ -2548,6 +2577,10 @@ static bool execute(VM *vm) {
                 unwind_to(vm, vm->top - (size_t)argc - (size_t)depth - under);
                 push(vm, result);
                 break;
+            }
+            if (!list_has_room(vm, (PlumMethod)m, *receiver)) {
+                SAVE_IP();
+                goto thrown;
             }
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - (size_t)argc],
                                       argc, &result, error, sizeof error);

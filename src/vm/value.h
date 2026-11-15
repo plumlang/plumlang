@@ -280,6 +280,19 @@ static inline PlumValue plum_retain(PlumValue v) {
 /* Give up a reference; frees the object when it was the last one. */
 void plum_release(PlumValue v);
 
+/*
+ * The longest a string may be, in bytes, and a list, in items (spec 11.4).
+ * Making a longer one is a ValueError, before any memory is asked for; no
+ * realistic program comes near either. The fuzz targets build with
+ * smaller ones (-D), to stay within the fuzzer's memory.
+ */
+#ifndef PLUM_MAX_STRING
+#define PLUM_MAX_STRING ((size_t)1 << 30) /* 1 GiB */
+#endif
+#ifndef PLUM_MAX_LIST
+#define PLUM_MAX_LIST ((size_t)1 << 27) /* 134,217,728 items */
+#endif
+
 /* A new string holding a copy of s[0..len), with one reference. */
 PlumString *plum_string_new(const char *s, size_t len);
 /* A new string of `len` bytes for the caller to fill; chars[len] is NUL. */

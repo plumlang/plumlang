@@ -1001,7 +1001,7 @@ and `AssertError`. The errors the language itself raises are these:
 | `IndexError` | a list or string index or slice out of range; `pop()` on an empty list; `insert`/`remove_at` out of range |
 | `KeyError` | `m[k]` for a key not in the map |
 | `ParseError` | `int(text)` or `float(text)` of text that isn't a number |
-| `ValueError` | `byte(n)` out of 0 to 255; an int power with a negative exponent; a shift count out of 0 to 63; a format that doesn't fit the value |
+| `ValueError` | `byte(n)` out of 0 to 255; an int power with a negative exponent; a shift count out of 0 to 63; a format that doesn't fit the value; a `str` or list larger than it may be (11.4) |
 | `AssertError` | `assert(condition)` when the condition is `bad` |
 | `Error` | too much recursion; a module variable used before its declaration ran (6.1) |
 
@@ -1067,8 +1067,11 @@ leak check: 2 objects are still alive in reference cycles:
 
 No Plumlang program can read or write memory it does not own: every index
 is checked, there are no raw pointers, and objects are never used after
-they are freed. A program can run out of memory, which ends it with a
-runtime error. Values may nest as deep as memory allows: comparing,
+they are freed. A `str` holds at most 1 GiB (2^30 bytes) and a list at
+most 2^27 (134,217,728) items; making a larger one (with `+`, `repeat`,
+`join`, `push`...) throws a `ValueError` before any memory is taken. A
+program that runs out of memory otherwise ends with `plum: error: out of
+memory` and exit code 1. Values may nest as deep as memory allows: comparing,
 copying and freeing them doesn't recurse in the runtime, and printing
 stops at a depth (section 3.2.1).
 

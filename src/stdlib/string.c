@@ -249,6 +249,13 @@ static bool s_replace(ARGS) {
     size_t start = 0;
     int64_t at;
     while ((at = find_bytes(s, old, start)) >= 0) {
+        if (b.len + ((size_t)at - start) + with->len > PLUM_MAX_STRING) {
+            plum_array_free(&b);
+            return plum_native_throw(n, PLUM_ERROR_VALUE,
+                                     "replace: the text would be longer than %zu bytes, the most "
+                                     "a str can hold",
+                                     PLUM_MAX_STRING);
+        }
         put(&b, s->chars + start, (size_t)at - start);
         put(&b, with->chars, with->len);
         start = (size_t)at + old->len;
@@ -266,9 +273,9 @@ static bool s_repeat(ARGS) {
         return plum_native_throw(n, PLUM_ERROR_VALUE, "repeat(%lld): the count must be 0 or more",
                                  (long long)times);
     }
-    if (s->len > 0 && (uint64_t)times > (uint64_t)(SIZE_MAX / 2) / s->len) {
-        return plum_native_throw(n, PLUM_ERROR_VALUE, "repeat(%lld): the text would be too long",
-                                 (long long)times);
+    if (s->len > 0 && (uint64_t)times > PLUM_MAX_STRING / s->len) {
+        return plum_native_throw(n, PLUM_ERROR_VALUE, "repeat(%lld): the text would be longer than %zu bytes, the most a str can hold",
+                                 (long long)times, PLUM_MAX_STRING);
     }
     size_t len = plum_mul_size(s->len, (size_t)times);
     PlumString *out = plum_string_alloc(len);
@@ -309,8 +316,8 @@ static bool pad(PlumNative *n, const PlumValue *args, int argc, PlumValue *resul
         return plum_native_throw(n, PLUM_ERROR_VALUE, "pad: the fill must be one character");
     }
     size_t chars = plum_utf8_length(s->chars, s->len);
-    if (width > 1000000000) {
-        return plum_native_throw(n, PLUM_ERROR_VALUE, "pad: a width of %lld is too wide",
+    if (width > 0 && (uint64_t)width > PLUM_MAX_STRING / 4) {
+        return plum_native_throw(n, PLUM_ERROR_VALUE, "pad: a width of %lld is more than a str can hold",
                                  (long long)width);
     }
     Buf b = {0};

@@ -97,10 +97,12 @@ void plum_fatal(const char *what) {
     abort();
 }
 
+/* Running out of memory ends the program with an error and exit code 1
+ * (spec 11.4): not an abort, which looks like a crash. */
 static void out_of_memory(size_t size) {
-    fprintf(stderr, "plum: fatal: out of memory (asked for %zu bytes)\n", size);
-    fflush(stderr);
-    abort();
+    fflush(stdout);
+    fprintf(stderr, "plum: error: out of memory (asked for %zu more bytes)\n", size);
+    exit(1);
 }
 
 size_t plum_mul_size(size_t count, size_t size) {
