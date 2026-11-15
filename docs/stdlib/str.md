@@ -45,4 +45,7 @@ tests know ASCII letters, digits and whitespace only.
 | `is_digit` | `is_digit(self: str) -> bool` | is every character 0 to 9? |
 | `is_alpha` | `is_alpha(self: str) -> bool` | is every character a letter (ASCII)? |
 | `is_space` | `is_space(self: str) -> bool` | is every character whitespace? |
+| `byte_len` | `byte_len(self: str) -> int` | the length in bytes of its UTF-8 (len() counts characters) |
+| `url_encode` | `url_encode(self: str) -> str` | for a URL: all but letters, digits and - _ . ~ as %XX |
+| `url_decode` | `url_decode(self: str) -> str` | %XX escapes back to text, and + to a space |
 <!-- reference:end -->

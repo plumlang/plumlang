@@ -1,0 +1,82 @@
+# A small REST API: notes kept in a JSON file, with routes to list, add,
+# read and delete them, and a middleware that checks an API key.
+seed net.http
+seed json
+seed fs
+seed math
+
+tree Store {
+    path: str
+    branch load() -> list[Json] {
+        if not fs.exists(self.path) {
+            return []
+        }
+        return json.parse(fs.read(self.path)).list() ?? []
+    }
+    branch save(notes: list[Json]) {
+        fs.write(self.path, json.stringify(notes, indent: 2))
+    }
+}
+
+plant store = Store(fs.temp_dir() + "/plum-notes-{math.random_int(0, 1000000000)}.json")
+plant app = http.server()
+
+app.use((req, next) => {
+    if req.method != "GET" and req.header("x-api-key") != "secret" {
+        return http.json({"error": "missing or wrong x-api-key"}, status: 401)
+    }
+    return next(req)
+})
+
+app.get("/notes", (req) => http.json(store.load()))
+
+app.post("/notes", (req) => {
+    plant text = req.json().get("text").str()
+    if text == none {
+        return http.json({"error": "a note needs text"}, status: 400)
+    }
+    plant notes = store.load()
+    plant next_id = 1
+    for n in notes {
+        next_id = math.max(next_id, (n.get("id").int() ?? 0) + 1)
+    }
+    plant note: Json = {"id": next_id, "text": text}
+    notes.push(note)
+    store.save(notes)
+    return http.json(note, status: 201)
+})
+
+app.get("/notes/:id", (req) => {
+    for n in store.load() {
+        if "{n.get("id").int() ?? 0}" == req.params["id"] {
+            return http.json(n)
+        }
+    }
+    return http.json({"error": "no such note"}, status: 404)
+})
+
+app.delete("/notes/:id", (req) => {
+    plant notes = store.load()
+    plant kept = notes.filter((n) => "{n.get("id").int() ?? 0}" != req.params["id"])
+    if len(kept) == len(notes) {
+        return http.json({"error": "no such note"}, status: 404)
+    }
+    store.save(kept)
+    return http.status(204)
+})
+
+# Try it: start on a free port, call it, stop.
+plant port = app.start(0, host: "127.0.0.1")
+plant base = "http://127.0.0.1:{port}"
+plant key = {"x-api-key": "secret"}
+
+drop(http.post_json(base + "/notes", {"text": "water the plants"}))
+drop(http.post_json(base + "/notes", {"text": "plant the seeds"}, headers: key).body)
+drop(http.post_json(base + "/notes", {"text": "pick the plums"}, headers: key).body)
+drop(http.get(base + "/notes").body)
+drop(http.get(base + "/notes/2").body)
+drop(http.request("DELETE", base + "/notes/1", headers: key))
+drop(http.get(base + "/notes").body)
+drop(http.get(base + "/notes/1"))
+app.stop()
+fs.remove(store.path)

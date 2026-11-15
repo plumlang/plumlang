@@ -63,7 +63,7 @@ BIN       := $(BUILD)/plum
 UNIT_BIN  := $(BUILD)/unit-tests
 PLUM      := ./plum
 
-.PHONY: all release debug sanitize test golden-update bytecode-doc stdlib-doc format format-check clean
+.PHONY: all release debug sanitize test golden-update bytecode-doc stdlib-doc stdlib-embed format format-check clean
 
 # Always refresh ./plum, so it is the binary of the mode asked for even when
 # another mode's copy is newer.
@@ -88,6 +88,7 @@ test: all $(UNIT_BIN)
 	@sh tests/errors-documented.sh
 	@sh tests/bytecode-documented.sh
 	@sh tools/stdlib-docs.sh $(PLUM) --check
+	@sh tests/stdlib-embedded.sh
 	@sh tests/golden.sh $(PLUM)
 	@sh tests/golden.sh $(PLUM) examples
 
@@ -102,6 +103,11 @@ bytecode-doc:
 	@mv build/bytecode.md docs/bytecode.md
 	@echo "docs/bytecode.md updated"
 
+# Build the modules written in Plumlang into the binary.
+stdlib-embed:
+	@sh tools/embed-stdlib.sh > src/stdlib/embedded.c
+	@echo "src/stdlib/embedded.c updated"
+
 # Regenerate the reference tables in docs/stdlib from the modules themselves.
 stdlib-doc: all
 	@sh tools/stdlib-docs.sh $(PLUM)
@@ -112,6 +118,7 @@ golden-update: all
 	@UPDATE=1 sh tests/golden.sh $(PLUM) examples
 
 C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)
+C_FILES := $(filter-out src/stdlib/embedded.c,$(C_FILES)) # generated
 
 format:
 	clang-format -i $(C_FILES)

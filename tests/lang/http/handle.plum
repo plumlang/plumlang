@@ -1,0 +1,21 @@
+# server.handle() answers a request without a network: handy in tests.
+seed net.http
+
+plant app = http.server()
+app.log_errors = bad
+app.get("/users/:id", (req) => http.json({"id": req.params["id"], "q": req.query.get("q")}))
+app.post("/users", (req) => http.text("made {req.body}", status: 201))
+app.use((req, next) => {
+    if req.path == "/blocked" {
+        return http.status(403, "no entry")
+    }
+    return next(req)
+})
+
+drop(app.handle(http.Request("GET", "/users/7", {"q": "x"})).body)
+plant made = app.handle(http.Request("POST", "/users", body: "ada"))
+drop(made.status, made.body, made)
+drop(app.handle(http.Request("GET", "/blocked")).body)
+drop(app.handle(http.Request("PUT", "/users/7")).status)
+drop(app.handle(http.Request("GET", "/nothing")).status)
+drop(http.redirect("/elsewhere").header("location"), http.status(503))

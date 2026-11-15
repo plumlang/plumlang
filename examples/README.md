@@ -10,5 +10,8 @@ current `plum`.
 | `shapes.plum` | traits with default methods, `init`, `map` / `filter` / `sorted_by` on objects |
 | `todo.plum` | shared objects, lists inside objects, `equals` for `==`, `if plant` |
 | `garden/` | a program of several files: `seed ./models/plant`, a `plum.toml` package (`plum run examples/garden`) |
+| `echo.plum` | an echo server and client: sockets and a task per connection |
+| `http/hello.plum` | a web server in a few lines: routes, query strings, JSON |
+| `http/rest_api.plum` | a REST API with JSON, file-backed storage and an API-key middleware |
 
 Run one with `plum run examples/bank.plum`.

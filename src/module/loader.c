@@ -2,6 +2,7 @@
 #include "module/loader.h"
 
 #include "parser/parser.h"
+#include "stdlib/embedded.h"
 #include "util/alloc.h"
 #include "util/array.h"
 
@@ -186,6 +187,26 @@ static void cycle_text(const Loader *l, const PlumModule *again, char *buf, size
 
 static void parse(Loader *l, PlumModule *mod);
 
+/* A standard module written in Plumlang: loaded from the binary, once. */
+static PlumModule *import_embedded(Loader *l, const PlumEmbeddedModule *e) {
+    char key[96];
+    snprintf(key, sizeof key, "<stdlib %s>", e->name);
+    PlumModule *mod = find(l, key);
+    if (mod != NULL) {
+        return mod; /* standard modules don't import their importers: no cycles */
+    }
+    char *text = malloc(e->len + 1);
+    char *path = plum_alloc(strlen(key) + 1);
+    if (text == NULL) {
+        return NULL;
+    }
+    memcpy(text, e->text, e->len + 1);
+    memcpy(path, key, strlen(key) + 1);
+    mod = add(l, path, text, e->len);
+    parse(l, mod);
+    return mod;
+}
+
 /* The module `seed` statement `s` of `importer` names, loading it if new. */
 static PlumModule *import(Loader *l, PlumModule *importer, PlumStmt *s) {
     char *path = plum_module_path(importer->path, s->as.seed.path);
@@ -226,6 +247,15 @@ static void parse(Loader *l, PlumModule *mod) {
     mod->program = plum_parse_program(&parser);
     for (size_t i = 0; i < mod->program.count; i++) {
         PlumStmt *s = mod->program.stmts[i];
+        const PlumEmbeddedModule *embedded =
+            s->kind == PLUM_STMT_SEED ? plum_embedded_module(s->as.seed.path) : NULL;
+        if (embedded != NULL) {
+            PlumModule *dep = import_embedded(l, embedded);
+            if (dep != NULL) {
+                s->as.seed.exports = &dep->exports;
+            }
+            continue;
+        }
         if (s->kind == PLUM_STMT_SEED && s->as.seed.path[0] == '.' &&
             strchr(s->as.seed.path, '<') == NULL) { /* not a path that failed to parse */
             PlumModule *dep = import(l, mod, s);

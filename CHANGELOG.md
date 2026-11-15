@@ -32,6 +32,9 @@ Format for a new entry:
 - **JSON**: `json.parse` and `json.stringify` (compact or indented), and the `Json` type for any JSON value, with methods (`get`, `at`, `str`, `int`, `list`, ...) that give `none` instead of failing; plain data, including tree objects, can be written as JSON.
 - **Tasks**: `spawn`, `task.wait()` and `done()`, `Channel[T](capacity)` with `send`, `receive`, `close` and `for x in channel`; `time.sleep` lets other tasks run. All tasks share one thread and take turns where they wait; thousands cost a few megabytes. Deadlocks and errors in tasks nothing waited for are reported; objects can't be given to tasks (E0426).
 - **Networking**: the `net` module: TCP (`listen`, `accept`, `connect`, `read`, `read_line`, `write`), UDP (`udp`, `send_to`, `receive`) and `resolve`, on POSIX sockets and Winsock; waiting on a socket lets other tasks run, every wait takes a `timeout`. The scheduler waits on sockets with epoll, kqueue or WSAPoll and keeps timers in a heap: 10,000 idle connections open in 0.16 s. `examples/echo.plum`.
+- **HTTP**: `seed net.http`: a server (routes with `:params`, query strings, JSON, middleware, static files, keep-alive, a task per connection) and a client (`get`, `post`, `post_json`, `request`; chunked bodies). Written in Plumlang and built into the binary, like any standard module written that way. About 120,000 requests a second on one thread. `examples/http/`.
+- **str**: `byte_len`, `url_encode`, `url_decode`.
+- **Parser**: `else` may start the line after an `if` expression's block; a line starting with a stray `else` no longer hangs the parser.
 - **Parser**: a keyword used as a field name is E0217 instead of an endless loop.
 - **Memory**: freeing a long chain of objects no longer recurses; callbacks nest at most 100 deep.
 - **Error codes**: every error has a code (`error[E0201]`) explained in `docs/errors.md`.

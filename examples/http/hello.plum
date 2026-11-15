@@ -1,0 +1,22 @@
+# A web server in a few lines. As a real server, end with
+#     app.listen(8080)
+# and open http://localhost:8080/hello/you. Here it starts on a free port,
+# asks itself a few things, and stops, so the example can run as a test.
+seed net.http
+
+plant app = http.server()
+app.get("/", (req) => http.html("<h1>Hello from Plumlang</h1>"))
+app.get("/hello/:name", (req) => http.text("Hello, {req.params["name"]}!"))
+app.get("/add", (req) => {
+    plant a = int(req.query.get("a") ?? "0")
+    plant b = int(req.query.get("b") ?? "0")
+    return http.json({"a": a, "b": b, "sum": a + b})
+})
+
+plant port = app.start(0, host: "127.0.0.1")
+plant base = "http://127.0.0.1:{port}"
+drop(http.get(base + "/hello/garden").body)
+drop(http.get(base + "/add?a=2&b=40").body)
+drop(http.get(base + "/").header("content-type"))
+drop(http.get(base + "/missing"))
+app.stop()

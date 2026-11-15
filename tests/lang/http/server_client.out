@@ -1,0 +1,11 @@
+q=plum lang page=2
+201 Ada plum good
+500 7/42
+405
+200
+200 <h1>hi</h1> text/html; charset=utf-8
+text/css; charset=utf-8 404
+2 good good
+hello, world
+https isn't supported yet (it needs TLS); use http://
+refused

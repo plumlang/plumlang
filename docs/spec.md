@@ -1077,7 +1077,10 @@ app.get("/hello/:name", (req) => http.text("Hello, {req.params["name"]}!"))
 app.listen(8080)
 ```
 
-Each request runs in its own task (section 12).
+Each connection runs in its own task (section 12). `docs/stdlib/net.http.md`
+describes the server (routes with `:params`, middleware, static files) and
+the client (`http.get`, `http.post_json`, ...). Some standard modules, like
+`net.http`, are written in Plumlang and built into `plum`.
 
 ## 14. Running programs
 

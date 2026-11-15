@@ -47,6 +47,22 @@ Before the scheduler used epoll and a timer heap (each wait scanned every
 task and polled every socket), opening them took 6.0 s and a new
 connection 4.4 ms.
 
+## HTTP
+
+`python3 bench/net/http_load.py` starts `bench/net/http_server.plum` and
+sends requests back to back from 8 client processes, each keeping one
+HTTP/1.1 connection alive, for 4 seconds:
+
+| Route | Requests / s | p50 | p99 |
+|---|---|---|---|
+| `/hello/:name` (text) | 126,832 | 0.06 ms | 0.12 ms |
+| `/api/item/:id` (JSON) | 112,305 | 0.07 ms | 0.16 ms |
+
+The server is one thread running `net.http`, which is written in
+Plumlang. A count kept by the server matched the client's (41,574 of
+41,574). One Python client manages about 20,000 requests a second, so
+these numbers are partly the clients'.
+
 ## What was tried
 
 Each change was measured with `bench/run.py --runs 7` and kept only if it

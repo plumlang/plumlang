@@ -1,0 +1,511 @@
+# module: net.http, an HTTP/1.1 server and client, built into plum.
+#
+# Written in Plumlang on top of net (sockets), tasks and json. Each
+# connection to a server gets a task of its own, so a slow client holds up
+# nobody. The source is src/stdlib/plum/net_http.plum; `make stdlib-embed`
+# builds it into the binary.
+
+seed net
+seed fs
+seed io
+seed json as jsonlib
+
+root MAX_HEADERS = 100
+root MAX_BODY = 16777216         # 16 MB
+root IDLE_SECONDS = 30.0         # a kept-alive connection waits this long for its next request
+
+# ------------------------------------------------------------------
+# Requests and responses
+# ------------------------------------------------------------------
+
+tree Request {
+    method: str
+    path: str
+    query: map[str, str] = {:}
+    params: map[str, str] = {:}     # from the route: /users/:id gives params["id"]
+    headers: map[str, str] = {:}    # names in small letters
+    body: str = ""
+    remote: str = ""                # the client, as "host:port"
+
+    branch header(name: str) -> str? => self.headers.get(name.lower())
+    branch json() -> Json => jsonlib.parse(self.body)
+    branch to_str() -> str => "{self.method} {self.path}"
+}
+
+tree Response {
+    status: int = 200
+    body: str = ""
+    headers: map[str, str] = {:}
+
+    branch header(name: str) -> str? => self.headers.get(name.lower())
+    branch json() -> Json => jsonlib.parse(self.body)
+    branch with_header(name: str, value: str) -> Response {
+        self.headers[name.lower()] = value
+        return self
+    }
+    branch ok() -> bool => self.status >= 200 and self.status < 300
+    branch to_str() -> str => "{self.status} {reason(self.status)}"
+}
+
+branch reason(status: int) -> str => match status {
+    200 => "OK"
+    201 => "Created"
+    204 => "No Content"
+    301 => "Moved Permanently"
+    302 => "Found"
+    304 => "Not Modified"
+    400 => "Bad Request"
+    401 => "Unauthorized"
+    403 => "Forbidden"
+    404 => "Not Found"
+    405 => "Method Not Allowed"
+    413 => "Payload Too Large"
+    500 => "Internal Server Error"
+    501 => "Not Implemented"
+    503 => "Service Unavailable"
+    else => "Status"
+}
+
+branch text(body: str, status: int = 200) -> Response {
+    return Response(status, body, {"content-type": "text/plain; charset=utf-8"})
+}
+
+branch html(body: str, status: int = 200) -> Response {
+    return Response(status, body, {"content-type": "text/html; charset=utf-8"})
+}
+
+branch json(value: Json, status: int = 200) -> Response {
+    return Response(status, jsonlib.stringify(value), {"content-type": "application/json"})
+}
+
+branch redirect(to: str, status: int = 302) -> Response {
+    return Response(status, "", {"location": to})
+}
+
+branch status(code: int, message: str = "") -> Response {
+    return text(if message == "" { reason(code) } else { message }, status: code)
+}
+
+# ------------------------------------------------------------------
+# Reading and writing the protocol
+# ------------------------------------------------------------------
+
+# "a=1&b=two" as a map, with %XX and + decoded.
+branch parse_query(text: str) -> map[str, str] {
+    plant out: map[str, str] = {:}
+    for pair in text.split("&") {
+        if pair == "" {
+            continue
+        }
+        plant at = pair.find("=")
+        if plant i = at {
+            out[pair[0..i].url_decode()] = pair[i + 1..len(pair)].url_decode()
+        } else {
+            out[pair.url_decode()] = ""
+        }
+    }
+    return out
+}
+
+# Header lines up to the empty one; none if the connection ends first.
+branch read_headers(conn: Connection, timeout: float) -> map[str, str]? {
+    plant headers: map[str, str] = {:}
+    plant count = 0
+    while good {
+        plant line = conn.read_line(timeout: timeout)
+        if plant l = line {
+            if l == "" {
+                return headers
+            }
+            count += 1
+            if count > MAX_HEADERS {
+                throw ValueError("more than {MAX_HEADERS} headers")
+            }
+            if plant colon = l.find(":") {
+                headers[l[0..colon].trim().lower()] = l[colon + 1..len(l)].trim()
+            }
+        } else {
+            return none
+        }
+    }
+}
+
+# Exactly `size` bytes of body.
+branch read_exactly(conn: Connection, size: int, timeout: float) -> str {
+    if size > MAX_BODY {
+        throw ValueError("a body of {size} bytes is over the limit")
+    }
+    plant parts: list[str] = []
+    plant got = 0
+    while got < size {
+        plant piece = conn.read(max: size - got, timeout: timeout)
+        if plant p = piece {
+            parts.push(p)
+            got += p.byte_len()
+        } else {
+            throw NetError("the connection closed in the middle of a body")
+        }
+    }
+    return parts.join()
+}
+
+# A body sent in chunks: each a hex size line, the bytes, and a line break.
+branch read_chunked(conn: Connection, timeout: float) -> str {
+    plant parts: list[str] = []
+    plant total = 0
+    while good {
+        plant size_line = conn.read_line(timeout: timeout) ?? ""
+        plant hex = size_line.split(";")[0].trim()
+        plant size = 0
+        for ch in hex.lower().chars() {
+            plant digit = "0123456789abcdef".find(ch)
+            if plant d = digit {
+                size = size * 16 + d
+            } else {
+                throw ValueError("a bad chunk size '{hex}'")
+            }
+        }
+        if size == 0 {
+            read_headers(conn, timeout)        # trailers, if any
+            return parts.join()
+        }
+        total += size
+        if total > MAX_BODY {
+            throw ValueError("a chunked body over the limit")
+        }
+        parts.push(read_exactly(conn, size, timeout))
+        conn.read_line(timeout: timeout)      # the line break after the chunk
+    }
+}
+
+branch read_body(conn: Connection, headers: map[str, str], timeout: float, to_end: bool) -> str {
+    if (headers.get("transfer-encoding") ?? "").lower().contains("chunked") {
+        return read_chunked(conn, timeout)
+    }
+    if plant length = headers.get("content-length") {
+        return read_exactly(conn, int(length.trim()), timeout)
+    }
+    if not to_end {
+        return ""
+    }
+    # a response without a length runs to the end of the connection
+    plant parts: list[str] = []
+    plant piece = conn.read(timeout: timeout)
+    while piece != none {
+        parts.push(piece ?? "")
+        piece = conn.read(timeout: timeout)
+    }
+    return parts.join()
+}
+
+branch write_message(conn: Connection, first_line: str, headers: map[str, str], body: str) {
+    plant lines = [first_line]
+    for name, value in headers {
+        if name != "content-length" {
+            lines.push("{name}: {value}")
+        }
+    }
+    lines.push("content-length: {body.byte_len()}")
+    conn.write(lines.join("\r\n") + "\r\n\r\n" + body)
+}
+
+# ------------------------------------------------------------------
+# The server
+# ------------------------------------------------------------------
+
+tree Route {
+    method: str
+    parts: list[str]
+    handler: (Request) -> Response
+}
+
+# The pattern /users/:id against /users/7: the params, or none.
+branch match_route(parts: list[str], path: str) -> map[str, str]? {
+    plant given = path.split("/")
+    if len(given) != len(parts) {
+        return none
+    }
+    plant params: map[str, str] = {:}
+    for i in 0..len(parts) {
+        plant want = parts[i]
+        if want.starts_with(":") {
+            params[want[1..len(want)]] = given[i].url_decode()
+        } else if want != given[i] {
+            return none
+        }
+    }
+    return params
+}
+
+branch content_type(path: str) -> str {
+    plant dot = path.split(".")
+    plant ext = dot[len(dot) - 1].lower()
+    return match ext {
+        "html", "htm" => "text/html; charset=utf-8"
+        "css" => "text/css; charset=utf-8"
+        "js" => "text/javascript; charset=utf-8"
+        "json" => "application/json"
+        "txt" => "text/plain; charset=utf-8"
+        "svg" => "image/svg+xml"
+        "png" => "image/png"
+        "jpg", "jpeg" => "image/jpeg"
+        "gif" => "image/gif"
+        "ico" => "image/x-icon"
+        "wasm" => "application/wasm"
+        else => "application/octet-stream"
+    }
+}
+
+tree Server {
+    routes: list[Route] = []
+    middleware: list[(Request, (Request) -> Response) -> Response] = []
+    static_prefixes: list[str] = []
+    static_dirs: list[str] = []
+    log_errors: bool = good
+    listener: Listener? = none
+
+    branch route(method: str, pattern: str, handler: (Request) -> Response) {
+        self.routes.push(Route(method.upper(), pattern.split("/"), handler))
+    }
+    branch get(pattern: str, handler: (Request) -> Response) {
+        self.route("GET", pattern, handler)
+    }
+    branch post(pattern: str, handler: (Request) -> Response) {
+        self.route("POST", pattern, handler)
+    }
+    branch put(pattern: str, handler: (Request) -> Response) {
+        self.route("PUT", pattern, handler)
+    }
+    branch patch(pattern: str, handler: (Request) -> Response) {
+        self.route("PATCH", pattern, handler)
+    }
+    branch delete(pattern: str, handler: (Request) -> Response) {
+        self.route("DELETE", pattern, handler)
+    }
+
+    # use(m): m(req, next) runs around every request; call next(req) to go on.
+    branch use(m: (Request, (Request) -> Response) -> Response) {
+        self.middleware.push(m)
+    }
+
+    # static("/files", "public"): GET /files/a.css serves public/a.css.
+    branch static(prefix: str, dir: str) {
+        self.static_prefixes.push(prefix)
+        self.static_dirs.push(dir)
+    }
+
+    # The response to a request: middleware, then the routes.
+    branch handle(req: Request) -> Response {
+        plant next: (Request) -> Response = (r) => self.dispatch(r)
+        for i in 0..len(self.middleware) {
+            plant m = self.middleware[len(self.middleware) - 1 - i]
+            plant inner = next
+            next = (r) => m(r, inner)
+        }
+        try {
+            return next(req)
+        } catch e {
+            if self.log_errors {
+                io_log("http: {req}: {type_of(e)}: {e.message}")
+            }
+            return status(500)
+        }
+    }
+
+    branch dispatch(req: Request) -> Response {
+        plant allowed = bad
+        for r in self.routes {
+            if plant params = match_route(r.parts, req.path) {
+                if r.method == req.method or (r.method == "GET" and req.method == "HEAD") {
+                    req.params = params
+                    return r.handler(req)
+                }
+                allowed = good
+            }
+        }
+        if req.method == "GET" or req.method == "HEAD" {
+            for i in 0..len(self.static_prefixes) {
+                plant prefix = self.static_prefixes[i]
+                if req.path.starts_with(prefix) {
+                    return self.serve_file(self.static_dirs[i], req.path[len(prefix)..len(req.path)])
+                }
+            }
+        }
+        return status(if allowed { 405 } else { 404 })
+    }
+
+    branch serve_file(dir: str, rest: str) -> Response {
+        plant name = rest.url_decode()
+        if name.contains("..") or name.contains("\\") {
+            return status(404)                 # nothing outside the directory
+        }
+        if name == "" or name.ends_with("/") {
+            name += "index.html"
+        }
+        plant path = dir + "/" + name.trim_start()
+        if not fs.exists(path) or fs.is_dir(path) {
+            return status(404)
+        }
+        return Response(200, fs.read(path), {"content-type": content_type(path)})
+    }
+
+    # Serve one connection: requests one after another while it's kept alive.
+    branch serve(conn: Connection) {
+        try {
+            while good {
+                plant line = conn.read_line(timeout: IDLE_SECONDS)
+                if line == none or line == "" {
+                    break
+                }
+                plant words = (line ?? "").split(" ")
+                if len(words) != 3 or not words[2].starts_with("HTTP/1.") {
+                    write_message(conn, "HTTP/1.1 400 Bad Request", {"connection": "close"}, "")
+                    break
+                }
+                plant headers = read_headers(conn, IDLE_SECONDS) ?? {:}
+                plant target = words[1]
+                plant path = target
+                plant query: map[str, str] = {:}
+                if plant q = target.find("?") {
+                    path = target[0..q]
+                    query = parse_query(target[q + 1..len(target)])
+                }
+                plant req = Request(words[0].upper(), path, query, {:}, headers, "", conn.remote())
+                req.body = read_body(conn, headers, IDLE_SECONDS, bad)
+                plant res = self.handle(req)
+                plant keep = words[2] == "HTTP/1.1" and (headers.get("connection") ?? "").lower() != "close"
+                plant out = res.headers
+                out["connection"] = if keep { "keep-alive" } else { "close" }
+                if not ("server" in out) {
+                    out["server"] = "plum"
+                }
+                write_message(conn, "HTTP/1.1 {res.status} {reason(res.status)}", out,
+                              if req.method == "HEAD" { "" } else { res.body })
+                if not keep {
+                    break
+                }
+            }
+        } catch e {
+            # a client that went away, sent nonsense or took too long: done with it
+        }
+        conn.close()
+    }
+
+    # Start serving in the background; the port (0 picks a free one).
+    branch start(port: int = 8080, host: str = "0.0.0.0") -> int {
+        plant l = net.listen(port, host: host)
+        self.listener = l
+        spawn (() => {
+            try {
+                while good {
+                    plant conn = l.accept()
+                    spawn ((c: Connection) => self.serve(c))(conn)
+                }
+            } catch e {
+                # stop() closed the listener
+            }
+        })()
+        return l.port()
+    }
+
+    # Serve until the program ends.
+    branch listen(port: int = 8080, host: str = "0.0.0.0") {
+        plant l = net.listen(port, host: host)
+        self.listener = l
+        io_log("http: listening on {host}:{l.port()}")
+        while good {
+            plant conn = l.accept()
+            spawn ((c: Connection) => self.serve(c))(conn)
+        }
+    }
+
+    branch stop() {
+        if plant l = self.listener {
+            l.close()
+        }
+    }
+}
+
+branch server() -> Server => Server()
+
+branch io_log(line: str) {
+    io.write_err(line + "\n")
+}
+
+# ------------------------------------------------------------------
+# The client
+# ------------------------------------------------------------------
+
+tree Url {
+    host: str
+    port: int
+    path: str
+}
+
+branch parse_url(url: str) -> Url {
+    plant rest = url
+    if rest.starts_with("https://") {
+        throw ValueError("https isn't supported yet (it needs TLS); use http://")
+    }
+    if rest.starts_with("http://") {
+        rest = rest[7..len(rest)]
+    } else if rest.contains("://") {
+        throw ValueError("only http:// URLs, not '{url}'")
+    }
+    plant path = "/"
+    if plant slash = rest.find("/") {
+        path = rest[slash..len(rest)]
+        rest = rest[0..slash]
+    }
+    plant host = rest
+    plant port = 80
+    if plant colon = rest.find(":") {
+        host = rest[0..colon]
+        port = int(rest[colon + 1..len(rest)])
+    }
+    if host == "" {
+        throw ValueError("no host in '{url}'")
+    }
+    return Url(host, port, path)
+}
+
+# A request to a server: its response (any status, 404 included).
+branch request(method: str, url: str, body: str = "", headers: map[str, str] = {:},
+               timeout: float = 30.0) -> Response {
+    plant u = parse_url(url)
+    plant conn = net.connect(u.host, u.port, timeout: timeout)
+    plant out: map[str, str] = {"host": if u.port == 80 { u.host } else { "{u.host}:{u.port}" },
+                                "user-agent": "plum", "accept": "*/*", "connection": "close"}
+    for name, value in headers {
+        out[name.lower()] = value
+    }
+    write_message(conn, "{method.upper()} {u.path} HTTP/1.1", out, body)
+    plant status_line = conn.read_line(timeout: timeout) ?? ""
+    plant words = status_line.split(" ")
+    if len(words) < 2 or not words[0].starts_with("HTTP/") {
+        conn.close()
+        throw NetError("{url}: not an HTTP response")
+    }
+    plant code = int(words[1])
+    plant got = read_headers(conn, timeout) ?? {:}
+    plant text = if method.upper() == "HEAD" or code == 204 or code == 304 { "" }
+                 else { read_body(conn, got, timeout, good) }
+    conn.close()
+    return Response(code, text, got)
+}
+
+branch get(url: str, headers: map[str, str] = {:}, timeout: float = 30.0) -> Response {
+    return request("GET", url, "", headers, timeout)
+}
+
+branch post(url: str, body: str, content_type: str = "text/plain; charset=utf-8",
+            headers: map[str, str] = {:}, timeout: float = 30.0) -> Response {
+    plant all = headers
+    all["content-type"] = content_type
+    return request("POST", url, body, all, timeout)
+}
+
+branch post_json(url: str, value: Json, headers: map[str, str] = {:},
+                 timeout: float = 30.0) -> Response {
+    return post(url, jsonlib.stringify(value), "application/json", headers, timeout)
+}

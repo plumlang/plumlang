@@ -1,0 +1,13 @@
+# The server for bench/net/http_load.py: a text route and a JSON route.
+seed net.http
+seed os
+
+plant app = http.server()
+app.get("/hello/:name", (req) => http.text("Hello, {req.params["name"]}!"))
+app.get("/api/item/:id", (req) => http.json({"id": int(req.params["id"]), "name": "item", "tags": ["a", "b"]}))
+plant port = 8089
+plant args = os.args()
+if len(args) > 0 {
+    port = int(args[0])
+}
+app.listen(port, host: "127.0.0.1")
