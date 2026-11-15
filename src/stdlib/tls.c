@@ -33,9 +33,12 @@
 #include <string.h>
 
 #if defined(_WIN32)
-#include <wincrypt.h>
-#include <windows.h>
+/* in this order: winsock2.h before windows.h, wincrypt.h after it */
 #include <winsock2.h>
+
+#include <windows.h>
+
+#include <wincrypt.h>
 typedef SOCKET tls_sock;
 #define SEND_FLAGS 0
 static int sock_error(void) {
