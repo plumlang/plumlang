@@ -13,6 +13,7 @@ PlumString *plum_string_alloc(size_t len) {
     PlumString *s = plum_alloc(plum_add_size(sizeof(PlumString), plum_add_size(len, 1)));
     s->obj.refcount = 1;
     s->obj.type = PLUM_OBJ_STRING;
+    plum_alloc_count(PLUM_MADE_STRING);
     s->len = len;
     s->chars = (char *)(s + 1);
     s->chars[len] = '\0';
@@ -57,6 +58,7 @@ PlumList *plum_list_new(size_t cap) {
     PlumList *list = plum_alloc_zeroed(1, sizeof *list);
     list->obj.refcount = 1;
     list->obj.type = PLUM_OBJ_LIST;
+    plum_alloc_count(PLUM_MADE_LIST);
     if (cap > 0) {
         list->items = plum_alloc_zeroed(cap, sizeof(PlumValue));
         list->cap = cap;
@@ -112,6 +114,7 @@ PlumObject *plum_object_new(PlumTreeInfo *tree) {
     PlumObject *o = plum_alloc(plum_add_size(sizeof *o, plum_mul_size(n, sizeof(PlumValue))));
     o->obj.refcount = 1;
     o->obj.type = PLUM_OBJ_OBJECT;
+    plum_alloc_count(tree->kind != NULL ? PLUM_MADE_KIND : PLUM_MADE_OBJECT);
     o->tree = tree;
     o->weak = NULL;
     tree->obj.refcount++;
@@ -139,6 +142,7 @@ PlumWeak *plum_weak_of(PlumObject *o) {
     PlumWeak *w = plum_alloc_zeroed(1, sizeof *w);
     w->obj.refcount = 1;
     w->obj.type = PLUM_OBJ_WEAK;
+    plum_alloc_count(PLUM_MADE_WEAK);
     w->target = o;
     o->weak = w;
     return w;
@@ -157,6 +161,7 @@ PlumCell *plum_cell_new(PlumValue v) {
     PlumCell *cell = plum_alloc(sizeof *cell);
     cell->obj.refcount = 1;
     cell->obj.type = PLUM_OBJ_CELL;
+    plum_alloc_count(PLUM_MADE_CELL);
     cell->value = v;
     return cell;
 }
@@ -165,6 +170,7 @@ PlumClosure *plum_closure_new(PlumFunction *fn) {
     PlumClosure *c = plum_alloc_zeroed(1, sizeof *c);
     c->obj.refcount = 1;
     c->obj.type = PLUM_OBJ_CLOSURE;
+    plum_alloc_count(PLUM_MADE_CLOSURE);
     c->fn = fn;
     fn->obj.refcount++;
     c->count = fn->capture_count;
@@ -338,7 +344,35 @@ void plum_release(PlumValue v) {
     }
 }
 
-bool plum_values_equal(PlumValue a, PlumValue b) {
+/* Pairs of values still to compare, for plum_values_equal. */
+typedef struct Pairs {
+    PlumValue *items; /* a, b, a, b, ... */
+    size_t len;       /* values, two per pair */
+    size_t cap;
+    PlumValue local[32];
+} Pairs;
+
+static void pairs_push(Pairs *p, PlumValue a, PlumValue b) {
+    if (p->len + 2 > p->cap) {
+        size_t cap = plum_mul_size(p->cap, 2);
+        PlumValue *items = plum_alloc_zeroed(cap, sizeof(PlumValue));
+        memcpy(items, p->items, p->len * sizeof(PlumValue));
+        if (p->items != p->local) {
+            plum_free(p->items);
+        }
+        p->items = items;
+        p->cap = cap;
+    }
+    p->items[p->len++] = a;
+    p->items[p->len++] = b;
+}
+
+/*
+ * Do a and b look the same at the top? What's inside lists, maps and kind
+ * values goes on `todo` to compare after, so deeply nested values need no
+ * deep C recursion.
+ */
+static bool equal_here(PlumValue a, PlumValue b, Pairs *todo) {
     if (a.type == PLUM_VAL_INT && b.type == PLUM_VAL_FLOAT) {
         return (double)a.as.i == b.as.f;
     }
@@ -371,14 +405,25 @@ bool plum_values_equal(PlumValue a, PlumValue b) {
                 return false;
             }
             for (size_t i = 0; i < x->len; i++) {
-                if (!plum_values_equal(x->items[i], y->items[i])) {
-                    return false;
-                }
+                pairs_push(todo, x->items[i], y->items[i]);
             }
             return true;
         }
         if (a.as.obj->type == PLUM_OBJ_MAP && b.as.obj->type == PLUM_OBJ_MAP) {
-            return plum_tables_equal(plum_as_table(a), plum_as_table(b));
+            const PlumTable *x = plum_as_table(a), *y = plum_as_table(b);
+            if (x->count != y->count || x->is_set != y->is_set) {
+                return false;
+            }
+            int64_t pos = 0;
+            const PlumTableEntry *e;
+            while ((e = plum_table_next(x, &pos)) != NULL) {
+                const PlumValue *v = plum_table_find(y, e->key);
+                if (v == NULL) {
+                    return false;
+                }
+                pairs_push(todo, e->value, *v);
+            }
+            return true;
         }
         if (a.as.obj->type == PLUM_OBJ_OBJECT && b.as.obj->type == PLUM_OBJ_OBJECT) {
             /* kind values: the same case with equal contents; tree objects: identity */
@@ -387,15 +432,33 @@ bool plum_values_equal(PlumValue a, PlumValue b) {
                 return false;
             }
             for (int i = 0; i < x->tree->field_count; i++) {
-                if (!plum_values_equal(x->fields[i], y->fields[i])) {
-                    return false;
-                }
+                pairs_push(todo, x->fields[i], y->fields[i]);
             }
             return true;
         }
         return false;
     }
     return false;
+}
+
+bool plum_values_equal(PlumValue a, PlumValue b) {
+    if (a.type != PLUM_VAL_OBJ || a.as.obj->type == PLUM_OBJ_STRING) {
+        return equal_here(a, b, NULL); /* nothing inside to compare */
+    }
+    Pairs todo;
+    todo.items = todo.local;
+    todo.len = 0;
+    todo.cap = sizeof todo.local / sizeof todo.local[0];
+    bool same = equal_here(a, b, &todo);
+    while (same && todo.len > 0) {
+        PlumValue y = todo.items[--todo.len];
+        PlumValue x = todo.items[--todo.len];
+        same = equal_here(x, y, &todo);
+    }
+    if (todo.items != todo.local) {
+        plum_free(todo.items);
+    }
+    return same;
 }
 
 int plum_compare_values(PlumValue a, PlumValue b) {

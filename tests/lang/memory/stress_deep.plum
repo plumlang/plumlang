@@ -1,0 +1,64 @@
+# Deeply nested values: built, compared, printed and freed without deep C
+# recursion. Printing stops at a depth and writes "..." for what is deeper.
+kind Chain {
+    End
+    Link(value: int, next: Chain)
+}
+
+branch chain(n: int) -> Chain {
+    plant c = Chain.End
+    for i in 0..n {
+        c = Chain.Link(i, c)
+    }
+    return c
+}
+
+plant a = chain(200000)
+plant b = chain(200000)
+drop(a == b, a == chain(199999), a != b)
+
+# printing: the outside as written, then "..."
+plant text = str(chain(300))
+drop(text[0..40])
+drop("Chain.Link(44, Chain.Link(..., ...))" in text, len(text) < 5000)
+
+# a long chain of tree objects, and of lists inside maps inside kinds
+tree Node {
+    value: int
+    next: Node? = none
+}
+plant head = Node(0)
+for i in 1..200000 {
+    head = Node(i, head)
+}
+drop(head.value, head.next?.value)
+
+kind Doc {
+    Text(s: str)
+    Section(parts: map[str, list[Doc]])
+}
+plant doc = Doc.Text("leaf")
+for i in 0..50000 {
+    doc = Doc.Section({"part": [doc]})
+}
+plant twin = Doc.Text("leaf")
+for i in 0..50000 {
+    twin = Doc.Section({"part": [twin]})
+}
+drop(doc == twin, str(doc).starts_with("Doc.Section(\{\"part\": [Doc.Section("))
+
+# a to_str() that prints a deep value counts toward the same depth
+tree Wrapper {
+    inner: Chain
+    branch to_str() -> str => "wrapped {self.inner}"
+}
+plant wrapped = str(Wrapper(chain(1000)))
+drop(wrapped[0..30], "Chain.Link(745, Chain.Link(..., ...))" in wrapped)
+
+# freeing all of it: one object at a time, no recursion
+a = Chain.End
+b = Chain.End
+head = Node(-1)
+doc = Doc.Text("")
+twin = Doc.Text("")
+drop("freed")

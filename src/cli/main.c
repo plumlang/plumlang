@@ -50,6 +50,7 @@ static void print_help(FILE *out) {
           "Usage:\n"
           "  plum run <file> [args...]   Run a Plumlang program\n"
           "    --check-leaks             ...and report objects left alive in cycles\n"
+          "    --mem-stats               ...and print how much memory it used\n"
           "  plum <file.plum> [args...]  Same as `plum run`\n"
           "  plum check <file>           Report every error without running\n"
           "  plum version                Show the version and build\n"
@@ -84,15 +85,17 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
                      const PlumRunOptions *options);
 
 static int cmd_run(int argc, char **argv) {
-    PlumRunOptions options = {0, NULL, false};
+    PlumRunOptions options = {0, NULL, false, false};
     /* Options for plum itself come before the file. */
     while (argc > 0 && argv[0][0] == '-' && argv[0][1] == '-') {
         if (strcmp(argv[0], "--check-leaks") == 0) {
             options.check_leaks = true;
+        } else if (strcmp(argv[0], "--mem-stats") == 0) {
+            options.mem_stats = true;
         } else {
             fprintf(stderr,
                     "plum: error: unknown option '%s'\n"
-                    "  hint: plum run [--check-leaks] hello.plum [args...]\n",
+                    "  hint: plum run [--check-leaks] [--mem-stats] hello.plum [args...]\n",
                     argv[0]);
             return PLUM_EXIT_USAGE;
         }

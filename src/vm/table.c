@@ -38,6 +38,7 @@ PlumTable *plum_table_new(bool is_set, const uint64_t seed[2]) {
     PlumTable *t = plum_alloc_zeroed(1, sizeof *t);
     t->obj.refcount = 1;
     t->obj.type = PLUM_OBJ_MAP;
+    plum_alloc_count(is_set ? PLUM_MADE_SET : PLUM_MADE_MAP);
     t->is_set = is_set;
     t->seed[0] = seed[0];
     t->seed[1] = seed[1];

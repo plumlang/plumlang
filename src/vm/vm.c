@@ -83,6 +83,7 @@ typedef struct VM {
     uint64_t rng[4];                /* math.random: xoshiro256** */
     PLUM_ARRAY(PlumWeak *) tracked; /* --check-leaks: a weak box for every tree object */
     PlumTextHook text_hook;         /* objects become text through their to_str() */
+    int text_depth;                 /* how deep the value being printed is (text_hook) */
     /* Tasks (spec 12): all run on this thread, one at a time. The VM's
      * stack, frames and handlers above are the running task's; the others
      * keep theirs in their PlumTask until they run again. */
@@ -1212,6 +1213,7 @@ static PlumTask *task_new(VM *vm) {
     PlumTask *t = plum_alloc_zeroed(1, sizeof *t);
     t->obj.refcount = 1; /* vm->tasks holds it */
     t->obj.type = PLUM_OBJ_TASK;
+    plum_alloc_count(PLUM_MADE_TASK);
     t->result = plum_none();
     t->error = plum_none();
     t->index = vm->tasks.len;
@@ -1447,6 +1449,7 @@ static bool c_new(ARGS) {
     PlumChannel *ch = plum_alloc_zeroed(1, sizeof *ch);
     ch->obj.refcount = 1;
     ch->obj.type = PLUM_OBJ_CHANNEL;
+    plum_alloc_count(PLUM_MADE_CHANNEL);
     ch->limit = limit;
     *result = plum_obj(&ch->obj);
     return true;
@@ -2897,8 +2900,70 @@ static size_t check_leaks(VM *vm) {
     return n;
 }
 
+/* Each kind of value made has a counter in PlumAllocStats. */
+typedef char plum_made_kinds_fit[PLUM_MADE_COUNT <= PLUM_ALLOC_COUNTERS ? 1 : -1];
+
+/* n with a comma every three digits: 1,234,567. */
+static const char *grouped(uint64_t n, char buf[32]) {
+    char digits[24];
+    int len = snprintf(digits, sizeof digits, "%llu", (unsigned long long)n);
+    int at = 0;
+    for (int i = 0; i < len; i++) {
+        if (i > 0 && (len - i) % 3 == 0) {
+            buf[at++] = ',';
+        }
+        buf[at++] = digits[i];
+    }
+    buf[at] = '\0';
+    return buf;
+}
+
+/* A number of bytes, and in KB or MB when it is that big. */
+static void print_bytes(FILE *err, const char *what, int64_t bytes) {
+    char buf[32];
+    uint64_t n = bytes > 0 ? (uint64_t)bytes : 0;
+    fprintf(err, "  %-20s %s bytes", what, grouped(n, buf));
+    if (n >= 1024 * 1024) {
+        fprintf(err, " (%.1f MB)", (double)n / (1024.0 * 1024.0));
+    } else if (n >= 1024) {
+        fprintf(err, " (%.1f KB)", (double)n / 1024.0);
+    }
+    fputc('\n', err);
+}
+
+/* plum run --mem-stats: what the run used, counted from its start to its end. */
+static void print_mem_stats(FILE *err, const PlumAllocStats *s) {
+    static const char *const kinds[PLUM_MADE_COUNT] = {
+        "strings",         "lists",       "maps",     "sets",
+        "tree objects",    "kind values", "closures", "captured variables",
+        "weak references", "tasks",       "channels",
+    };
+    char buf[32];
+    fprintf(err, "memory used by this run (--mem-stats):\n");
+    if (s->bytes_known) {
+        print_bytes(err, "peak in use", s->peak_bytes);
+        print_bytes(err, "allocated in all", (int64_t)s->bytes_allocated);
+        print_bytes(err, "still in use at exit", s->bytes_in_use);
+    } else {
+        fprintf(err, "  (this platform can't tell the size of a block, so only counts)\n");
+    }
+    fprintf(err, "  %-20s %s\n", "allocations", grouped(s->allocations, buf));
+    fprintf(err, "  %-20s %s\n", "resizes", grouped(s->resizes, buf));
+    fprintf(err, "  %-20s %s\n", "frees", grouped(s->frees, buf));
+    fprintf(err, "values made:\n");
+    for (int i = 0; i < PLUM_MADE_COUNT; i++) {
+        fprintf(err, "  %-20s %s\n", kinds[i], grouped(s->counts[i], buf));
+    }
+}
+
 int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
                 const PlumRunOptions *options, FILE *out, FILE *err) {
+    /* --mem-stats: the run's own counters, which the allocator counts into
+     * until the run is over (util/alloc.h). */
+    PlumAllocStats stats;
+    if (options->mem_stats) {
+        plum_alloc_set_stats(&stats);
+    }
     VM *vm = plum_alloc_zeroed(1, sizeof *vm);
     vm->source = source;
     vm->out = out;
@@ -2916,7 +2981,7 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     vm->to_str = program->to_str;
     vm->equals = program->equals;
     vm->compare = program->compare;
-    vm->text_hook = (PlumTextHook){object_text, vm};
+    vm->text_hook = (PlumTextHook){object_text, vm, &vm->text_depth};
     vm->thrown = plum_none();
     vm->trace_of = plum_none();
 
@@ -3007,5 +3072,10 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     }
     plum_free(vm->stack);
     plum_free(vm);
+    if (options->mem_stats) {
+        plum_alloc_set_stats(NULL);
+        fflush(out);
+        print_mem_stats(err, &stats);
+    }
     return code;
 }

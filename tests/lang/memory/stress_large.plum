@@ -1,0 +1,60 @@
+# Large collections: growing, copying on write, sorting, and freeing them.
+plant n = 300000
+
+plant xs: list[int] = []
+for i in 0..n {
+    xs.push((i * 7919) % n)
+}
+plant copy = xs                 # shared until one changes
+copy[0] = -1
+drop(len(xs), xs[0], copy[0])
+
+plant sorted = xs.sorted()
+drop(sorted[0], sorted[n - 1], sorted[n // 2])
+
+plant total = 0
+for x in xs {
+    total += x
+}
+drop(total == n * (n - 1) // 2)
+
+# a map and a set with many keys, and removing most of them
+plant squares: map[int, int] = {:}
+for i in 0..100000 {
+    squares[i] = i * i
+}
+for i in 0..90000 {
+    squares.remove(i)
+}
+drop(len(squares), squares[99999], squares.get(5))
+
+plant words = set(["w0"])
+for i in 0..50000 {
+    words.add("w{i % 1000}")
+}
+drop(len(words), "w999" in words)
+
+# many small lists, and one long string built from parts
+plant grid: list[list[int]] = []
+for r in 0..500 {
+    plant row: list[int] = []
+    for c in 0..200 {
+        row.push(r * c)
+    }
+    grid.push(row)
+}
+drop(len(grid), grid[499][199])
+
+plant parts: list[str] = []
+for i in 0..100000 {
+    parts.push("{i % 10}")
+}
+plant long = parts.join("")
+drop(len(long), long[0..12])
+
+xs = []
+copy = []
+sorted = []
+squares = {:}
+grid = []
+drop("freed")

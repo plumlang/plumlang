@@ -30,6 +30,9 @@ typedef struct PlumRunOptions {
     /* Report tree objects still alive in reference cycles when the program
      * ends (spec 11.3), then free them. */
     bool check_leaks;
+    /* Print to `err`, when the program ends, how much memory it used: the
+     * peak, the allocations, and the values it made by kind (spec 11.5). */
+    bool mem_stats;
 } PlumRunOptions;
 
 /*

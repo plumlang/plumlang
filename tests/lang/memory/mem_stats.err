@@ -1,0 +1,13 @@
+memory used by this run (--mem-stats):
+values made:
+  strings              27
+  lists                4
+  maps                 1
+  sets                 1
+  tree objects         3
+  kind values          2
+  closures             1
+  captured variables   1
+  weak references      0
+  tasks                2
+  channels             0

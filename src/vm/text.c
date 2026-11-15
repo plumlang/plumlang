@@ -11,6 +11,11 @@
 
 typedef PLUM_ARRAY(char) Buf;
 
+/* Values nested deeper than this print as "...": printing recurses (also
+ * through to_str()), and kinds and trees can nest as deep as a program
+ * likes. */
+#define TEXT_DEPTH 256
+
 static void put(Buf *b, const char *s, size_t n) {
     if (n == 0) {
         return; /* an empty buffer has no items to copy into (memcpy with NULL is undefined) */
@@ -167,8 +172,13 @@ static bool put_number(Buf *b, PlumValue v, const Spec *spec, char *error, size_
 }
 
 /* The plain text of a value; strings inside collections are quoted. */
-static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHook *hook) {
+static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHook *hook,
+                      int depth) {
     char tmp[PLUM_FLOAT_BUF + 160];
+    if (depth > TEXT_DEPTH) {
+        put(b, "...", 3);
+        return true;
+    }
     switch (v.type) {
     case PLUM_VAL_NONE:
         put(b, "none", 4);
@@ -227,12 +237,23 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
         return true;
     }
     case PLUM_OBJ_CELL:
-        return put_plain(b, plum_as_cell(v)->value, quote_strings, hook); /* never seen */
+        return put_plain(b, plum_as_cell(v)->value, quote_strings, hook, depth); /* never seen */
     case PLUM_OBJ_OBJECT: {
         /* to_str() (trait Show) if its tree has one, else the tree's name */
         PlumString *text = NULL;
-        if (hook != NULL && !hook->object_text(hook->ctx, v, &text)) {
-            return false;
+        if (hook != NULL) {
+            /* what to_str() prints is nested this deep */
+            int saved = hook->depth != NULL ? *hook->depth : 0;
+            if (hook->depth != NULL) {
+                *hook->depth = depth + 1;
+            }
+            bool ok = hook->object_text(hook->ctx, v, &text);
+            if (hook->depth != NULL) {
+                *hook->depth = saved;
+            }
+            if (!ok) {
+                return false;
+            }
         }
         if (text != NULL) {
             put(b, text->chars, text->len);
@@ -249,7 +270,7 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
                     if (i > 0) {
                         put(b, ", ", 2);
                     }
-                    if (!put_plain(b, o->fields[i], true, hook)) {
+                    if (!put_plain(b, o->fields[i], true, hook, depth + 1)) {
                         return false;
                     }
                 }
@@ -285,7 +306,7 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
             if (i > 0) {
                 put(b, ", ", 2);
             }
-            if (!put_plain(b, list->items[i], true, hook)) {
+            if (!put_plain(b, list->items[i], true, hook, depth + 1)) {
                 return false;
             }
         }
@@ -308,12 +329,12 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
                 put(b, ", ", 2);
             }
             first = false;
-            if (!put_plain(b, e->key, true, hook)) {
+            if (!put_plain(b, e->key, true, hook, depth + 1)) {
                 return false;
             }
             if (!t->is_set) {
                 put(b, ": ", 2);
-                if (!put_plain(b, e->value, true, hook)) {
+                if (!put_plain(b, e->value, true, hook, depth + 1)) {
                     return false;
                 }
             }
@@ -354,7 +375,8 @@ PlumString *plum_value_text_with(PlumValue v, const char *format, const PlumText
         if (plum_is_obj(v, PLUM_OBJ_STRING) && spec.precision >= 0) {
             PlumString *s = plum_as_string(v);
             put(&b, s->chars, utf8_prefix(s->chars, s->len, (size_t)spec.precision));
-        } else if (!put_plain(&b, v, false, hook)) {
+        } else if (!put_plain(&b, v, false, hook,
+                              hook != NULL && hook->depth != NULL ? *hook->depth : 0)) {
             plum_array_free(&b);
             if (error_size > 0) {
                 error[0] = '\0'; /* to_str() threw */
