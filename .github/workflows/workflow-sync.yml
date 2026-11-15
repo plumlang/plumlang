@@ -1,6 +1,6 @@
-# Checks that plum-webapp and plum-branding carry the same shared workflows
+# Checks that plum.elixpo and branding carry the same shared workflows
 # as this repository (tools/sync-workflows.sh). Fix drift with:
-#   sh tools/sync-workflows.sh ../plum-webapp ../plum-branding
+#   sh tools/sync-workflows.sh ../plum.elixpo ../branding
 name: Workflow sync
 
 on:
@@ -26,12 +26,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: plumlang/plum-webapp
-          path: siblings/plum-webapp
+          repository: plumlang/plum.elixpo
+          path: siblings/plum.elixpo
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: plumlang/plum-branding
-          path: siblings/plum-branding
+          repository: plumlang/branding
+          path: siblings/branding
           persist-credentials: false
-      - run: sh tools/sync-workflows.sh --check siblings/plum-webapp siblings/plum-branding
+      - run: sh tools/sync-workflows.sh --check siblings/plum.elixpo siblings/branding
