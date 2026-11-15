@@ -1,0 +1,78 @@
+# The server and client together: queries, JSON bodies, middleware, errors,
+# 405 and HEAD, static files, keep-alive, chunked responses, bad URLs.
+seed net
+seed net.http
+seed fs
+seed math
+
+plant app = http.server()
+app.log_errors = bad
+app.use((req, next) => {
+    plant res = next(req)
+    return res.with_header("x-handled-by", "plum")
+})
+app.get("/search", (req) => http.text("q={req.query.get("q") ?? "-"} page={req.query.get("page") ?? "1"}"))
+app.post("/echo", (req) => {
+    plant data = req.json()
+    return http.json({"name": data.get("name").str() ?? "?", "len": req.body.byte_len()}, status: 201)
+})
+app.get("/boom", (req) => {
+    throw ValueError("handler broke")
+})
+app.get("/users/:id/posts/:post", (req) => http.text("{req.params["id"]}/{req.params["post"]}"))
+
+plant dir = fs.temp_dir() + "/plum-http-{math.random_int(0, 1000000000)}"
+fs.make_dir(dir)
+fs.write(dir + "/index.html", "<h1>hi</h1>")
+fs.write(dir + "/app.css", "body \{\}")
+app.static("/files", dir)
+
+plant port = app.start(0, host: "127.0.0.1")
+plant base = "http://127.0.0.1:{port}"
+
+drop(http.get(base + "/search?q=plum%20lang&page=2").body)
+plant r = http.post_json(base + "/echo", {"name": "Ada", "x": [1, 2]})
+drop(r.status, r.json().get("name").str(), r.header("x-handled-by"), r.ok())
+drop(http.get(base + "/boom").status, http.get(base + "/users/7/posts/42").body)
+drop(http.request("DELETE", base + "/search").status)
+drop(http.request("HEAD", base + "/search").status)
+plant page = http.get(base + "/files/")
+drop(page.status, page.body, page.header("content-type"))
+drop(http.get(base + "/files/app.css").header("content-type"), http.get(base + "/files/../etc").status)
+
+# keep-alive: two requests on one connection
+plant c = net.connect("127.0.0.1", port)
+c.write("GET /search?q=a HTTP/1.1\r\nhost: x\r\n\r\nGET /search?q=b HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n")
+plant all = ""
+plant piece = c.read()
+while piece != none {
+    all += piece ?? ""
+    piece = c.read()
+}
+drop(all.count("HTTP/1.1 200 OK"), all.contains("q=a"), all.contains("q=b"))
+
+# a chunked response, from a server written by hand
+plant raw = net.listen(0, host: "127.0.0.1")
+spawn (() => {
+    plant conn = raw.accept()
+    while (conn.read_line() ?? "") != "" {}
+    conn.write("HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n7\r\n, world\r\n0\r\n\r\n")
+    conn.close()
+})()
+drop(http.get("http://127.0.0.1:{raw.port()}/").body)
+
+try {
+    http.get("https://example.com")
+} catch e: ValueError {
+    drop(e.message)
+}
+try {
+    http.get("http://127.0.0.1:1/")
+} catch e: NetError {
+    drop("refused")
+}
+for name in fs.list(dir) {
+    fs.remove(dir + "/" + name)
+}
+fs.remove(dir)
+app.stop()

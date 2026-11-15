@@ -1,0 +1,9 @@
+# Bad URLs are ValueError before any network use.
+seed net.http
+for url in ["ftp://x/y", "http://", "https://example.com"] {
+    try {
+        http.get(url)
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}

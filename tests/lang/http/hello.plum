@@ -1,0 +1,10 @@
+# The spec's example: routing with a :name parameter, and the client.
+seed net.http
+
+plant app = http.server()
+app.get("/hello/:name", (req) => http.text("Hello, {req.params["name"]}!"))
+plant port = app.start(0, host: "127.0.0.1")
+plant r = http.get("http://127.0.0.1:{port}/hello/Ada")
+drop(r.status, r.body, r.header("content-type"))
+drop(http.get("http://127.0.0.1:{port}/nope").status)
+app.stop()
