@@ -20,6 +20,11 @@
 void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
                     PlumDiagList *diags);
 
+/* A REPL entry: the same, except that an entry which is one expression
+ * may leave its value unused, since the REPL prints it. */
+void plum_typecheck_entry(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
+                          PlumDiagList *diags);
+
 /* The method an operator calls on a tree's objects (spec 8.5): "plus" for
  * +, "minus" for -, "times" for *, "divided_by" for /, "compare" for
  * < <= > >=; else NULL. */

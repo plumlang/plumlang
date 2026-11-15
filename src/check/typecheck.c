@@ -18,6 +18,7 @@ typedef struct Checker {
     PlumTy *result;           /* the current function's result type; NULL at top level */
     PlumSymbol *self_tree;    /* the tree whose method is being checked */
     const PlumExpr *range_ok; /* the one range expression allowed right now */
+    const PlumExpr *echoed;   /* the REPL prints this statement's value: it is used */
 } Checker;
 
 #define TYBUF 96
@@ -1982,6 +1983,9 @@ static PlumTy *check_expr(Checker *c, PlumExpr *e, PlumTy *expected) {
 
 /* Spec 5.7: a value computed and thrown away is a mistake. */
 static void check_unused(Checker *c, const PlumExpr *e) {
+    if (e == c->echoed) {
+        return;
+    }
     switch (e->kind) {
     case PLUM_EXPR_CALL:
     case PLUM_EXPR_SPAWN:
@@ -2663,14 +2667,15 @@ static void check_tree_decl(Checker *c, PlumStmt *s) {
     }
 }
 
-void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
-                    PlumDiagList *diags) {
+static void typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
+                      PlumDiagList *diags, const PlumExpr *echoed) {
     Checker c;
     memset(&c, 0, sizeof c);
     plum_types_init(&c.t, arena);
     c.arena = arena;
     c.names = names;
     c.diags = diags;
+    c.echoed = echoed;
 
     /* 1. Signatures: every module function's type is known up front. */
     for (size_t i = 0; i < program->count; i++) {
@@ -2724,4 +2729,18 @@ void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *
             }
         }
     }
+}
+
+void plum_typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
+                    PlumDiagList *diags) {
+    typecheck(program, arena, names, diags, NULL);
+}
+
+void plum_typecheck_entry(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
+                          PlumDiagList *diags) {
+    const PlumExpr *echoed = NULL;
+    if (program->count == 1 && program->stmts[0]->kind == PLUM_STMT_EXPR) {
+        echoed = program->stmts[0]->as.expr;
+    }
+    typecheck(program, arena, names, diags, echoed);
 }
