@@ -28,6 +28,7 @@ typedef struct Lexer {
     PlumInterner *names;
     PlumDiagList *diags;
     PlumTokenList *out;
+    PlumCommentList *comments; /* NULL: comments are dropped */
 
     PLUM_ARRAY(Open) open;
     PLUM_ARRAY(char) buf; /* decoded string text being built */
@@ -989,8 +990,27 @@ static void unexpected(Lexer *lx) {
 /* The main loop                                                       */
 /* ------------------------------------------------------------------ */
 
+/* A comment, kept for plum fmt. */
+static void keep_comment(Lexer *lx, PlumSpan start) {
+    PlumComment c;
+    c.span = span_from(lx, start);
+    size_t i = start.offset;
+    while (i > 0 &&
+           (lx->text[i - 1] == ' ' || lx->text[i - 1] == '\t' || lx->text[i - 1] == '\r')) {
+        i--;
+    }
+    c.own_line =
+        i == 0 || lx->text[i - 1] == '\n' || (i == 3 && memcmp(lx->text, "\xEF\xBB\xBF", 3) == 0);
+    plum_array_push(lx->comments, c);
+}
+
 void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, PlumDiagList *diags,
               PlumTokenList *out) {
+    plum_lex_comments(source, arena, names, diags, out, NULL);
+}
+
+void plum_lex_comments(const PlumSource *source, PlumArena *arena, PlumInterner *names,
+                       PlumDiagList *diags, PlumTokenList *out, PlumCommentList *comments) {
     Lexer lx;
     memset(&lx, 0, sizeof lx);
     lx.source = source;
@@ -1002,6 +1022,7 @@ void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, P
     lx.names = names;
     lx.diags = diags;
     lx.out = out;
+    lx.comments = comments;
 
     if (lx.length >= 3 && memcmp(lx.text, "\xEF\xBB\xBF", 3) == 0) {
         lx.pos = 3; /* byte order mark */
@@ -1016,8 +1037,12 @@ void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, P
         } else if (c == '\n') {
             newline(&lx);
         } else if (c == '#') {
+            PlumSpan start = here(&lx);
             while (!at_end(&lx) && peek(&lx) != '\n') {
                 advance(&lx);
+            }
+            if (comments != NULL) {
+                keep_comment(&lx, start);
             }
         } else if (is_digit(c)) {
             lex_number(&lx);

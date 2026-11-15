@@ -257,6 +257,7 @@ typedef struct PlumBranch {
     PlumExpr *arrow;   /* `=> expr` bodies; body is NULL then */
     PlumSymbol *self;  /* a method's `self`, after resolution */
     struct PlumTy *ty; /* a method's type, after checking */
+    PlumSpan span;     /* from `branch` to the end of the body */
 } PlumBranch;
 
 struct PlumStmt {

@@ -77,6 +77,7 @@ On Windows with MSVC, use CMake: `cmake -B build && cmake --build build --config
 ```bash
 plum run program.plum [args...]     # run a program (or a directory with a plum.toml)
 plum check program.plum             # report every error without running
+plum fmt .                          # format every .plum file here (--check: only list them)
 plum stdlib [module]                # list the standard library
 plum run --check-leaks program.plum # report objects left alive in reference cycles
 plum run --mem-stats program.plum   # report how much memory the program used

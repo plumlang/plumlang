@@ -1,0 +1,45 @@
+# command: fmt --stdout
+# plum fmt: indentation, braces, spaces and blank lines.
+seed math
+root   LIMIT=10
+plant total=1+2*3-4//2%3
+plant mask = 1<<4|2&3^~1
+plant range = 0..LIMIT
+plant ok = not good and total>=2 or total!=3
+plant name: str? = none
+plant shown = name?.upper() ?? "-"
+plant grid: map[str, list[int]] = {:}
+total+=1
+if total>3 { drop("big") } else if total<0 { drop("negative") }
+else { drop("small") }
+if plant n = name { drop(n) }
+
+
+
+for i,x in [1,2,3].enumerate() {
+
+    drop(i,x)
+
+
+    drop(-x, - -x)
+
+}
+while total > 0 { total -= 1 }
+try { drop(math.sqrt(-1.0)) } catch e: ValueError { drop(e.message) } finally { drop("done") }
+branch area(w:float,h:float=1.0)->float=>w*h
+branch twice(f: (int) -> int, x: int) -> int { return f(f(x)) }
+branch nothing() { }
+drop(twice((n) => n * 2, 3), area(2.0, h: 3.0))
+tree Point : Show {
+    x: int
+    y: int = 0
+    branch to_str() -> str => "({self.x}, {self.y})"
+    branch norm() -> int { return self.x * self.x + self.y * self.y }
+}
+trait Show { branch to_str() -> str }
+kind Light { Red, Yellow, Green }
+plant light = Light.Red
+drop(match light {
+    Red => "stop"
+    Yellow, Green => { "go" }
+})

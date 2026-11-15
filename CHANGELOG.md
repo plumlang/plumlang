@@ -16,6 +16,7 @@ Format for a new entry:
 
 ## Unreleased
 
+- **CLI**: `plum fmt` formats source files in one canonical layout (spec 14.1), in place or `--stdout`, files or whole directories; `--check` lists the files that would change, for CI; `plum fmt -` formats standard input. Comments are kept, literals keep their spelling, and a file with syntax errors is left alone. `net.http` is formatted with it.
 - **Spec**: `docs/spec.md`, the language specification v0.1 draft.
 - **CLI**: the `plum` command with `help`, `version` and `run`; `run` reads the source file until the compiler lands.
 - **Build**: Makefile (release, debug, sanitize) and CMake (MSVC, IDEs); warnings are errors.

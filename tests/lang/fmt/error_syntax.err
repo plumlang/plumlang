@@ -1,0 +1,8 @@
+tests/lang/fmt/error_syntax.plum:3:13: error[E0130]: '(' is never closed
+3 | plant   x = (1 +
+  |             ^
+tests/lang/fmt/error_syntax.plum:4:8: error[E0201]: expected ')', found end of file
+4 | drop(x)
+  |        ^
+2 errors
+plum: tests/lang/fmt/error_syntax.plum has syntax errors; it was not formatted

@@ -990,6 +990,7 @@ static void parse_params(PlumParser *p, PlumParam **out, size_t *count) {
 static PlumBranch parse_branch_decl(PlumParser *p, bool body_optional) {
     PlumBranch b;
     memset(&b, 0, sizeof b);
+    PlumSpan start = previous(p)->span; /* `branch` */
     b.name = expect_name(p, "the function's name");
     parse_params(p, &b.params, &b.param_count);
     if (match(p, PLUM_TOK_ARROW)) {
@@ -1002,6 +1003,7 @@ static PlumBranch parse_branch_decl(PlumParser *p, bool body_optional) {
     } else if (!body_optional) {
         error_expected(p, "'{' or '=>' and the function's body");
     }
+    b.span = join(start, previous(p)->span);
     return b;
 }
 

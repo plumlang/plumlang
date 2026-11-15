@@ -5,7 +5,7 @@
 #   make                  release build -> ./plum
 #   make debug            debug build (-O0 -g)
 #   make sanitize         debug build under AddressSanitizer + UBSan
-#   make test             unit, smoke, harness and golden tests on the selected build
+#   make test             unit, smoke, harness, golden and formatter tests on the selected build
 #   make sanitize test    the tests, under the sanitizers
 #   make golden-update    rewrite golden expectations from actual output
 #   make format           format the C sources with clang-format
@@ -125,6 +125,7 @@ test: all $(UNIT_BIN)
 	@sh tests/stdlib-embedded.sh
 	@sh tests/golden.sh $(PLUM)
 	@sh tests/golden.sh $(PLUM) examples
+	@sh tests/fmt-check.sh $(PLUM)
 
 # Regenerate the instruction table in docs/bytecode.md from opcodes.h.
 bytecode-doc:

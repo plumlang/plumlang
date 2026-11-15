@@ -1,0 +1,34 @@
+# command: fmt --stdout
+# A list, map, call, parameter list or kind that the source spreads over
+# lines gets one item per line, with a trailing comma (kind cases go
+# without); one on a single line stays there.
+plant short = [1, 2, 3,]
+plant long = [1, 2,
+              3]
+plant ages = {"ada": 36,
+    "bo": 12}
+plant point = {"x": 1, "y": 2}
+branch connect(host: str, port: int = 80,
+               secure: bool = bad) -> str => "{host}:{port}"
+drop(connect("example.com",
+             secure: good))
+drop(
+    "already",
+    "one per line"
+)
+kind Direction { North, East,
+    South, West }
+kind Shape {
+    Circle(r: float)
+    Square(side: float)
+}
+# A function as the last argument keeps its body under the call.
+plant doubled = [1, 2].map((n) => {
+    return n * 2
+})
+# An if expression over several lines puts each branch on its own.
+plant size = if len(long) > 2 { "big" }
+             else if len(long) > 0 { "small" } else { "none" }
+plant inline = if good { 1 } else { 2 }
+plant sum = 1 +
+    2

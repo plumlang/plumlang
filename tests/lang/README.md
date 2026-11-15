@@ -13,6 +13,11 @@ once it passes, the run fails until the line is removed.
 `make golden-update` rewrites expectation files from the actual output.
 Review the diff before committing it.
 
+`tests/fmt-check.sh` (also run by `make test`) formats every file here
+that parses and checks that `plum fmt` is idempotent and keeps the syntax
+tree and the comments. The files here are not themselves formatted: many
+try out a particular layout.
+
 The programs under `basics/`, `arith/`, `operators/`, `variables/`,
 `control/` and `functions/` port the Python prototype's examples (v0.1 to
 v0.10) to the syntax in `docs/spec.md`, with the prototype's bugs fixed:

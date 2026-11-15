@@ -11,8 +11,8 @@ seed io
 seed json as jsonlib
 
 root MAX_HEADERS = 100
-root MAX_BODY = 16777216         # 16 MB
-root IDLE_SECONDS = 30.0         # a kept-alive connection waits this long for its next request
+root MAX_BODY = 16777216  # 16 MB
+root IDLE_SECONDS = 30.0  # a kept-alive connection waits this long for its next request
 
 # ------------------------------------------------------------------
 # Requests and responses
@@ -22,10 +22,10 @@ tree Request {
     method: str
     path: str
     query: map[str, str] = {:}
-    params: map[str, str] = {:}     # from the route: /users/:id gives params["id"]
-    headers: map[str, str] = {:}    # names in small letters
+    params: map[str, str] = {:}   # from the route: /users/:id gives params["id"]
+    headers: map[str, str] = {:}  # names in small letters
     body: str = ""
-    remote: str = ""                # the client, as "host:port"
+    remote: str = ""  # the client, as "host:port"
 
     branch header(name: str) -> str? => self.headers.get(name.lower())
     branch json() -> Json => jsonlib.parse(self.body)
@@ -166,7 +166,7 @@ branch read_chunked(conn: Connection, timeout: float) -> str {
             }
         }
         if size == 0 {
-            read_headers(conn, timeout)        # trailers, if any
+            read_headers(conn, timeout)  # trailers, if any
             return parts.join()
         }
         total += size
@@ -174,7 +174,7 @@ branch read_chunked(conn: Connection, timeout: float) -> str {
             throw ValueError("a chunked body over the limit")
         }
         parts.push(read_exactly(conn, size, timeout))
-        conn.read_line(timeout: timeout)      # the line break after the chunk
+        conn.read_line(timeout: timeout)  # the line break after the chunk
     }
 }
 
@@ -337,7 +337,7 @@ tree Server {
     branch serve_file(dir: str, rest: str) -> Response {
         plant name = rest.url_decode()
         if name.contains("..") or name.contains("\\") {
-            return status(404)                 # nothing outside the directory
+            return status(404)  # nothing outside the directory
         }
         if name == "" or name.ends_with("/") {
             name += "index.html"
@@ -379,8 +379,12 @@ tree Server {
                 if not ("server" in out) {
                     out["server"] = "plum"
                 }
-                write_message(conn, "HTTP/1.1 {res.status} {reason(res.status)}", out,
-                              if req.method == "HEAD" { "" } else { res.body })
+                write_message(
+                    conn,
+                    "HTTP/1.1 {res.status} {reason(res.status)}",
+                    out,
+                    if req.method == "HEAD" { "" } else { res.body },
+                )
                 if not keep {
                     break
                 }
@@ -459,7 +463,7 @@ tree Url {
     host: str
     port: int
     path: str
-    secure: bool = bad              # https://
+    secure: bool = bad  # https://
 }
 
 branch parse_url(url: str) -> Url {
@@ -493,14 +497,28 @@ branch parse_url(url: str) -> Url {
 # A request to a server: its response (any status, 404 included). An
 # https:// server's certificate is checked against the system's trusted
 # CAs, or ca_file's, unless verify is bad.
-branch request(method: str, url: str, body: str = "", headers: map[str, str] = {:},
-               timeout: float = 30.0, verify: bool = good, ca_file: str = "") -> Response {
+branch request(
+    method: str,
+    url: str,
+    body: str = "",
+    headers: map[str, str] = {:},
+    timeout: float = 30.0,
+    verify: bool = good,
+    ca_file: str = "",
+) -> Response {
     plant u = parse_url(url)
-    plant conn = if u.secure { net.tls_connect(u.host, u.port, timeout, verify, ca_file) }
-                 else { net.connect(u.host, u.port, timeout: timeout) }
+    plant conn = if u.secure {
+        net.tls_connect(u.host, u.port, timeout, verify, ca_file)
+    } else {
+        net.connect(u.host, u.port, timeout: timeout)
+    }
     plant usual = if u.secure { 443 } else { 80 }
-    plant out: map[str, str] = {"host": if u.port == usual { u.host } else { "{u.host}:{u.port}" },
-                                "user-agent": "plum", "accept": "*/*", "connection": "close"}
+    plant out: map[str, str] = {
+        "host": if u.port == usual { u.host } else { "{u.host}:{u.port}" },
+        "user-agent": "plum",
+        "accept": "*/*",
+        "connection": "close",
+    }
     for name, value in headers {
         out[name.lower()] = value
     }
@@ -513,27 +531,54 @@ branch request(method: str, url: str, body: str = "", headers: map[str, str] = {
     }
     plant code = int(words[1])
     plant got = read_headers(conn, timeout) ?? {:}
-    plant text = if method.upper() == "HEAD" or code == 204 or code == 304 { "" }
-                 else { read_body(conn, got, timeout, good) }
+    plant text = if method.upper() == "HEAD" or code == 204 or code == 304 {
+        ""
+    } else {
+        read_body(conn, got, timeout, good)
+    }
     conn.close()
     return Response(code, text, got)
 }
 
-branch get(url: str, headers: map[str, str] = {:}, timeout: float = 30.0, verify: bool = good,
-           ca_file: str = "") -> Response {
+branch get(
+    url: str,
+    headers: map[str, str] = {:},
+    timeout: float = 30.0,
+    verify: bool = good,
+    ca_file: str = "",
+) -> Response {
     return request("GET", url, "", headers, timeout, verify, ca_file)
 }
 
-branch post(url: str, body: str, content_type: str = "text/plain; charset=utf-8",
-            headers: map[str, str] = {:}, timeout: float = 30.0, verify: bool = good,
-            ca_file: str = "") -> Response {
+branch post(
+    url: str,
+    body: str,
+    content_type: str = "text/plain; charset=utf-8",
+    headers: map[str, str] = {:},
+    timeout: float = 30.0,
+    verify: bool = good,
+    ca_file: str = "",
+) -> Response {
     plant all = headers
     all["content-type"] = content_type
     return request("POST", url, body, all, timeout, verify, ca_file)
 }
 
-branch post_json(url: str, value: Json, headers: map[str, str] = {:}, timeout: float = 30.0,
-                 verify: bool = good, ca_file: str = "") -> Response {
-    return post(url, jsonlib.stringify(value), "application/json", headers, timeout, verify,
-                ca_file)
+branch post_json(
+    url: str,
+    value: Json,
+    headers: map[str, str] = {:},
+    timeout: float = 30.0,
+    verify: bool = good,
+    ca_file: str = "",
+) -> Response {
+    return post(
+        url,
+        jsonlib.stringify(value),
+        "application/json",
+        headers,
+        timeout,
+        verify,
+        ca_file,
+    )
 }
