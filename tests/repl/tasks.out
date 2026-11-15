@@ -1,0 +1,18 @@
+= 42 : int
+= <task> : Task[<unknown>]
+= 0 : int?
+= 1 : int?
+= bad : bool
+= 2 : int
+<repl>: Error: deadlock: every task is waiting (for a channel or another task) and nothing is left to wake them
+= good : bool
+= 2 : int
+<repl>:1: ZeroDivisionError: division by zero: 1 // 0
+  in <lambda:1>, line 1
+= <task> : Task[int]
+an entry after a task failed
+error in a task that nothing waited for:
+<repl>:1: ZeroDivisionError: division by zero: 1 // 0
+  in <lambda:1>, line 1
+= <task> : Task[<unknown>]
+= hi there : str?

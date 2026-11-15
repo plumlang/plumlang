@@ -1,0 +1,29 @@
+# Compile errors and runtime errors don't end the session; earlier state stays.
+plant count = 3
+plant broken: int = "three"
+count + 1
+broken
+nope(1)
+plant items = [1, 2, 3]
+items[10]
+items
+plant half = 7 // 0
+half
+count * 2
+branch fails(n: int) -> int {
+    throw ValueError("no {n}")
+}
+fails(2)
+try {
+    fails(3)
+} catch e: ValueError {
+    drop("caught: {e.message}")
+}
+plant parts = [1, 2
+3]
+:type nope
+:type plant y = 1
+:type
+:frobnicate
+:help
+count

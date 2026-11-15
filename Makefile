@@ -7,7 +7,7 @@
 #   make sanitize         debug build under AddressSanitizer + UBSan
 #   make test             unit, smoke, harness, golden and formatter tests on the selected build
 #   make sanitize test    the tests, under the sanitizers
-#   make golden-update    rewrite golden expectations from actual output
+#   make golden-update    rewrite golden expectations from actual output (and the REPL's)
 #   make format           format the C sources with clang-format
 #   make format-check     fail if anything is not formatted
 #   make clean
@@ -126,6 +126,7 @@ test: all $(UNIT_BIN)
 	@sh tests/golden.sh $(PLUM)
 	@sh tests/golden.sh $(PLUM) examples
 	@sh tests/fmt-check.sh $(PLUM)
+	@sh tests/repl.sh $(PLUM)
 
 # Regenerate the instruction table in docs/bytecode.md from opcodes.h.
 bytecode-doc:
@@ -151,6 +152,7 @@ stdlib-doc: all
 golden-update: all
 	@UPDATE=1 sh tests/golden.sh $(PLUM)
 	@UPDATE=1 sh tests/golden.sh $(PLUM) examples
+	@UPDATE=1 sh tests/repl.sh $(PLUM)
 
 # Ours only: vendor/ keeps its upstream formatting.
 C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)

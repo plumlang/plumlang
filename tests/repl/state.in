@@ -1,0 +1,46 @@
+# State across entries, echoed results, :type and multi-line entries.
+plant x = 1
+x + 1
+x = x + 41
+x
+branch square(n: int) -> int {
+    return n * n
+}
+square(x)
+:type square
+:type x / 2
+:type [x, 2]
+plant name = "plum"
+name.upper()
+"{name} has {len(name)} letters"
+2.5 * 2
+x > 10 and name == "plum"
+plant scores = {"ada": 3,
+                "bo": 5}
+scores["bo"]
+plant total = scores["ada"] +
+    scores["bo"]
+total
+plant double = (n: int) =>
+    n * 2
+double(21)
+plant text = """
+two
+lines
+"""
+text
+drop("printed, not echoed")
+plant maybe: int? = none
+maybe
+maybe ?? 7
+if total > 5 {
+    drop("big")
+} else {
+    drop("small")
+}
+for i in 0..3 {
+    drop(i * 10)
+}
+plant x = "x again"
+x
+square(4)

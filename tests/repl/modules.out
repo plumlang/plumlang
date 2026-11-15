@@ -1,0 +1,30 @@
+shapes loaded
+= (1, 2) : Point
+= (1, 2) : Point
+= (3, 4) : Point
+= 9.0 : float
+() -> Point
+<repl>:1:1: error[E0308]: can't read the module './missing' (missing.plum): No such file or directory
+1 | seed ./missing
+  | ^~~~~~~~~~~~~~
+1 error
+= 4.0 : float
+= 3.0 : float
+= 1 : int
+= 2 : int
+= <Counter> : Counter
+= Named(ada) : Named
+= [Named(ada), Named(bo)] : list[Named]
+= a new Counter : Counter
+= 3 : int
+= Light.Red : Light
+= stop : str
+shapes loaded
+= (0, 0) : Point
+(everything declared so far is forgotten)
+<repl>:1:1: error[E0301]: unknown name 'p'
+1 | p
+  | ^
+1 error
+shapes loaded
+= (0, 0) : Point
