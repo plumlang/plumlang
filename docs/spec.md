@@ -55,6 +55,10 @@ for p in planets {
 A Plumlang source file is UTF-8 text with the extension `.plum`. A byte
 order mark at the start is ignored. Line endings may be `\n` or `\r\n`.
 
+Code may nest up to 1000 deep: brackets, blocks, types and lambdas inside
+each other, with each operator of a chain like `a + b + c` counting one
+level. Deeper code is a compile error (E0218), never a crash.
+
 ### 2.2 Comments
 
 A comment starts with `#` and runs to the end of the line.

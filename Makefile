@@ -89,6 +89,8 @@ ifeq ($(OS),Windows_NT)
 # Winsock for the net module; BCrypt (random numbers) and Crypt32 (the
 # system's trusted certificates) for TLS
 LDLIBS  += -lws2_32 -lbcrypt -lcrypt32
+# the 8 MB stack Linux and macOS give, not Windows' 1 MB
+LDFLAGS += -Wl,--stack,8388608
 endif
 
 BUILD   := build/$(MODE)

@@ -41,6 +41,29 @@ void plum_parser_init(PlumParser *p, const PlumTokenList *tokens, PlumArena *are
     p->names = names;
     p->diags = diags;
     p->panic = false;
+    p->depth = 0;
+}
+
+PLUM_PRINTF(4, 5)
+static void error_at(PlumParser *p, PlumSpan span, const char *code, const char *fmt, ...);
+
+/*
+ * One level deeper into the tree. Past PLUM_MAX_NESTING the file is
+ * reported once and the rest of it skipped: every parsing function stops
+ * at EOF, so the recursion unwinds at once.
+ */
+static bool deeper(PlumParser *p) {
+    if (++p->depth <= PLUM_MAX_NESTING) {
+        return true;
+    }
+    if (p->pos + 1 < p->count) {
+        error_at(p, p->tokens[p->pos].span, "E0218",
+                 "this is nested more than %d deep (brackets, blocks and operators inside "
+                 "each other); split it into smaller pieces with variables or functions",
+                 PLUM_MAX_NESTING);
+        p->pos = p->count - 1; /* the EOF token */
+    }
+    return false;
 }
 
 static const PlumToken *peek(const PlumParser *p) {
@@ -201,7 +224,16 @@ static PlumExpr *error_expr(PlumParser *p) {
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
+static PlumType *parse_type(PlumParser *p);
+
 PlumType *plum_parse_type(PlumParser *p) {
+    int depth = p->depth;
+    PlumType *type = deeper(p) ? parse_type(p) : new_type(p, PLUM_TYPE_ERROR, peek(p)->span);
+    p->depth = depth;
+    return type;
+}
+
+static PlumType *parse_type(PlumParser *p) {
     const PlumToken *start = peek(p);
     PlumType *type;
 
@@ -698,13 +730,27 @@ static bool is_comparison(PlumTokenKind k) {
     return infix_prec(k) == PREC_COMPARE;
 }
 
+static PlumExpr *parse_prec_in(PlumParser *p, int min_prec);
+
+/* Each call nests one deeper, and so does each operator applied to the
+ * left side (parse_prec_in), since that makes the tree one level taller. */
 static PlumExpr *parse_prec(PlumParser *p, int min_prec) {
+    int depth = p->depth;
+    PlumExpr *e = deeper(p) ? parse_prec_in(p, min_prec) : error_expr(p);
+    p->depth = depth;
+    return e;
+}
+
+static PlumExpr *parse_prec_in(PlumParser *p, int min_prec) {
     PlumExpr *left = parse_prefix(p);
 
     for (;;) {
         const PlumToken *op = peek(p);
         int prec = infix_prec(op->kind);
         if (prec == PREC_NONE || prec < min_prec) {
+            return left;
+        }
+        if (!deeper(p)) {
             return left;
         }
         advance(p);
@@ -1276,7 +1322,23 @@ static PlumStmt *parse_decl(PlumParser *p) {
     return finish(p, s);
 }
 
+static PlumStmt *parse_stmt_in(PlumParser *p);
+
+/* A statement nests one deeper: blocks inside blocks. */
 static PlumStmt *parse_stmt(PlumParser *p) {
+    int depth = p->depth;
+    PlumStmt *s;
+    if (deeper(p)) {
+        s = parse_stmt_in(p);
+    } else {
+        s = new_stmt(p, PLUM_STMT_EXPR, peek(p)->span);
+        s->as.expr = error_expr(p);
+    }
+    p->depth = depth;
+    return s;
+}
+
+static PlumStmt *parse_stmt_in(PlumParser *p) {
     const PlumToken *tok = peek(p);
     PlumStmt *s;
     switch (tok->kind) {

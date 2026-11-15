@@ -361,6 +361,21 @@ for an empty map write `plant m = {:}`.
 A keyword used as a field's name, like `kind: Kind` or `match: str`.
 Keywords can't name anything; pick another name (`kind_`, `shape_kind`).
 
+### E0218
+
+Code nested more than 1000 deep: brackets inside brackets, blocks inside
+blocks, or a chain of more than 1000 operators (`a + b + c + ...`, each
+operator counting one). Every stage of the compiler walks the program
+recursively, and the limit keeps that safe. Code written by hand never
+comes near it; generated code can. Split the expression with variables, or
+the code into functions.
+
+```plum
+plant total = a1 + a2 + ... + a2000       # error
+plant first = a1 + a2 + ... + a1000       # fix
+plant total = first + a1001 + ... + a2000
+```
+
 ## Names
 
 ### E0301
