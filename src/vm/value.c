@@ -442,6 +442,9 @@ static bool equal_here(PlumValue a, PlumValue b, Pairs *todo) {
 }
 
 bool plum_values_equal(PlumValue a, PlumValue b) {
+    if (a.type != PLUM_VAL_OBJ || a.as.obj->type == PLUM_OBJ_STRING) {
+        return equal_here(a, b, NULL); /* nothing inside to compare */
+    }
     Pairs todo;
     todo.items = todo.local;
     todo.len = 0;

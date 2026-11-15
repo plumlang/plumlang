@@ -49,12 +49,46 @@ void plum_alloc_count(int i) {
     }
 }
 
+/* Counting is kept out of line, so the allocation functions stay as small
+ * as without it. */
+#if defined(__GNUC__) || defined(__clang__)
+#define COLD __attribute__((noinline, cold))
+#elif defined(_MSC_VER)
+#define COLD __declspec(noinline)
+#else
+#define COLD
+#endif
+
 static void count_bytes(PlumAllocStats *s, size_t added, size_t removed) {
     s->bytes_allocated += added > removed ? added - removed : 0;
     s->bytes_in_use += (int64_t)added - (int64_t)removed;
     if (s->bytes_in_use > s->peak_bytes) {
         s->peak_bytes = s->bytes_in_use;
     }
+}
+
+COLD static void count_new(void *p) {
+    counting->allocations++;
+    count_bytes(counting, BLOCK_SIZE(p), 0);
+}
+
+/* A block of `old` bytes (or none, if not `resized`) became `p`. */
+COLD static void count_resize(bool resized, size_t old, void *p) {
+    if (!resized) {
+        counting->allocations++;
+    } else {
+        counting->resizes++;
+    }
+    count_bytes(counting, BLOCK_SIZE(p), old);
+}
+
+COLD static size_t block_size(void *p) {
+    return p != NULL ? BLOCK_SIZE(p) : 0;
+}
+
+COLD static void count_free(void *p) {
+    counting->frees++;
+    count_bytes(counting, 0, BLOCK_SIZE(p));
 }
 
 void plum_fatal(const char *what) {
@@ -90,8 +124,7 @@ void *plum_alloc(size_t size) {
         out_of_memory(size);
     }
     if (counting != NULL) {
-        counting->allocations++;
-        count_bytes(counting, BLOCK_SIZE(p), 0);
+        count_new(p);
     }
     return p;
 }
@@ -103,25 +136,19 @@ void *plum_alloc_zeroed(size_t count, size_t size) {
         out_of_memory(total);
     }
     if (counting != NULL) {
-        counting->allocations++;
-        count_bytes(counting, BLOCK_SIZE(p), 0);
+        count_new(p);
     }
     return p;
 }
 
 void *plum_realloc(void *ptr, size_t size) {
-    size_t old = counting != NULL && ptr != NULL ? BLOCK_SIZE(ptr) : 0;
+    size_t old = counting != NULL ? block_size(ptr) : 0;
     void *p = realloc(ptr, size == 0 ? 1 : size);
     if (p == NULL) {
         out_of_memory(size);
     }
     if (counting != NULL) {
-        if (ptr == NULL) {
-            counting->allocations++;
-        } else {
-            counting->resizes++;
-        }
-        count_bytes(counting, BLOCK_SIZE(p), old);
+        count_resize(ptr != NULL, old, p);
     }
     return p;
 }
@@ -132,8 +159,7 @@ void *plum_realloc_array(void *ptr, size_t count, size_t size) {
 
 void plum_free(void *ptr) {
     if (counting != NULL && ptr != NULL) {
-        counting->frees++;
-        count_bytes(counting, 0, BLOCK_SIZE(ptr));
+        count_free(ptr);
     }
     free(ptr);
 }
