@@ -10,10 +10,12 @@
  */
 #include "stdlib/native.h"
 
+#include "util/alloc.h"
 #include "util/array.h"
 #include "util/fmt.h"
 #include "vm/table.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
@@ -244,24 +246,32 @@ static bool parse_number(Parser *p, PlumValue *out) {
             return fail(p, "an exponent needs digits");
         }
     }
-    char text[64];
+    /* The number's own text, NUL-terminated for strtoll and strtod: all of
+     * it, however long, so no digit or exponent is lost. */
+    char small[64];
     size_t len = p->at - start;
-    if (len >= sizeof text) {
-        integral = false; /* a very long number: as a float */
-        len = sizeof text - 1;
-    }
+    char *text = len < sizeof small ? small : plum_alloc(len + 1);
     memcpy(text, p->s + start, len);
     text[len] = '\0';
-    if (integral) {
-        char *end;
-        long long v = strtoll(text, &end, 10);
-        if (*end == '\0' && v != LLONG_MAX && v != LLONG_MIN) {
-            *out = plum_int((int64_t)v);
-            return true;
+    bool ok = true;
+    char *end = text;
+    errno = 0;
+    long long v = integral ? strtoll(text, &end, 10) : 0;
+    if (integral && *end == '\0' && errno == 0) {
+        *out = plum_int((int64_t)v);
+    } else {
+        double f = strtod(text, NULL); /* too large for an int: a float */
+        if (isinf(f)) {
+            p->at = start;
+            ok = fail(p, "a number too large for a float");
+        } else {
+            *out = plum_float(f);
         }
     }
-    *out = plum_float(strtod(text, NULL)); /* too large for an int: a float */
-    return true;
+    if (text != small) {
+        plum_free(text);
+    }
+    return ok;
 }
 
 static bool parse_value(Parser *p, PlumValue *out);
