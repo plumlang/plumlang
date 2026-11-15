@@ -498,6 +498,9 @@ static PlumExpr *parse_if(PlumParser *p) {
     PlumExpr *cond = plum_parse_expr(p);
     PlumExpr *then = parse_expr_block(p);
     PlumExpr *otherwise = NULL;
+    if (check(p, PLUM_TOK_NEWLINE) && peek_at(p, 1)->kind == PLUM_TOK_ELSE) {
+        advance(p); /* else may start the next line */
+    }
     if (match(p, PLUM_TOK_ELSE)) {
         otherwise = check(p, PLUM_TOK_IF) ? parse_if(p) : parse_expr_block(p);
     } else {
@@ -852,10 +855,14 @@ static PlumStmt *parse_block(PlumParser *p) {
     PLUM_ARRAY(PlumStmt *) stmts = {0};
     skip_newlines(p);
     while (!check(p, PLUM_TOK_RBRACE) && !check(p, PLUM_TOK_EOF)) {
+        size_t start = p->pos;
         PlumStmt *s = parse_stmt(p);
         plum_array_push(&stmts, s);
         if (p->panic) {
             synchronize(p);
+        }
+        if (p->pos == start) {
+            advance(p); /* recovery stopped where it began: move on */
         }
         skip_newlines(p);
     }
@@ -1344,6 +1351,7 @@ PlumProgram plum_parse_program(PlumParser *p) {
             skip_newlines(p);
             continue;
         }
+        size_t start = p->pos;
         PlumStmt *s = parse_stmt(p);
         if (s->kind == PLUM_STMT_SEED && other_seen) {
             plum_diag_error(p->diags, s->span, "E0215",
@@ -1354,6 +1362,9 @@ PlumProgram plum_parse_program(PlumParser *p) {
         plum_array_push(&stmts, s);
         if (p->panic) {
             synchronize(p);
+        }
+        if (p->pos == start) {
+            advance(p); /* recovery stopped where it began: move on */
         }
         skip_newlines(p);
     }
