@@ -124,4 +124,6 @@ if(PLUM_SH)
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME repl COMMAND ${PLUM_SH} tests/repl.sh $<TARGET_FILE:plum>
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  add_test(NAME reference COMMAND ${PLUM_SH} tests/reference.sh $<TARGET_FILE:plum>
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
