@@ -1,0 +1,10 @@
+NetError
+NetError
+ValueError: a bad content-length 'lots'
+ValueError: a bad content-length '-5'
+ValueError: a bad chunk size 'fffffffffffffffffff'
+200 hello
+a bad port in 'http://host:port/'
+a bad port in 'http://host:99999/'
+a bad port in 'http://host:-1/'
+host 8080 /x

@@ -1,0 +1,44 @@
+# Malformed responses and URLs give the client's own errors (NetError,
+# ValueError), never a ParseError or OverflowError from inside the module.
+# Found by fuzzing (#86).
+seed net
+seed net.http
+
+# A server that answers every request with `reply`, then closes.
+branch answer(reply: str) -> str {
+    plant l = net.listen(0, host: "127.0.0.1")
+    plant t = spawn ((l: Listener) => {
+        plant conn = l.accept()
+        while (conn.read_line() ?? "") != "" {}
+        conn.write(reply)
+        conn.close()
+    })(l)
+    plant got = "?"
+    try {
+        plant r = http.get("http://127.0.0.1:{l.port()}/", timeout: 5.0)
+        got = "{r.status} {r.body}"
+    } catch e: NetError {
+        got = "NetError"
+    } catch e: ValueError {
+        got = "ValueError: {e.message}"
+    }
+    t.wait()
+    l.close()
+    return got
+}
+
+drop(answer("HTTP/1.1 x04 Not Found\r\n\r\n"))
+drop(answer("HTTP/1.1 99999999999999999999 Big\r\n\r\n"))
+drop(answer("HTTP/1.1 200 OK\r\ncontent-length: lots\r\n\r\nhello"))
+drop(answer("HTTP/1.1 200 OK\r\ncontent-length: -5\r\n\r\nhello"))
+drop(answer("HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\nfffffffffffffffffff\r\nhi\r\n0\r\n\r\n"))
+drop(answer("HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello"))
+
+for url in ["http://host:port/", "http://host:99999/", "http://host:-1/", "http://host:8080/x"] {
+    try {
+        plant u = http.parse_url(url)
+        drop(u.host, u.port, u.path)
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
