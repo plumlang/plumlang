@@ -16,7 +16,17 @@ echo
 i=0
 for f in $(ls "$dir"/*.plum | sort); do
     echo "static const char source_$i[] = {"
-    od -An -v -tx1 "$f" | awk '{ line = "   "; for (k = 1; k <= NF; k++) line = line " 0x" $k ","; print line }'
+    # every byte, then 16 to a line: the same on every od (BSD's lays out its
+    # lines differently from GNU's)
+    od -An -v -tx1 "$f" | awk '
+        { for (k = 1; k <= NF; k++) bytes[n++] = tolower($k) }
+        END {
+            for (i = 0; i < n; i += 16) {
+                line = "   "
+                for (k = i; k < i + 16 && k < n; k++) line = line " 0x" bytes[k] ","
+                print line
+            }
+        }'
     echo "    0x00,"
     echo "};"
     echo
