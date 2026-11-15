@@ -1,0 +1,4 @@
+# command: fmt --stdout
+# A file with syntax errors is reported and not formatted.
+plant   x = (1 +
+drop(x)

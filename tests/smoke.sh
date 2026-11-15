@@ -65,5 +65,14 @@ check "memory statistics by kind"   0 "^  strings  *[0-9]"  err -- run --mem-sta
 check "statistics and the leak check" 0 "every object was freed" err -- run --mem-stats --check-leaks "$tmp/hello.plum"
 check "no statistics without the flag" 0 ""                err -- run "$tmp/hello.plum"
 
+printf 'plant   x=1\n' >"$tmp/messy.plum"
+check "help lists fmt"              0 "plum fmt"            out -- help
+check "fmt without paths"           2 "needs files"         err -- fmt
+check "fmt --check finds a change"  1 "messy.plum$"         out -- fmt --check "$tmp/messy.plum"
+check "fmt formats in place"        0 ""                    out -- fmt "$tmp/messy.plum"
+check "fmt --check after formatting" 0 ""                   out -- fmt --check "$tmp/messy.plum"
+check "fmt --check a directory"     0 ""                    out -- fmt --check "$tmp"
+check "fmt --stdout"                0 "^plant x = 1$"       out -- fmt --stdout "$tmp/messy.plum"
+
 echo "smoke: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

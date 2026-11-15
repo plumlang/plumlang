@@ -1,0 +1,21 @@
+# command: fmt --stdout
+# Literals keep their spelling, and parentheses in the source are kept
+# (two around the same thing become one).
+plant hex=0xFF
+plant big=1_000_000
+plant bits = 0b1010 + 0o17
+plant small=1.5e-3
+plant text="tab\tquote\" brace\{ \u{1F600}"
+plant shout = "{text.upper()}!{big:,}"
+plant yes = true
+plant no = bad
+plant poem = """
+    Roses are red,
+    Plums are purple.
+    """
+plant sum = (1 + 2) * 3
+plant twice = ((sum))
+plant neg = -(-sum)
+plant call = ((x) => x + 1)(2)
+plant one = drop((sum))
+plant two = drop((1 + 2) * (3 + 4))

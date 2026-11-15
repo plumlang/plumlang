@@ -120,4 +120,6 @@ if(PLUM_SH)
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME examples COMMAND ${PLUM_SH} tests/golden.sh $<TARGET_FILE:plum> examples
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  add_test(NAME fmt COMMAND ${PLUM_SH} tests/fmt-check.sh $<TARGET_FILE:plum>
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()

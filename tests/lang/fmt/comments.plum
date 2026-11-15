@@ -1,0 +1,44 @@
+# command: fmt --stdout
+# plum fmt keeps every comment: on its own line before what follows it,
+# or after the code it was after. Neighbouring trailing comments line up.
+
+
+root WIDTH = 80   # columns
+root HEIGHT = 24 # rows
+plant title = "# not a comment"     # but this is
+
+# Before a function, after a blank line.
+branch area(w: int, h: int) -> int {   # after the brace
+    # first in the body
+
+    plant a = w * h   # the area
+
+
+    # last in the body
+    return a
+    # after the last statement
+}
+plant sizes = [1,   # one
+    2,
+    # before three
+    3]
+plant both = WIDTH and  # in the middle of an expression
+    HEIGHT
+kind Shape {
+    # a case
+    Circle(r: float)   # round
+    Square(side: float)
+}
+tree Box {
+    # the size
+    side: int
+
+    # a method
+    branch volume() -> int => self.side ** 3
+    # at the end of the tree
+}
+if good {
+} else {
+    # only a comment
+}
+# at the end of the file
