@@ -1,6 +1,7 @@
 # net.http
 
-An HTTP/1.1 server and client. `seed net.http` makes it `http`.
+An HTTP/1.1 server and client, over plain TCP or TLS (HTTPS).
+`seed net.http` makes it `http`.
 
 ```plum
 seed net.http
@@ -26,6 +27,8 @@ built into the binary.
 | `app.static(prefix, dir)` | `GET prefix/a.css` serves `dir/a.css`; `index.html` for a directory; nothing outside `dir` |
 | `app.listen(port = 8080, host = "0.0.0.0")` | serve until the program ends |
 | `app.start(port = 8080, host = "0.0.0.0") -> int` | serve in the background; the port (0 picks a free one) |
+| `app.listen_tls(port, cert_file, key_file, host = "0.0.0.0")` | `listen` over HTTPS, with a certificate chain and private key from PEM files |
+| `app.start_tls(port, cert_file, key_file, host = "0.0.0.0") -> int` | `start` over HTTPS |
 | `app.stop()` | stop accepting connections |
 | `app.handle(req) -> Response` | the response to a request, without any network: for tests |
 | `app.log_errors` | print handlers' errors to standard error (default `good`) |
@@ -37,7 +40,8 @@ answered by the `GET` route, without the body. An error a handler doesn't
 catch becomes a 500 response (and is logged).
 
 Connections are kept alive between requests (HTTP/1.1), and closed after
-30 seconds without one. Bodies are limited to 16 MB and requests to 100
+30 seconds without one. Over HTTPS, each connection's TLS handshake is made
+in its own task (see [net](net.md#tls)). Bodies are limited to 16 MB and requests to 100
 headers.
 
 ### Request
@@ -72,10 +76,16 @@ A `Response` has `status`, `body` and `headers`, and `header(name)`,
 
 | Call | |
 |---|---|
-| `http.get(url, headers = {:}, timeout = 30.0) -> Response` | |
-| `http.post(url, body, content_type = "text/plain; charset=utf-8", headers = {:}, timeout = 30.0)` | |
-| `http.post_json(url, value, headers = {:}, timeout = 30.0)` | `value` (any `Json`) as the JSON body |
-| `http.request(method, url, body = "", headers = {:}, timeout = 30.0)` | any method |
+| `http.get(url, headers = {:}, timeout = 30.0, verify = good, ca_file = "") -> Response` | |
+| `http.post(url, body, content_type = "text/plain; charset=utf-8", headers = {:}, timeout = 30.0, verify = good, ca_file = "")` | |
+| `http.post_json(url, value, headers = {:}, timeout = 30.0, verify = good, ca_file = "")` | `value` (any `Json`) as the JSON body |
+| `http.request(method, url, body = "", headers = {:}, timeout = 30.0, verify = good, ca_file = "")` | any method |
+
+URLs are `http://host[:port]/path` (port 80) or `https://host[:port]/path`
+(port 443). An `https://` server's certificate is checked against the
+system's trusted CAs and the host name, as `net.tls_connect` does:
+`ca_file` trusts the CAs in a PEM file instead, and `verify: bad` turns
+the check off.
 
 They give the response whatever its status (check `res.ok()` or
 `res.status`). Bodies sent with a length, in chunks, or up to the end of
@@ -91,9 +101,9 @@ if res.ok() {
 ## Errors
 
 - `NetError`: the server can't be reached, the connection breaks, a time
-  limit runs out, or the answer isn't HTTP.
-- `ValueError`: a URL that isn't `http://host[:port]/path`. `https://`
-  needs TLS, which is next.
+  limit runs out, the answer isn't HTTP, or (`https://`) the server's
+  certificate doesn't verify or the TLS handshake fails.
+- `ValueError`: a URL that isn't `http://` or `https://host[:port]/path`.
 
 ## Speed
 

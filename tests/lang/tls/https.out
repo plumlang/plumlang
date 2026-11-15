@@ -1,0 +1,7 @@
+200 hello, ada text/plain; charset=utf-8
+201 42
+200 404
+certificate verify failed
+hello, cy
+plain http to https: NetError
+2 good good

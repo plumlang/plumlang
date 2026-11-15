@@ -1,0 +1,64 @@
+# TLS over loopback: a server task echoing lines, clients taking turns
+# with it, and a big write going out in pieces. The certificates are the
+# test-only ones in tests/tls.
+seed net
+
+root CA = "tests/tls/ca.pem"
+plant server = net.listen_tls(0, "tests/tls/server.pem", "tests/tls/server.key", host: "127.0.0.1")
+plant port = server.port()
+
+branch echo(conn: Connection) {
+    try {
+        plant line = conn.read_line()
+        while line != none {
+            if line == "big" {
+                conn.write("x".repeat(1000000) + "\n")
+            } else {
+                conn.write("echo: {line ?? ""}\n")
+            }
+            line = conn.read_line()
+        }
+    } catch e: NetError {
+        drop("server:", e.message)
+    }
+    conn.close()
+}
+
+spawn (() => {
+    while good {
+        plant conn = server.accept()
+        spawn ((c: Connection) => echo(c))(conn)
+    }
+})()
+
+# three clients at once, each in its own task
+plant results = Channel[str]()
+for name in ["ada", "bo", "cy"] {
+    spawn ((who: str) => {
+        plant c = net.tls_connect("127.0.0.1", port, ca_file: CA)
+        c.write("hello from {who}\r\nbye\n")
+        results.send("{c.read_line() ?? "?"} / {c.read_line() ?? "?"}")
+        c.close()
+    })(name)
+}
+plant got: list[str] = []
+for i in 0..3 {
+    got.push(results.receive() ?? "")
+}
+for line in got.sorted() {
+    drop(line)
+}
+
+# the host name, as well as the address, is in the certificate
+plant named = net.listen_tls(0, "tests/tls/server.pem", "tests/tls/server.key", host: "localhost")
+spawn (() => echo(named.accept()))()
+plant c = net.tls_connect("localhost", named.port(), timeout: 5, ca_file: CA)
+c.write("big\n")
+plant line = c.read_line() ?? ""
+drop("big line:", len(line), c.remote().ends_with(":{named.port()}"), c.port() != named.port())
+
+# a big write from the client
+c.write("y".repeat(500000) + "\n")
+drop((c.read_line() ?? "").byte_len())
+c.close()
+drop(type_of(c), type_of(server))

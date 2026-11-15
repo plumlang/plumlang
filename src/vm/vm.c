@@ -44,6 +44,13 @@ typedef struct Timer {
     struct PlumTask *task;
 } Timer;
 
+/* Something a native module keeps for the whole run (plum_native_program_data). */
+typedef struct ProgramData {
+    const void *key;
+    void *value;
+    void (*free_fn)(void *);
+} ProgramData;
+
 typedef struct VM {
     PlumValue *stack;
     size_t top;
@@ -86,6 +93,7 @@ typedef struct VM {
     PLUM_ARRAY(Timer) timers;             /* a heap: the next time to wake someone first */
     bool yielded;                         /* the running task gave way: it waits, or sleeps */
     uint64_t timer_order;                 /* how many times a task has gone to sleep */
+    PLUM_ARRAY(ProgramData) data;         /* what native modules keep for the whole run */
 } VM;
 
 typedef PLUM_ARRAY(struct PlumTask *) TaskList;
@@ -963,6 +971,17 @@ int plum_native_argc(PlumNative *n) {
 const char *plum_native_arg(PlumNative *n, int i) {
     const PlumRunOptions *o = VM_OF(n)->options;
     return i >= 0 && i < o->argc ? o->argv[i] : "";
+}
+
+void **plum_native_program_data(PlumNative *n, const void *key, void (*free_fn)(void *)) {
+    VM *vm = VM_OF(n);
+    for (size_t i = 0; i < vm->data.len; i++) {
+        if (vm->data.items[i].key == key) {
+            return &vm->data.items[i].value;
+        }
+    }
+    plum_array_push(&vm->data, ((ProgramData){key, NULL, free_fn}));
+    return &vm->data.items[vm->data.len - 1].value;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2773,6 +2792,13 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
         plum_release(plum_obj(&vm->tracked.items[i]->obj));
     }
     plum_array_free(&vm->tracked);
+    for (size_t i = 0; i < vm->data.len; i++) {
+        ProgramData *d = &vm->data.items[i];
+        if (d->value != NULL && d->free_fn != NULL) {
+            d->free_fn(d->value);
+        }
+    }
+    plum_array_free(&vm->data);
     plum_free(vm->globals);
     plum_free(vm->trace);
     plum_free(vm->handlers);

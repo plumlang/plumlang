@@ -12,7 +12,8 @@ Rules for the Elixpo and Plumlang names and logos live in
 
 ```
 preferred/    Licence texts used in this repository.
-              Everything is LicenseRef-Plumlang-Commercial-1.0.
+              Everything is LicenseRef-Plumlang-Commercial-1.0, except
+              the third-party code under vendor/ (Apache-2.0).
 
 exceptions/   Exceptions to the preferred licences (none yet).
 
@@ -24,6 +25,7 @@ notices/      Third-party attributions (the upstream credit list).
 | Path | SPDX ID | Used for |
 |---|---|---|
 | `../LICENSE` / `preferred/LicenseRef-Plumlang-Commercial-1.0` | `LicenseRef-Plumlang-Commercial-1.0` | All source code, build files, scripts, tests, documentation, examples and brand assets. |
+| `preferred/Apache-2.0` | `Apache-2.0` | Third-party code under `vendor/` only: Mbed TLS (`vendor/mbedtls`). |
 
 Third-party code vendored under `vendor/` keeps its own licence, and its text
 is added to `preferred/` before it is merged (see `PREAMBLE.md` rule 1.3).

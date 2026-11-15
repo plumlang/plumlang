@@ -129,6 +129,14 @@ int plum_native_wait_io(PlumNative *n, intptr_t fd, bool write, double timeout);
  */
 void **plum_native_call_state(PlumNative *n, void (*free_fn)(void *));
 
+/*
+ * A place a module can keep something for the whole run of the program
+ * (the trusted CA certificates, loaded once), one for each `key`: the
+ * address of something of the module's own. Starts NULL; when the program
+ * ends, `free_fn` is called on what's there.
+ */
+void **plum_native_program_data(PlumNative *n, const void *key, void (*free_fn)(void *));
+
 int plum_native_argc(PlumNative *n);
 const char *plum_native_arg(PlumNative *n, int i);
 

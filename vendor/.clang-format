@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# Third-party code keeps its upstream formatting: clang-format leaves it alone.
+DisableFormat: true
+SortIncludes: Never

@@ -1,0 +1,46 @@
+# HTTPS through net.http: a server started with start_tls and the client
+# on https:// URLs, with the test-only certificates in tests/tls.
+seed net
+seed net.http
+
+root CA = "tests/tls/ca.pem"
+
+plant app = http.server()
+app.get("/hello/:name", (req) => http.text("hello, {req.params["name"]}"))
+app.post("/echo", (req) => http.json({"got": req.json().get("n").int() ?? 0}, status: 201))
+
+plant port = app.start_tls(0, "tests/tls/server.pem", "tests/tls/server.key", host: "127.0.0.1")
+plant base = "https://127.0.0.1:{port}"
+
+plant r = http.get(base + "/hello/ada", ca_file: CA)
+drop(r.status, r.body, r.header("content-type"))
+plant p = http.post_json(base + "/echo", {"n": 42}, ca_file: CA)
+drop(p.status, p.json().get("got").int())
+drop(http.request("HEAD", base + "/hello/x", ca_file: CA).status, http.get(base + "/nope", ca_file: CA).status)
+
+# the test CA isn't trusted by the system: without ca_file, the check fails
+try {
+    http.get(base + "/hello/bo")
+} catch e: NetError {
+    drop(e.message.replace("{port}", "PORT").split(": ")[1])
+}
+drop(http.get(base + "/hello/cy", verify: bad).body)
+
+# an http:// request to the https server gets no answer it understands
+try {
+    http.get("http://127.0.0.1:{port}/hello/x", timeout: 5)
+} catch e: NetError {
+    drop("plain http to https:", type_of(e))
+}
+
+# a raw TLS client speaking HTTP/1.1 by hand, two requests on one connection
+plant c = net.tls_connect("127.0.0.1", port, ca_file: CA)
+c.write("GET /hello/a HTTP/1.1\r\nhost: x\r\n\r\nGET /hello/b HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n")
+plant all = ""
+plant piece = c.read()
+while piece != none {
+    all += piece ?? ""
+    piece = c.read()
+}
+drop(all.count("HTTP/1.1 200 OK"), all.contains("hello, a"), all.contains("hello, b"))
+app.stop()

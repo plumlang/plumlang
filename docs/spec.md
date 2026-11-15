@@ -1058,8 +1058,8 @@ Modules are imported with `seed`. The 1.0 library is planned as:
 | `os` | arguments, environment, processes, exit |
 | `time` | clocks, dates, durations, `sleep` |
 | `json` | parse and produce JSON, mapped to maps, lists and trees |
-| `net` | TCP and UDP sockets, DNS |
-| `net.http` | an HTTP server and client |
+| `net` | TCP and UDP sockets, TLS, DNS |
+| `net.http` | an HTTP and HTTPS server and client |
 | `test` | assertions and a test runner (`plum test`) |
 
 Each module is documented in `docs/stdlib/` as it lands, and `plum stdlib`

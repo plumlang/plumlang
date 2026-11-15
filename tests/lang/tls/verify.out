@@ -1,0 +1,12 @@
+system CAs -> tls_connect to 127.0.0.1 port PORT / certificate verify failed
+server: good NetError
+ca_file -> hi
+server: ok
+not a CA -> tls_connect to 127.0.0.1 port PORT / certificate verify failed
+server: good NetError
+verify: bad -> hi
+server: ok
+tls_connect to 127.0.0.1 port PORT: can't read the CA file 'tests/tls/no-such-file.pem': No such file or directory
+good
+good
+port 0 is out of range; it must be 1 to 65535

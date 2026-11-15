@@ -7,5 +7,4 @@ q=plum lang page=2
 text/css; charset=utf-8 404
 2 good good
 hello, world
-https isn't supported yet (it needs TLS); use http://
 refused

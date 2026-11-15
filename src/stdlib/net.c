@@ -8,12 +8,16 @@
  * waits takes a `timeout` in seconds (0: no limit) and throws NetError
  * when it runs out. Name lookups (getaddrinfo) wait without letting other
  * tasks run.
+ *
+ * TLS connections (net.tls_connect, net.listen_tls) are Connections like
+ * the others; their bytes go through tls.c, which waits the same way.
  */
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
 
 #include "stdlib/native.h"
+#include "stdlib/tls.h"
 
 #include "util/alloc.h"
 #include "util/array.h"
@@ -186,6 +190,19 @@ static void handle_close(PlumHandle *h) {
     }
 }
 
+/* A TLS connection: its session goes first (it may say goodbye on the socket). */
+static void tls_connection_close(PlumHandle *h) {
+    plum_tls_free(h->tls);
+    h->tls = NULL;
+    handle_close(h);
+}
+
+static void tls_listener_close(PlumHandle *h) {
+    plum_tls_server_release(h->tls);
+    h->tls = NULL;
+    handle_close(h);
+}
+
 static PlumHandle *handle_new(const char *kind, sock_t s) {
     PlumHandle *h = plum_alloc_zeroed(1, sizeof *h);
     h->obj.refcount = 1;
@@ -230,21 +247,18 @@ static struct addrinfo *lookup(PlumNative *n, const char *host, int64_t port, in
 /* net.listen, net.connect, net.udp, net.resolve                       */
 /* ------------------------------------------------------------------ */
 
-static bool n_listen(ARGS) {
-    int64_t port = args[0].as.i;
-    const char *host = argc > 1 && args[1].type != PLUM_VAL_NONE ? str_arg(args[1]) : "0.0.0.0";
-    if (!check_port(n, port, true)) {
-        return false;
-    }
+/* A listening socket on host and port; NULL after throwing. */
+static PlumHandle *listen_on(PlumNative *n, const char *host, int64_t port) {
     net_start();
     struct addrinfo *ai = lookup(n, host, port, SOCK_STREAM, true);
     if (ai == NULL) {
-        return false;
+        return NULL;
     }
     sock_t s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (s == BAD_SOCKET) {
         freeaddrinfo(ai);
-        return net_fail(n, "listen", last_error());
+        net_fail(n, "listen", last_error());
+        return NULL;
     }
     int on = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof on);
@@ -255,10 +269,47 @@ static bool n_listen(ARGS) {
         close_socket(s);
         char what[96];
         snprintf(what, sizeof what, "listen on %s port %lld", host, (long long)port);
-        return net_fail(n, what, err);
+        net_fail(n, what, err);
+        return NULL;
     }
     freeaddrinfo(ai);
-    PlumHandle *h = handle_new("Listener", s);
+    return handle_new("Listener", s);
+}
+
+static bool n_listen(ARGS) {
+    int64_t port = args[0].as.i;
+    const char *host = argc > 1 && args[1].type != PLUM_VAL_NONE ? str_arg(args[1]) : "0.0.0.0";
+    if (!check_port(n, port, true)) {
+        return false;
+    }
+    PlumHandle *h = listen_on(n, host, port);
+    if (h == NULL) {
+        return false;
+    }
+    *result = plum_obj(&h->obj);
+    return true;
+}
+
+/* listen_tls(port, cert_file, key_file): accept() gives TLS connections,
+ * whose handshake is made by their first read or write. */
+static bool n_listen_tls(ARGS) {
+    int64_t port = args[0].as.i;
+    const char *host = argc > 3 && args[3].type != PLUM_VAL_NONE ? str_arg(args[3]) : "0.0.0.0";
+    if (!check_port(n, port, true)) {
+        return false;
+    }
+    char err[PLUM_TLS_ERR_SIZE];
+    PlumTlsServer *server = plum_tls_server_new(str_arg(args[1]), str_arg(args[2]), err);
+    if (server == NULL) {
+        return plum_native_throw(n, PLUM_ERROR_NET, "listen_tls: %s", err);
+    }
+    PlumHandle *h = listen_on(n, host, port);
+    if (h == NULL) {
+        plum_tls_server_release(server);
+        return false;
+    }
+    h->tls = server;
+    h->close = tls_listener_close;
     *result = plum_obj(&h->obj);
     return true;
 }
@@ -266,26 +317,33 @@ static bool n_listen(ARGS) {
 /* A connection under way, kept across the waits of net.connect. */
 typedef struct Connecting {
     sock_t s;
+    bool connected; /* tls_connect: on to the handshake */
+    PlumTls *tls;
     char peer[96];
 } Connecting;
 
 static void connecting_free(void *p) {
     Connecting *c = p;
+    plum_tls_free(c->tls);
     if (c->s != BAD_SOCKET) {
         close_socket(c->s);
     }
     plum_free(c);
 }
 
-static bool n_connect(ARGS) {
-    const char *host = str_arg(args[0]);
-    int64_t port = args[1].as.i;
-    double timeout = timeout_arg(args, argc, 2);
-    if (!check_port(n, port, false) || !check_timeout(n, timeout)) {
-        return false;
-    }
+/*
+ * Connect to host and port, across the waits of the native call `what`
+ * (connect, tls_connect): *out is the call's Connecting once true comes
+ * back; false after throwing or giving way.
+ */
+static bool tcp_connect(PlumNative *n, const char *what, const char *host, int64_t port,
+                        double timeout, Connecting **out) {
     void **state = plum_native_call_state(n, connecting_free);
     Connecting *c = *state;
+    if (c != NULL && c->connected) {
+        *out = c;
+        return true;
+    }
     if (c == NULL) {
         /* the first time: start connecting */
         net_start();
@@ -299,16 +357,16 @@ static bool n_connect(ARGS) {
             int err = last_error();
             freeaddrinfo(ai);
             connecting_free(c);
-            return net_fail(n, "connect", err);
+            return net_fail(n, what, err);
         }
         address_text(ai->ai_addr, c->peer, sizeof c->peer);
         *state = c;
         int r = connect(c->s, ai->ai_addr, (socklen_t)ai->ai_addrlen);
         freeaddrinfo(ai);
         if (r != 0 && !would_block(last_error())) {
-            char what[160];
-            snprintf(what, sizeof what, "connect to %s port %lld", host, (long long)port);
-            return net_fail(n, what, last_error());
+            char where[160];
+            snprintf(where, sizeof where, "%s to %s port %lld", what, host, (long long)port);
+            return net_fail(n, where, last_error());
         }
     }
     for (;;) {
@@ -318,22 +376,88 @@ static bool n_connect(ARGS) {
             return false;
         }
         if (ready < 0) {
-            return plum_native_throw(n, PLUM_ERROR_NET, "connect to %s port %lld: timed out", host,
+            return plum_native_throw(n, PLUM_ERROR_NET, "%s to %s port %lld: timed out", what, host,
                                      (long long)port);
         }
         int err = 0;
         socklen_t len = sizeof err;
         getsockopt(c->s, SOL_SOCKET, SO_ERROR, (char *)&err, &len);
         if (err != 0) {
-            char what[160];
-            snprintf(what, sizeof what, "connect to %s port %lld", host, (long long)port);
-            return net_fail(n, what, err);
+            char where[160];
+            snprintf(where, sizeof where, "%s to %s port %lld", what, host, (long long)port);
+            return net_fail(n, where, err);
         }
         break;
+    }
+    c->connected = true;
+    *out = c;
+    return true;
+}
+
+static bool n_connect(ARGS) {
+    const char *host = str_arg(args[0]);
+    int64_t port = args[1].as.i;
+    double timeout = timeout_arg(args, argc, 2);
+    if (!check_port(n, port, false) || !check_timeout(n, timeout)) {
+        return false;
+    }
+    Connecting *c = NULL;
+    if (!tcp_connect(n, "connect", host, port, timeout, &c)) {
+        return false;
     }
     PlumHandle *h = handle_new("Connection", c->s);
     snprintf(h->peer, sizeof h->peer, "%s", c->peer);
     c->s = BAD_SOCKET; /* the handle has it now */
+    *result = plum_obj(&h->obj);
+    return true;
+}
+
+/* tls_connect(host, port): a connection, its TLS handshake made. */
+static bool n_tls_connect(ARGS) {
+    const char *host = str_arg(args[0]);
+    int64_t port = args[1].as.i;
+    double timeout = timeout_arg(args, argc, 2);
+    bool verify = argc > 3 && args[3].type == PLUM_VAL_BOOL ? args[3].as.b : true;
+    const char *ca_file = argc > 4 && args[4].type != PLUM_VAL_NONE ? str_arg(args[4]) : "";
+    if (!check_port(n, port, false) || !check_timeout(n, timeout)) {
+        return false;
+    }
+    Connecting *c = NULL;
+    if (!tcp_connect(n, "tls_connect", host, port, timeout, &c)) {
+        return false;
+    }
+    char err[PLUM_TLS_ERR_SIZE];
+    if (c->tls == NULL) {
+        c->tls = plum_tls_client(n, (intptr_t)c->s, host, verify, ca_file, err);
+        if (c->tls == NULL) {
+            return plum_native_throw(n, PLUM_ERROR_NET, "tls_connect to %s port %lld: %s", host,
+                                     (long long)port, err);
+        }
+    }
+    for (;;) {
+        int r = plum_tls_handshake(c->tls, err);
+        if (r == 0) {
+            break;
+        }
+        if (r == PLUM_TLS_FAILED) {
+            return plum_native_throw(n, PLUM_ERROR_NET, "tls_connect to %s port %lld: %s", host,
+                                     (long long)port, err);
+        }
+        int ready = plum_native_wait_io(n, (intptr_t)c->s, r == PLUM_TLS_WANT_WRITE, timeout);
+        if (ready == 0) {
+            return false;
+        }
+        if (ready < 0) {
+            return plum_native_throw(n, PLUM_ERROR_NET, "tls_connect to %s port %lld: timed out",
+                                     host, (long long)port);
+        }
+    }
+    PlumHandle *h = handle_new("Connection", c->s);
+    snprintf(h->peer, sizeof h->peer, "%s", c->peer);
+    h->tls = c->tls;
+    h->close = tls_connection_close;
+    c->tls = NULL; /* the handle has them now */
+    c->s = BAD_SOCKET;
     *result = plum_obj(&h->obj);
     return true;
 }
@@ -421,6 +545,15 @@ static bool l_accept(ARGS) {
             }
             PlumHandle *c = handle_new("Connection", s);
             address_text((struct sockaddr *)&addr, c->peer, sizeof c->peer);
+            if (h->tls != NULL) {
+                char err[PLUM_TLS_ERR_SIZE];
+                c->tls = plum_tls_accept(h->tls, (intptr_t)s, err);
+                if (c->tls == NULL) {
+                    plum_release(plum_obj(&c->obj));
+                    return plum_native_throw(n, PLUM_ERROR_NET, "accept: %s", err);
+                }
+                c->close = tls_connection_close;
+            }
             *result = plum_obj(&c->obj);
             return true;
         }
@@ -448,7 +581,10 @@ static bool h_port(ARGS) {
 static bool h_close(ARGS) {
     (void)n;
     (void)argc;
-    handle_close(plum_as_handle(args[0]));
+    PlumHandle *h = plum_as_handle(args[0]);
+    if (h->fd >= 0) {
+        h->close(h);
+    }
     *result = plum_none();
     return true;
 }
@@ -472,18 +608,34 @@ static bool fill(PlumNative *n, PlumHandle *h, size_t max, double timeout, size_
         h->in_cap = cap;
     }
     for (;;) {
-        int r =
-            (int)recv((sock_t)h->fd, h->in + h->in_len, (int)(max > 1 << 30 ? 1 << 30 : max), 0);
-        if (r >= 0) {
-            h->in_len += (size_t)r;
-            *got = (size_t)r;
-            return true;
+        bool want_write = false;
+        if (h->tls != NULL) {
+            /* the first read on a server's side also makes the handshake */
+            char err[PLUM_TLS_ERR_SIZE];
+            long r = plum_tls_read(h->tls, h->in + h->in_len, max, err);
+            if (r >= 0) {
+                h->in_len += (size_t)r;
+                *got = (size_t)r;
+                return true;
+            }
+            if (r == PLUM_TLS_FAILED) {
+                return plum_native_throw(n, PLUM_ERROR_NET, "read: %s", err);
+            }
+            want_write = r == PLUM_TLS_WANT_WRITE;
+        } else {
+            int r = (int)recv((sock_t)h->fd, h->in + h->in_len,
+                              (int)(max > 1 << 30 ? 1 << 30 : max), 0);
+            if (r >= 0) {
+                h->in_len += (size_t)r;
+                *got = (size_t)r;
+                return true;
+            }
+            int err = last_error();
+            if (!would_block(err)) {
+                return net_fail(n, "read", err);
+            }
         }
-        int err = last_error();
-        if (!would_block(err)) {
-            return net_fail(n, "read", err);
-        }
-        int ready = plum_native_wait_io(n, h->fd, false, timeout);
+        int ready = plum_native_wait_io(n, h->fd, want_write, timeout);
         if (ready == 0) {
             return false;
         }
@@ -581,17 +733,32 @@ static bool c_write(ARGS) {
     Sending *s = *state;
     while (s->sent < text->len) {
         size_t left = text->len - s->sent;
-        int r = (int)send((sock_t)h->fd, text->chars + s->sent,
-                          (int)(left > 1 << 30 ? 1 << 30 : left), SEND_FLAGS);
-        if (r >= 0) {
-            s->sent += (size_t)r;
-            continue;
+        bool want_write = true;
+        if (h->tls != NULL) {
+            /* the first write on a server's side also makes the handshake */
+            char err[PLUM_TLS_ERR_SIZE];
+            long r = plum_tls_write(h->tls, text->chars + s->sent, left, err);
+            if (r >= 0) {
+                s->sent += (size_t)r;
+                continue;
+            }
+            if (r == PLUM_TLS_FAILED) {
+                return plum_native_throw(n, PLUM_ERROR_NET, "write: %s", err);
+            }
+            want_write = r == PLUM_TLS_WANT_WRITE;
+        } else {
+            int r = (int)send((sock_t)h->fd, text->chars + s->sent,
+                              (int)(left > 1 << 30 ? 1 << 30 : left), SEND_FLAGS);
+            if (r >= 0) {
+                s->sent += (size_t)r;
+                continue;
+            }
+            int err = last_error();
+            if (!would_block(err)) {
+                return net_fail(n, "write", err);
+            }
         }
-        int err = last_error();
-        if (!would_block(err)) {
-            return net_fail(n, "write", err);
-        }
-        int ready = plum_native_wait_io(n, h->fd, true, timeout);
+        int ready = plum_native_wait_io(n, h->fd, want_write, timeout);
         if (ready == 0) {
             return false; /* made again later, from s->sent on */
         }
@@ -700,13 +867,24 @@ static const PlumNativeFunction net_functions[] = {
      "a TCP listener on a port (0 picks a free one); listener.accept() takes connections"},
     {"connect", "(host: str, port: int, timeout: float = 0) -> Connection", n_connect,
      "a TCP connection to host and port"},
+    {"tls_connect",
+     "(host: str, port: int, timeout: float = 0, verify: bool = good, ca_file: str = \"\") -> "
+     "Connection",
+     n_tls_connect,
+     "a TLS connection to host and port, its certificate checked against the system's trusted "
+     "CAs (or ca_file) and the host name, unless verify is bad"},
+    {"listen_tls",
+     "(port: int, cert_file: str, key_file: str, host: str = \"0.0.0.0\") -> Listener",
+     n_listen_tls,
+     "a TLS listener, with a certificate chain and private key from PEM files; accept() takes "
+     "connections, which make the handshake on their first read or write"},
     {"udp", "(port: int = 0, host: str = \"0.0.0.0\") -> UdpSocket", n_udp,
      "a UDP socket on a port (0 picks a free one)"},
     {"resolve", "(host: str) -> list[str]", n_resolve, "the addresses a host name has"},
 };
 
 const PlumNativeModule plum_module_net = {
-    "net",         "TCP and UDP sockets, and DNS",
+    "net",         "TCP and UDP sockets, TLS, and DNS",
     net_functions, sizeof net_functions / sizeof net_functions[0],
     NULL,          0,
 };

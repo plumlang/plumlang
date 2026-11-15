@@ -129,6 +129,7 @@ typedef struct PlumHandle {
     size_t in_cap;
     char peer[96]; /* the other end; for UDP, the last sender */
     int port;      /* the local port */
+    void *tls;     /* TLS: a connection's session, a listener's certificate */
 } PlumHandle;
 
 static inline PlumHandle *plum_as_handle(PlumValue v) {
