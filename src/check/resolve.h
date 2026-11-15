@@ -85,6 +85,10 @@ void plum_repl_scope_free(PlumReplScope *scope);
 void plum_resolve_entry(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
                         PlumDiagList *diags, const PlumReplScope *earlier, PlumReplScope *added);
 
+/* The built-in names (types, functions and error trees): the i-th, with
+ * its kind in *kind, or NULL past the end. */
+const char *plum_builtin_at(size_t i, PlumSymbolKind *kind);
+
 /* "a variable", "a function", "a tree", ... for messages. */
 const char *plum_symbol_kind_text(PlumSymbolKind kind);
 

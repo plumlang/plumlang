@@ -1003,22 +1003,40 @@ static void add_builtin(Resolver *r, PlumSymbolKind kind, const char *name) {
     plum_map_set(&r->scope->names, sym->name, strlen(sym->name), sym);
 }
 
+/* The built-in names, in the scope around every module. */
+static const struct {
+    const char *name;
+    PlumSymbolKind kind;
+} builtin_names[] = {
+    {"int", PLUM_SYM_BUILTIN_TYPE},       {"float", PLUM_SYM_BUILTIN_TYPE},
+    {"bool", PLUM_SYM_BUILTIN_TYPE},      {"str", PLUM_SYM_BUILTIN_TYPE},
+    {"byte", PLUM_SYM_BUILTIN_TYPE},      {"none", PLUM_SYM_BUILTIN_TYPE},
+    {"list", PLUM_SYM_BUILTIN_TYPE},      {"map", PLUM_SYM_BUILTIN_TYPE},
+    {"set", PLUM_SYM_BUILTIN_TYPE},       {"Task", PLUM_SYM_BUILTIN_TYPE},
+    {"Channel", PLUM_SYM_BUILTIN_TYPE},   {"Json", PLUM_SYM_BUILTIN_TYPE},
+    {"Listener", PLUM_SYM_BUILTIN_TYPE},  {"Connection", PLUM_SYM_BUILTIN_TYPE},
+    {"UdpSocket", PLUM_SYM_BUILTIN_TYPE}, {"drop", PLUM_SYM_BUILTIN_FUNC},
+    {"ask", PLUM_SYM_BUILTIN_FUNC},       {"len", PLUM_SYM_BUILTIN_FUNC},
+    {"type_of", PLUM_SYM_BUILTIN_FUNC},   {"assert", PLUM_SYM_BUILTIN_FUNC},
+    {"exit", PLUM_SYM_BUILTIN_FUNC},      {"Error", PLUM_SYM_TREE},
+    {"ValueError", PLUM_SYM_TREE},        {"ParseError", PLUM_SYM_TREE},
+    {"IndexError", PLUM_SYM_TREE},        {"KeyError", PLUM_SYM_TREE},
+    {"OverflowError", PLUM_SYM_TREE},     {"ZeroDivisionError", PLUM_SYM_TREE},
+    {"IOError", PLUM_SYM_TREE},           {"NetError", PLUM_SYM_TREE},
+    {"AssertError", PLUM_SYM_TREE},
+};
+
+const char *plum_builtin_at(size_t i, PlumSymbolKind *kind) {
+    if (i >= sizeof builtin_names / sizeof builtin_names[0]) {
+        return NULL;
+    }
+    *kind = builtin_names[i].kind;
+    return builtin_names[i].name;
+}
+
 static void add_builtins(Resolver *r) {
-    static const char *const types[] = {"int",     "float", "bool",     "str",        "byte",
-                                        "none",    "list",  "map",      "set",        "Task",
-                                        "Channel", "Json",  "Listener", "Connection", "UdpSocket"};
-    static const char *const functions[] = {"drop", "ask", "len", "type_of", "assert", "exit"};
-    static const char *const errors[] = {
-        "Error",         "ValueError",        "ParseError", "IndexError", "KeyError",
-        "OverflowError", "ZeroDivisionError", "IOError",    "NetError",   "AssertError"};
-    for (size_t i = 0; i < sizeof types / sizeof types[0]; i++) {
-        add_builtin(r, PLUM_SYM_BUILTIN_TYPE, types[i]);
-    }
-    for (size_t i = 0; i < sizeof functions / sizeof functions[0]; i++) {
-        add_builtin(r, PLUM_SYM_BUILTIN_FUNC, functions[i]);
-    }
-    for (size_t i = 0; i < sizeof errors / sizeof errors[0]; i++) {
-        add_builtin(r, PLUM_SYM_TREE, errors[i]);
+    for (size_t i = 0; i < sizeof builtin_names / sizeof builtin_names[0]; i++) {
+        add_builtin(r, builtin_names[i].kind, builtin_names[i].name);
     }
 }
 

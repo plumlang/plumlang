@@ -36,6 +36,13 @@ typedef struct PlumModule {
  * syntax trees may point into it, but a later `seed` loads the file again. */
 #define PLUM_MODULE_FORGOTTEN 3
 
+/*
+ * Reads an imported file: its text, NUL-terminated and malloc'd, or NULL
+ * with *err set to an errno code. The language server uses one to read
+ * the files open in the editor from memory instead of from disk.
+ */
+typedef char *(*PlumModuleReader)(void *ctx, const char *path, size_t *len, int *err);
+
 typedef struct PlumModules {
     PlumModule **items; /* imports first; the program's own file last */
     size_t count;
@@ -45,6 +52,8 @@ typedef struct PlumModules {
     PlumInterner names;
     bool open;                     /* made by plum_modules_init: entries are added one at a time */
     struct PlumPackages *packages; /* the project's packages, once one is seeded */
+    PlumModuleReader read; /* NULL: imported files are read from disk */
+    void *read_ctx;
 } PlumModules;
 
 /*

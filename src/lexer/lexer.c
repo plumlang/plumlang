@@ -514,6 +514,10 @@ bool plum_is_keyword(const char *word, size_t len) {
     return false;
 }
 
+const char *plum_keyword_at(size_t i) {
+    return i < sizeof keywords / sizeof keywords[0] ? keywords[i].word : NULL;
+}
+
 static void lex_name(Lexer *lx) {
     PlumSpan start = here(lx);
     while (is_alnum(peek(lx))) {
