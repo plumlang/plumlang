@@ -44,4 +44,24 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
                                   PlumInterner *names);
 void plum_compiled_free(PlumCompiled *compiled);
 
+/*
+ * The REPL compiles one entry at a time, keeping global slots, trees and
+ * methods from one entry to the next.
+ */
+typedef struct PlumReplCompiler PlumReplCompiler;
+
+PlumReplCompiler *plum_repl_compiler_new(PlumInterner *names);
+
+/*
+ * Compile the modules an entry brought (new imports first, the entry
+ * last). False after errors, which are in the modules' lists. Otherwise
+ * `out` describes the program so far, with out->main the entry's code
+ * (the caller releases it); the rest is borrowed from `rc`. With `echo`,
+ * an entry that is one expression prints its value and type.
+ */
+bool plum_repl_compile(PlumReplCompiler *rc, const PlumCompileModule *modules, size_t count,
+                       bool echo, PlumCompiled *out);
+
+void plum_repl_compiler_free(PlumReplCompiler *rc);
+
 #endif /* PLUM_COMPILER_COMPILER_H */
