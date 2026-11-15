@@ -12,6 +12,7 @@
 #include "compiler/compiler.h"
 #include "diag/diag.h"
 
+#include <stdint.h>
 #include <stdio.h>
 
 /* Calls deeper than this are a runtime error, not a crash (spec 6.5). */
@@ -33,6 +34,14 @@ typedef struct PlumRunOptions {
     /* Print to `err`, when the program ends, how much memory it used: the
      * peak, the allocations, and the values it made by kind (spec 11.5). */
     bool mem_stats;
+    /* Limits for running code no one has read (the fuzz targets,
+     * tests/fuzz); not reachable from the command line. 0 means none. Past
+     * either one the program stops, as if by exit(1), with a message. */
+    uint64_t max_steps;  /* calls and backward jumps: bounds the run's time */
+    int64_t max_memory;  /* bytes in use, checked at each step */
+    /* Native functions that reach outside the process (files, the network,
+     * running commands, sleeping) throw an IOError instead. */
+    bool sandbox;
 } PlumRunOptions;
 
 /*

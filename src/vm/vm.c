@@ -103,6 +103,8 @@ typedef struct PlumVM {
      * may still point at it. */
     bool session;
     PLUM_ARRAY(struct PlumTask *) parked;
+    uint64_t steps;        /* calls and backward jumps so far (max_steps) */
+    PlumAllocStats *stats; /* the allocator's counts, if it counts */
 } VM;
 
 typedef PLUM_ARRAY(struct PlumTask *) TaskList;
@@ -1753,7 +1755,30 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
 /* The run loop                                                        */
 /* ------------------------------------------------------------------ */
 
+/*
+ * One more step of the run (a call or a backward jump): false, the program
+ * stopped as if by exit(1), once it is past the limits of its options.
+ */
+static bool step(VM *vm) {
+    const PlumRunOptions *o = vm->options;
+    if (o->max_steps > 0 && ++vm->steps > o->max_steps) {
+        fprintf(vm->err, "%s: Error: stopped after %llu steps, the limit of this run\n",
+                vm->source->path, (unsigned long long)o->max_steps);
+    } else if (o->max_memory > 0 && vm->stats != NULL && vm->stats->bytes_in_use > o->max_memory) {
+        fprintf(vm->err, "%s: Error: stopped using more than %lld bytes, the limit of this run\n",
+                vm->source->path, (long long)o->max_memory);
+    } else {
+        return true;
+    }
+    vm->exit_code = 1;
+    vm->stopped = true;
+    return false;
+}
+
 static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
+    if (!step(vm)) {
+        return false;
+    }
     if (vm->frame_count == PLUM_MAX_FRAMES) {
         runtime_error(vm, PLUM_ERROR_ERROR, "too much recursion: more than %d calls deep",
                       PLUM_MAX_FRAMES);
@@ -1810,6 +1835,22 @@ static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
 }
 
 #define PLACE_KIND(op, local, global) ((op) == (local) ? 0 : (op) == (global) ? 1 : 2)
+
+/* Does `fn` reach outside the process? (PlumRunOptions.sandbox) */
+static bool outside_world(const PlumNativeFunction *fn) {
+    static const PlumNativeModule *const modules[] = {
+        &plum_module_fs, &plum_module_net, &plum_module_listener, &plum_module_connection,
+        &plum_module_udp,
+    };
+    for (size_t i = 0; i < sizeof modules / sizeof modules[0]; i++) {
+        if (fn >= modules[i]->functions &&
+            fn < modules[i]->functions + modules[i]->function_count) {
+            return true;
+        }
+    }
+    return fn == plum_native_function(&plum_module_os, "run") ||
+           fn == plum_native_function(&plum_module_time, "sleep");
+}
 
 static bool execute(VM *vm) {
     Frame *frame = FRAME(vm, vm->frame_count - 1);
@@ -2626,7 +2667,10 @@ static bool execute(VM *vm) {
             }
             PlumValue result = plum_none();
             SAVE_IP();
-            bool ok = fn->fn((PlumNative *)(void *)vm, args, argc, &result);
+            bool ok = vm->options->sandbox && outside_world(fn)
+                          ? plum_native_throw((PlumNative *)(void *)vm, PLUM_ERROR_IO,
+                                              "%s() isn't allowed in this run (sandbox)", fn->name)
+                          : fn->fn((PlumNative *)(void *)vm, args, argc, &result);
             if (args != local) {
                 plum_free(args);
             }
@@ -2731,6 +2775,10 @@ static bool execute(VM *vm) {
         case PLUM_OP_LOOP: {
             uint16_t d = READ_U16();
             ip -= d;
+            if (!step(vm)) {
+                SAVE_IP();
+                goto thrown;
+            }
             break;
         }
         case PLUM_OP_FOR_RANGE: {
@@ -2752,6 +2800,10 @@ static bool execute(VM *vm) {
             if (!(inclusive && SLOT(slot).as.i == SLOT(slot + 1).as.i)) {
                 SLOT(slot).as.i++;
                 ip -= d;
+                if (!step(vm)) {
+                    SAVE_IP();
+                    goto thrown;
+                }
             }
             break;
         }
@@ -3154,15 +3206,19 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     /* --mem-stats: the run's own counters, which the allocator counts into
      * until the run is over (util/alloc.h). */
     PlumAllocStats stats;
-    if (options->mem_stats) {
+    bool counting = options->mem_stats || options->max_memory > 0;
+    if (counting) {
         plum_alloc_set_stats(&stats);
     }
     VM *vm = vm_create(options, out, err);
+    vm->stats = counting ? &stats : NULL;
     vm_load(vm, program, source);
     int code = vm_run_main(vm, program->main);
     code = vm_destroy(vm, code);
-    if (options->mem_stats) {
+    if (counting) {
         plum_alloc_set_stats(NULL);
+    }
+    if (options->mem_stats) {
         fflush(out);
         print_mem_stats(err, &stats);
     }

@@ -109,7 +109,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
                      const PlumRunOptions *options);
 
 static int cmd_run(int argc, char **argv) {
-    PlumRunOptions options = {0, NULL, false, false};
+    PlumRunOptions options = {0};
     /* Options for plum itself come before the file. */
     while (argc > 0 && argv[0][0] == '-' && argv[0][1] == '-') {
         if (strcmp(argv[0], "--check-leaks") == 0) {
