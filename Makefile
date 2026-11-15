@@ -127,6 +127,7 @@ test: all $(UNIT_BIN)
 	@sh tests/golden.sh $(PLUM) examples
 	@sh tests/fmt-check.sh $(PLUM)
 	@sh tests/repl.sh $(PLUM)
+	@sh tests/reference.sh $(PLUM)
 
 # Regenerate the instruction table in docs/bytecode.md from opcodes.h.
 bytecode-doc:
