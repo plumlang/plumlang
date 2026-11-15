@@ -7,5 +7,8 @@
 *.plum linguist-language=Text linguist-detectable=true
 tests/**/*.out linguist-generated=false
 
+# Third-party code (PREAMBLE 1.3), kept as upstream wrote it.
+vendor/** linguist-vendored
+
 # The golden runner's CRLF case must keep its carriage returns.
 tests/harness/cases/pass_crlf.* -text
