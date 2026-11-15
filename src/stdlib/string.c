@@ -10,6 +10,7 @@
 #include "util/array.h"
 #include "vm/text.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #define ARGS PlumNative *n, const PlumValue *args, int argc, PlumValue *result
@@ -373,6 +374,65 @@ static bool s_is_space(ARGS) {
     return true;
 }
 
+static bool s_byte_len(ARGS) {
+    (void)n;
+    (void)argc;
+    *result = plum_int((int64_t)S(args[0])->len);
+    return true;
+}
+
+static int hex_digit(char c) {
+    return c >= '0' && c <= '9'   ? c - '0'
+           : c >= 'a' && c <= 'f' ? c - 'a' + 10
+           : c >= 'A' && c <= 'F' ? c - 'A' + 10
+                                  : -1;
+}
+
+/* url_decode(): %XX escapes to bytes, and + to a space (as in a query). */
+static bool s_url_decode(ARGS) {
+    (void)n;
+    (void)argc;
+    const PlumString *s = S(args[0]);
+    Buf b = {0};
+    for (size_t i = 0; i < s->len; i++) {
+        char c = s->chars[i];
+        if (c == '+') {
+            plum_array_push(&b, ' ');
+        } else if (c == '%' && i + 2 < s->len && hex_digit(s->chars[i + 1]) >= 0 &&
+                   hex_digit(s->chars[i + 2]) >= 0) {
+            plum_array_push(&b,
+                            (char)(hex_digit(s->chars[i + 1]) * 16 + hex_digit(s->chars[i + 2])));
+            i += 2;
+        } else {
+            plum_array_push(&b, c);
+        }
+    }
+    *result = buf_value(&b);
+    return true;
+}
+
+/* url_encode(): everything but letters, digits and - _ . ~ as %XX. */
+static bool s_url_encode(ARGS) {
+    (void)n;
+    (void)argc;
+    const PlumString *s = S(args[0]);
+    Buf b = {0};
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char)s->chars[i];
+        bool plain = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                     c == '-' || c == '_' || c == '.' || c == '~';
+        if (plain) {
+            plum_array_push(&b, (char)c);
+        } else {
+            char esc[4];
+            snprintf(esc, sizeof esc, "%%%02X", c);
+            put(&b, esc, 3);
+        }
+    }
+    *result = buf_value(&b);
+    return true;
+}
+
 static const PlumNativeFunction functions[] = {
     {"upper", "(self: str) -> str", s_upper, "the text in capitals (ASCII letters)"},
     {"lower", "(self: str) -> str", s_lower, "the text in small letters (ASCII letters)"},
@@ -400,6 +460,12 @@ static const PlumNativeFunction functions[] = {
     {"is_digit", "(self: str) -> bool", s_is_digit, "is every character 0 to 9?"},
     {"is_alpha", "(self: str) -> bool", s_is_alpha, "is every character a letter (ASCII)?"},
     {"is_space", "(self: str) -> bool", s_is_space, "is every character whitespace?"},
+    {"byte_len", "(self: str) -> int", s_byte_len,
+     "the length in bytes of its UTF-8 (len() counts characters)"},
+    {"url_encode", "(self: str) -> str", s_url_encode,
+     "for a URL: all but letters, digits and - _ . ~ as %XX"},
+    {"url_decode", "(self: str) -> str", s_url_decode,
+     "%XX escapes back to text, and + to a space"},
 };
 
 const PlumNativeModule plum_module_str = {
