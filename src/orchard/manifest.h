@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 /* MAJOR.MINOR.PATCH, each a number without leading zeros. */
 typedef struct PlumVersion {
@@ -107,6 +108,12 @@ typedef struct PlumLock {
 int plum_lock_load(PlumLock *l, const char *dir);
 void plum_lock_free(PlumLock *l);
 const PlumLockEntry *plum_lock_find(const PlumLock *l, const char *name);
+
+/*
+ * The entry file of the package in `dir` (plum_alloc'd), for `plum run
+ * dir`; NULL after printing to `err` why there is none.
+ */
+char *plum_package_entry(const char *dir, FILE *err);
 
 /*
  * The directory packages are unpacked in, with '/' separators:

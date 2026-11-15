@@ -695,3 +695,26 @@ bool plum_orchard_cache(char *buf, size_t size) {
     }
     return put_path(buf, size, home, "/.plum/orchard");
 }
+
+/* ------------------------------------------------------------------ */
+/* Running a package                                                   */
+/* ------------------------------------------------------------------ */
+
+char *plum_package_entry(const char *dir, FILE *err) {
+    PlumManifest m;
+    int status = plum_manifest_load(&m, dir);
+    char *path = NULL;
+    if (status > 0) {
+        fprintf(err,
+                "plum: error: '%s' is a directory without a plum.toml\n"
+                "  hint: run a .plum file, or add a plum.toml with [package] and entry = "
+                "\"main.plum\"\n",
+                dir);
+    } else if (status < 0) {
+        plum_diag_print(&m.diags, err, plum_diag_use_color(err));
+    } else {
+        path = join_path(dir, m.entry);
+    }
+    plum_manifest_free(&m);
+    return path;
+}

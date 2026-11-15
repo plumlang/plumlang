@@ -26,6 +26,7 @@
 #include "fmt/format.h"
 #include "lexer/lexer.h"
 #include "module/loader.h"
+#include "orchard/manifest.h"
 #include "parser/parser.h"
 #include "plum/version.h"
 #include "repl/line.h"
@@ -192,79 +193,6 @@ static int cmd_one_file(const char *path, FrontStage stage) {
     return status;
 }
 
-/*
- * A package (spec 9.3): a directory with a plum.toml whose [package]
- * section names the entry file. Returns that file's path (malloc'd), or
- * NULL after printing why not.
- */
-static char *package_entry(const char *dir) {
-    size_t dlen = strlen(dir);
-    while (dlen > 1 && (dir[dlen - 1] == '/' || dir[dlen - 1] == '\\')) {
-        dlen--;
-    }
-    char *manifest = malloc(dlen + 12);
-    if (manifest == NULL) {
-        return NULL;
-    }
-    snprintf(manifest, dlen + 12, "%.*s/plum.toml", (int)dlen, dir);
-    size_t len = 0;
-    int err = 0;
-    char *text = plum_read_file(manifest, &len, &err);
-    if (text == NULL) {
-        fprintf(stderr,
-                "plum: error: '%s' is a directory without a plum.toml\n"
-                "  hint: run a .plum file, or add a plum.toml with [package] and entry = "
-                "\"main.plum\"\n",
-                dir);
-        free(manifest);
-        return NULL;
-    }
-    /* The few lines we need: key = "value" under [package]. */
-    char entry[512] = "";
-    bool in_package = false;
-    for (char *line = text; *line != '\0';) {
-        char *end = strchr(line, '\n');
-        size_t n = end != NULL ? (size_t)(end - line) : strlen(line);
-        while (n > 0 && (line[n - 1] == '\r' || line[n - 1] == ' ')) {
-            n--;
-        }
-        while (n > 0 && (*line == ' ' || *line == '\t')) {
-            line++;
-            n--;
-        }
-        if (n > 0 && line[0] == '[') {
-            in_package = n == 9 && strncmp(line, "[package]", 9) == 0;
-        } else if (in_package && n > 5 && strncmp(line, "entry", 5) == 0) {
-            const char *q1 = memchr(line, '"', n);
-            const char *q2 = q1 != NULL ? memchr(q1 + 1, '"', n - (size_t)(q1 + 1 - line)) : NULL;
-            if (q2 != NULL && (size_t)(q2 - q1 - 1) < sizeof entry) {
-                memcpy(entry, q1 + 1, (size_t)(q2 - q1 - 1));
-                entry[q2 - q1 - 1] = '\0';
-            }
-        }
-        line = end != NULL ? end + 1 : line + n;
-        if (end == NULL) {
-            break;
-        }
-    }
-    free(text);
-    if (entry[0] == '\0') {
-        fprintf(stderr,
-                "plum: error: %s has no entry under [package]\n"
-                "  hint: add the line: entry = \"main.plum\"\n",
-                manifest);
-        free(manifest);
-        return NULL;
-    }
-    free(manifest);
-    size_t elen = strlen(entry);
-    char *path = malloc(dlen + elen + 2);
-    if (path != NULL) {
-        snprintf(path, dlen + elen + 2, "%.*s/%s", (int)dlen, dir, entry);
-    }
-    return path;
-}
-
 /* plum check, dis and run: the program and every module it imports. */
 static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
                      const PlumRunOptions *options) {
@@ -281,7 +209,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
     char *entry = NULL;
     const char *path = argv[0];
     if (plum_os_is_dir(path)) {
-        entry = package_entry(path);
+        entry = plum_package_entry(path, stderr);
         if (entry == NULL) {
             return PLUM_EXIT_NOINPUT;
         }
@@ -291,7 +219,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
     int err = plum_modules_load(&modules, path);
     if (err != 0) {
         fprintf(stderr, "plum: error: cannot read '%s': %s\n", path, strerror(err));
-        free(entry);
+        plum_free(entry);
         return PLUM_EXIT_NOINPUT;
     }
 
@@ -337,7 +265,7 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
     }
     plum_compiled_free(&compiled);
     plum_modules_free(&modules);
-    free(entry);
+    plum_free(entry);
     return status;
 }
 
