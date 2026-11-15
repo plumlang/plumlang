@@ -23,12 +23,44 @@ list(FILTER PLUM_LIB_SOURCES EXCLUDE REGEX "/src/cli/")
 file(GLOB_RECURSE PLUM_CLI_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/cli/*.c)
 file(GLOB_RECURSE PLUM_UNIT_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/unit/*.c)
 
+# Mbed TLS, vendored under vendor/mbedtls (see its README.md): third-party
+# code, built with its own, relaxed warnings. Our code sees its headers as
+# system headers, so our strict warnings stay on for what we write.
+set(PLUM_MBEDTLS ${CMAKE_SOURCE_DIR}/vendor/mbedtls)
+set(PLUM_TFPSA ${PLUM_MBEDTLS}/tf-psa-crypto)
+file(GLOB PLUM_MBEDTLS_SOURCES CONFIGURE_DEPENDS
+  ${PLUM_MBEDTLS}/library/*.c ${PLUM_TFPSA}/core/*.c ${PLUM_TFPSA}/drivers/builtin/src/*.c
+  ${PLUM_TFPSA}/dispatch/*.c ${PLUM_TFPSA}/extras/*.c ${PLUM_TFPSA}/platform/*.c
+  ${PLUM_TFPSA}/utilities/*.c)
+add_library(plum_mbedtls STATIC ${PLUM_MBEDTLS_SOURCES})
+target_include_directories(plum_mbedtls SYSTEM PUBLIC
+  ${PLUM_MBEDTLS}/include ${PLUM_TFPSA}/include ${PLUM_TFPSA}/drivers/builtin/include
+  ${CMAKE_SOURCE_DIR}/src/stdlib/tls)
+target_include_directories(plum_mbedtls PRIVATE
+  ${PLUM_MBEDTLS}/library ${PLUM_TFPSA}/core ${PLUM_TFPSA}/drivers/builtin/src
+  ${PLUM_TFPSA}/dispatch ${PLUM_TFPSA}/extras ${PLUM_TFPSA}/platform ${PLUM_TFPSA}/utilities)
+target_compile_definitions(plum_mbedtls PUBLIC
+  MBEDTLS_USER_CONFIG_FILE="mbedtls_user_config.h"
+  TF_PSA_CRYPTO_USER_CONFIG_FILE="crypto_user_config.h")
+if(MSVC)
+  target_compile_options(plum_mbedtls PRIVATE /W1 /utf-8)
+  target_compile_definitions(plum_mbedtls PRIVATE _CRT_SECURE_NO_WARNINGS)
+elseif(PLUM_SANITIZE)
+  target_compile_options(plum_mbedtls PRIVATE
+    -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+endif()
+if(WIN32)
+  target_link_libraries(plum_mbedtls PUBLIC bcrypt) # random numbers
+endif()
+
 add_library(plumcore STATIC ${PLUM_LIB_SOURCES})
+target_link_libraries(plumcore PUBLIC plum_mbedtls)
 if(NOT MSVC)
   target_link_libraries(plumcore PUBLIC m) # pow, fmod; part of the C runtime on MSVC
 endif()
 if(WIN32)
-  target_link_libraries(plumcore PUBLIC ws2_32) # Winsock, for the net module
+  # Winsock for the net module; Crypt32 for the system's trusted certificates (TLS)
+  target_link_libraries(plumcore PUBLIC ws2_32 crypt32)
 endif()
 add_executable(plum ${PLUM_CLI_SOURCES})
 add_executable(plum_unit_tests ${PLUM_UNIT_SOURCES})

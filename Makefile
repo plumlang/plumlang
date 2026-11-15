@@ -42,11 +42,28 @@ else
   LDSAN := -fsanitize=address,undefined
 endif
 
-CFLAGS  += $(STD) $(WARN) $(OPT) $(INCLUDE) $(DEFS) -MMD -MP
+# Mbed TLS, vendored under vendor/mbedtls (see its README.md). It is built
+# with its own, relaxed warnings; our code sees its headers as system
+# headers, so our strict warnings stay on for what we write.
+MBEDTLS   := vendor/mbedtls
+TFPSA     := $(MBEDTLS)/tf-psa-crypto
+TLS_DEFS  := -DMBEDTLS_USER_CONFIG_FILE=\"mbedtls_user_config.h\" \
+             -DTF_PSA_CRYPTO_USER_CONFIG_FILE=\"crypto_user_config.h\"
+TLS_INCLUDE := -isystem $(MBEDTLS)/include -isystem $(TFPSA)/include \
+               -isystem $(TFPSA)/drivers/builtin/include -Isrc/stdlib/tls
+VENDOR_INCLUDE := -I$(MBEDTLS)/include -I$(MBEDTLS)/library -I$(TFPSA)/include \
+                  -I$(TFPSA)/drivers/builtin/include -I$(TFPSA)/core \
+                  -I$(TFPSA)/drivers/builtin/src -I$(TFPSA)/dispatch -I$(TFPSA)/extras \
+                  -I$(TFPSA)/platform -I$(TFPSA)/utilities -Isrc/stdlib/tls
+VENDOR_CFLAGS := $(STD) $(OPT) $(VENDOR_INCLUDE) $(TLS_DEFS) -MMD -MP
+
+CFLAGS  += $(STD) $(WARN) $(OPT) $(INCLUDE) $(TLS_INCLUDE) $(TLS_DEFS) $(DEFS) -MMD -MP
 LDFLAGS += $(LDSAN)
 LDLIBS  += -lm
 ifeq ($(OS),Windows_NT)
-LDLIBS  += -lws2_32 # Winsock, for the net module
+# Winsock for the net module; BCrypt (random numbers) and Crypt32 (the
+# system's trusted certificates) for TLS
+LDLIBS  += -lws2_32 -lbcrypt -lcrypt32
 endif
 
 BUILD   := build/$(MODE)
@@ -55,7 +72,10 @@ BUILD   := build/$(MODE)
 LIB_SRCS  := $(shell find src -name '*.c' ! -path 'src/cli/*' | sort)
 CLI_SRCS  := $(shell find src/cli -name '*.c' | sort)
 UNIT_SRCS := $(shell find tests/unit -name '*.c' | sort)
-LIB_OBJS  := $(LIB_SRCS:%.c=$(BUILD)/%.o)
+VENDOR_SRCS := $(sort $(wildcard $(MBEDTLS)/library/*.c $(TFPSA)/core/*.c \
+                 $(TFPSA)/drivers/builtin/src/*.c $(TFPSA)/dispatch/*.c $(TFPSA)/extras/*.c \
+                 $(TFPSA)/platform/*.c $(TFPSA)/utilities/*.c))
+LIB_OBJS  := $(LIB_SRCS:%.c=$(BUILD)/%.o) $(VENDOR_SRCS:%.c=$(BUILD)/%.o)
 CLI_OBJS  := $(CLI_SRCS:%.c=$(BUILD)/%.o)
 UNIT_OBJS := $(UNIT_SRCS:%.c=$(BUILD)/%.o)
 OBJS      := $(LIB_OBJS) $(CLI_OBJS) $(UNIT_OBJS)
@@ -76,6 +96,12 @@ $(BIN): $(LIB_OBJS) $(CLI_OBJS)
 
 $(UNIT_BIN): $(LIB_OBJS) $(UNIT_OBJS)
 	$(CC) $^ $(LDFLAGS) $(LDLIBS) -o $@
+
+# Third-party code first: make 3.81 (macOS) takes the first rule that matches.
+$(BUILD)/vendor/%.o: vendor/%.c
+	@mkdir -p $(dir $@)
+	@echo "  CC (vendor) $<"
+	@$(CC) $(VENDOR_CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -117,6 +143,7 @@ golden-update: all
 	@UPDATE=1 sh tests/golden.sh $(PLUM)
 	@UPDATE=1 sh tests/golden.sh $(PLUM) examples
 
+# Ours only: vendor/ keeps its upstream formatting.
 C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)
 C_FILES := $(filter-out src/stdlib/embedded.c,$(C_FILES)) # generated
 
