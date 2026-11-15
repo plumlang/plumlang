@@ -60,6 +60,10 @@ check "run a package directory"     0 "^tallest: sunflower" out -- run "$here/..
 check "a directory without plum.toml" 3 "without a plum.toml" err -- run "$tmp"
 check "an unknown run option"       2 "unknown option"      err -- run --fast "$tmp/hello.plum"
 check "the leak check"              0 "every object was freed" err -- run --check-leaks "$tmp/hello.plum"
+check "memory statistics"           0 "^  allocations  *[0-9]" err -- run --mem-stats "$tmp/hello.plum"
+check "memory statistics by kind"   0 "^  strings  *[0-9]"  err -- run --mem-stats "$tmp/hello.plum"
+check "statistics and the leak check" 0 "every object was freed" err -- run --mem-stats --check-leaks "$tmp/hello.plum"
+check "no statistics without the flag" 0 ""                err -- run "$tmp/hello.plum"
 
 echo "smoke: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

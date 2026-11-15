@@ -1,0 +1,38 @@
+# command: run --mem-stats
+# exit: 0
+# ignore: bytes|allocations|resizes|frees
+# --mem-stats prints, on stderr, what the run used. Byte and allocation
+# counts depend on the platform's C library, so this test leaves them out
+# and checks the values made, which don't.
+tree Point {
+    x: int
+    y: int
+}
+kind Shape {
+    Circle(r: float)
+    Square(side: float)
+}
+
+plant names: list[str] = []
+for i in 0..10 {
+    names.push("n{i}")          # one string each
+}
+plant ages = {"ann": 31, "bob": 42}
+plant seen = set([1, 2, 3])
+plant points = [Point(1, 2), Point(3, 4), Point(5, 6)]
+plant shapes = [Shape.Circle(1.0), Shape.Square(2.0)]
+
+branch counter() -> int {
+    plant count = 0             # captured: a closure and a captured variable
+    plant bump = () => {
+        count += 1
+    }
+    bump()
+    bump()
+    return count
+}
+plant count = counter()
+
+branch work(n: int) -> int => n * 2
+plant t = spawn work(21)
+drop(t.wait(), len(names), len(ages), len(seen), len(points), len(shapes), count)
