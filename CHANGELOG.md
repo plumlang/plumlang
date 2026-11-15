@@ -17,6 +17,7 @@ Format for a new entry:
 ## Unreleased
 
 - **Docs**: `docs/reference.md`, the whole language on one page for newcomers and coding agents; `make test` checks every code block on it and the output it shows. The spec now says `sorted_by` (not `sort_by`) and that `==` tests identity for trees without `equals` (not `is`), as implemented.
+- **Stdlib**: the `hash` module, with `hash.sha256(text)` as lowercase hex (Mbed TLS's SHA-256).
 - **CLI**: `plum fmt` formats source files in one canonical layout (spec 14.1), in place or `--stdout`, files or whole directories; `--check` lists the files that would change, for CI; `plum fmt -` formats standard input. Comments are kept, literals keep their spelling, and a file with syntax errors is left alone. `net.http` is formatted with it.
 - **Releases**: a tagged release builds static Linux binaries (x86_64, arm64, riscv64), a universal macOS binary and Windows x64 and ARM64 binaries, checks each by installing it, and publishes them with `SHA256SUMS` and build attestations; `install.sh` and `install.ps1`; a Homebrew formula and winget manifests; signing for macOS and Windows once its secrets are set. See `docs/releasing.md`.
 - **Spec**: `docs/spec.md`, the language specification v0.1 draft.

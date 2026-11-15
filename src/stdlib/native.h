@@ -164,5 +164,6 @@ extern const PlumNativeModule plum_module_net;
 extern const PlumNativeModule plum_module_listener;   /* the methods of Listener */
 extern const PlumNativeModule plum_module_connection; /* the methods of Connection */
 extern const PlumNativeModule plum_module_udp;        /* the methods of UdpSocket */
+extern const PlumNativeModule plum_module_hash;
 
 #endif /* PLUM_STDLIB_NATIVE_H */

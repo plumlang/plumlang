@@ -1,0 +1,12 @@
+# hash.sha256: the FIPS 180-2 test vectors, bytes beyond ASCII, a zero byte
+seed hash
+seed hash { sha256 }
+
+drop(hash.sha256(""))
+drop(hash.sha256("abc"))
+drop(sha256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"))
+drop(hash.sha256("plum 🍑"))
+drop(hash.sha256("a\0b"))
+plant long = "a".repeat(1000000)
+drop(hash.sha256(long))
+drop(len(hash.sha256("x")), hash.sha256("x") == hash.sha256("x"), hash.sha256("x") == hash.sha256("y"))

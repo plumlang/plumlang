@@ -20,6 +20,7 @@ seed math { sqrt, PI }     # sqrt(PI)
 | [`Task` and `Channel`](task.methods.md) | waiting for tasks, channels between them (no `seed`) |
 | [`net`](net.md) | TCP and UDP sockets, DNS; [`Listener`](net.listener.md), [`Connection`](net.connection.md), [`UdpSocket`](net.udp.md) |
 | [`net.http`](net.http.md) | an HTTP/1.1 server and client, written in Plumlang |
+| [`hash`](hash.md) | cryptographic digests: SHA-256 |
 
 `plum stdlib` lists every module's functions with their signatures, and
 `plum stdlib math` one module's. The reference table on each page is

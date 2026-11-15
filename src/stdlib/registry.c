@@ -7,7 +7,7 @@ static const PlumNativeModule *const modules[] = {
     &plum_module_math,  &plum_module_str, &plum_module_io,       &plum_module_os,
     &plum_module_time,  &plum_module_fs,  &plum_module_json,     &plum_module_json_value,
     &plum_module_tasks, &plum_module_net, &plum_module_listener, &plum_module_connection,
-    &plum_module_udp,
+    &plum_module_udp,   &plum_module_hash,
 };
 
 #define MODULE_COUNT (sizeof modules / sizeof modules[0])
