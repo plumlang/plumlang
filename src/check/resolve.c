@@ -918,8 +918,10 @@ static void resolve_file_seed(Resolver *r, PlumStmt *s) {
     }
     const char *name = s->as.seed.alias;
     if (name == NULL) {
-        const char *slash = strrchr(s->as.seed.path, '/');
-        name = plum_intern_cstr(r->names, slash != NULL ? slash + 1 : s->as.seed.path);
+        /* the last part of ./models/user, or of net.http */
+        const char *path = s->as.seed.path;
+        const char *cut = strrchr(path, path[0] == '.' ? '/' : '.');
+        name = plum_intern_cstr(r->names, cut != NULL ? cut + 1 : path);
     }
     PlumSymbol *sym = new_symbol(r, PLUM_SYM_MODULE, name, s->span, s);
     sym->used = true;
