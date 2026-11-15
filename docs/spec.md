@@ -1173,13 +1173,43 @@ plum run --mem-stats program.plum   # ...and print the memory it used (11.5)
 plum program.plum [args...]         # the same
 plum check program.plum             # check for errors without running
 plum test                           # run tests (Stage 5)
-plum fmt                            # format source files (Stage 6)
+plum fmt files-or-directories...    # format source files in place (14.1)
+plum fmt --check paths...           # ...change nothing; list files that would change
+plum fmt -                          # format standard input to standard output
 plum                                # interactive prompt (Stage 6)
 ```
 
 Exit codes: 0 success, 1 the program failed (compile or runtime error, or
 `exit(1)`), 2 the command was used wrongly, 3 a source file could not be
 read.
+
+### 14.1 Formatting
+
+`plum fmt` gives source code one canonical layout. It formats the files it
+is given, and every `.plum` file under the directories it is given;
+`--check` changes nothing, lists the files that would change and exits 1 if
+there are any; `--stdout` writes the result to standard output instead of
+the file. A file with syntax errors is reported and left as it is (exit 1).
+
+The layout:
+
+- four spaces per level; `{` ends its line and `}` starts its own;
+- one space around binary operators and after commas, none around `..`;
+- at most one blank line between statements, none at the start or end of a
+  block, and one before and after a top-level `branch`, `tree`, `trait` or
+  `kind` that takes more than one line;
+- a list, map, call, parameter list or kind that the source spreads over
+  several lines gets one item per line, with a trailing comma (kind cases
+  go without); one on a single line stays on one line. An `if` expression
+  over several lines puts each branch on lines of its own;
+- literals keep their spelling (`0xFF`, `1_000`, escapes, `"""` strings,
+  `true`), and parentheses the source wrote are kept;
+- a comment on a line of its own stays on a line of its own, before what
+  follows it; one after code stays after that code, and trailing comments
+  on neighbouring lines are lined up.
+
+Formatting never changes what a program means, and formatting a formatted
+file changes nothing.
 
 ## 15. Changes from the Python prototype
 
