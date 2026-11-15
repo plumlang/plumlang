@@ -33,10 +33,15 @@ for src in "$work"/block-*.plum; do
     fi
     if [ -f "$work/$n.out" ]; then
         runs=$((runs + 1))
-        # tr: Windows builds may end lines with \r\n
-        if ! "$PLUM" run "$src" 2>&1 | tr -d '\r' > "$work/$n.actual" || ! cmp -s "$work/$n.out" "$work/$n.actual"; then
-            echo "reference: $n of $DOC printed something else:"
-            diff "$work/$n.out" "$work/$n.actual" || true
+        # Shell comparison only: MSYS2 has no cmp or diff. tr: Windows builds
+        # may end lines with \r\n.
+        actual="$("$PLUM" run "$src" 2>&1 | tr -d '\r')"
+        if [ "$actual" != "$(cat "$work/$n.out")" ]; then
+            echo "reference: $n of $DOC printed something else."
+            echo "--- expected"
+            cat "$work/$n.out"
+            echo "--- actual"
+            printf '%s\n' "$actual"
             failed=$((failed + 1))
         fi
     fi
