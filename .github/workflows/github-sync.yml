@@ -1,14 +1,14 @@
-# Checks that plum.elixpo and branding carry the same shared workflows
-# as this repository (tools/sync-workflows.sh). Fix drift with:
-#   sh tools/sync-workflows.sh ../plum.elixpo ../branding
-name: Workflow sync
+# Checks that plum.elixpo and branding carry the same shared .github files
+# as this repository (tools/sync-github.sh). Fix drift with:
+#   sh tools/sync-github.sh ../plum.elixpo ../branding
+name: GitHub sync
 
 on:
   push:
     branches: [main]
     paths:
-      - .github/workflows/**
-      - tools/sync-workflows.sh
+      - .github/**
+      - tools/sync-github.sh
   schedule:
     - cron: "41 6 * * 1" # weekly, Monday
   workflow_dispatch: {}
@@ -34,4 +34,4 @@ jobs:
           repository: plumlang/branding
           path: siblings/branding
           persist-credentials: false
-      - run: sh tools/sync-workflows.sh --check siblings/plum.elixpo siblings/branding
+      - run: sh tools/sync-github.sh --check siblings/plum.elixpo siblings/branding
