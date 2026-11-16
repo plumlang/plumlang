@@ -189,7 +189,10 @@ static inline void fuzz_driver(const char *driver, const uint8_t *data, size_t s
     PlumModule *program = modules.items[modules.count - 1];
     int status = plum_vm_run(&compiled, &program->source, &options, fuzz_null(), err);
     fclose(err);
-    if (status != 0 || err_len > 0) {
+    /* the leak check (fuzz_run_options) says so when all is well */
+    static const char all_freed[] = "leak check: every object was freed\n";
+    bool quiet = err_len == 0 || strcmp(err_text, all_freed) == 0;
+    if (status != 0 || !quiet) {
         fprintf(stderr, "driver exited with %d:\n%s\n", status, err_text);
         abort();
     }
