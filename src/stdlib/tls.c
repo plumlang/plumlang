@@ -17,6 +17,77 @@
 
 #include "stdlib/tls.h"
 
+#if defined(PLUM_NO_TLS)
+/*
+ * Built without Mbed TLS (make wasm, where there are no sockets anyway):
+ * a TLS connection or listener fails with this reason, which the net
+ * module throws as a NetError.
+ */
+#include <stdio.h>
+
+#define NO_TLS "TLS isn't available in this build of plum (built without Mbed TLS)"
+
+PlumTls *plum_tls_client(PlumNative *n, intptr_t fd, const char *host, bool verify,
+                         const char *ca_file, char *err) {
+    (void)n;
+    (void)fd;
+    (void)host;
+    (void)verify;
+    (void)ca_file;
+    snprintf(err, PLUM_TLS_ERR_SIZE, "%s", NO_TLS);
+    return NULL;
+}
+
+PlumTlsServer *plum_tls_server_new(const char *cert_file, const char *key_file, char *err) {
+    (void)cert_file;
+    (void)key_file;
+    snprintf(err, PLUM_TLS_ERR_SIZE, "%s", NO_TLS);
+    return NULL;
+}
+
+void plum_tls_server_release(PlumTlsServer *s) {
+    (void)s;
+}
+
+PlumTls *plum_tls_accept(PlumTlsServer *s, intptr_t fd, char *err) {
+    (void)s;
+    (void)fd;
+    snprintf(err, PLUM_TLS_ERR_SIZE, "%s", NO_TLS);
+    return NULL;
+}
+
+bool plum_tls_ready(const PlumTls *t) {
+    (void)t;
+    return false;
+}
+
+int plum_tls_handshake(PlumTls *t, char *err) {
+    (void)t;
+    snprintf(err, PLUM_TLS_ERR_SIZE, "%s", NO_TLS);
+    return PLUM_TLS_FAILED;
+}
+
+long plum_tls_read(PlumTls *t, char *buf, size_t len, char *err) {
+    (void)t;
+    (void)buf;
+    (void)len;
+    snprintf(err, PLUM_TLS_ERR_SIZE, "%s", NO_TLS);
+    return PLUM_TLS_FAILED;
+}
+
+long plum_tls_write(PlumTls *t, const char *buf, size_t len, char *err) {
+    (void)t;
+    (void)buf;
+    (void)len;
+    snprintf(err, PLUM_TLS_ERR_SIZE, "%s", NO_TLS);
+    return PLUM_TLS_FAILED;
+}
+
+void plum_tls_free(PlumTls *t) {
+    (void)t;
+}
+
+#else
 #include "util/alloc.h"
 
 #include "mbedtls/error.h"
@@ -580,3 +651,4 @@ void plum_tls_free(PlumTls *t) {
     plum_tls_server_release(t->server);
     plum_free(t);
 }
+#endif /* PLUM_NO_TLS */

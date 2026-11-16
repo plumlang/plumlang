@@ -5,6 +5,10 @@
 
 #include "util/random.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <unistd.h> /* getentropy */
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +28,9 @@ void plum_random_key(uint64_t key[2]) {
         key[0] = ((uint64_t)parts[0] << 32) | parts[1];
         key[1] = ((uint64_t)parts[2] << 32) | parts[3];
     }
+#elif defined(__EMSCRIPTEN__)
+    /* The browser: crypto.getRandomValues, by way of getentropy. */
+    ok = getentropy(key, 2 * sizeof(uint64_t)) == 0;
 #else
     FILE *f = fopen("/dev/urandom", "rb");
     if (f != NULL) {

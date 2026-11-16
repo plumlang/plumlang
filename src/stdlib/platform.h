@@ -67,7 +67,7 @@ size_t plum_poller_armed(const PlumPoller *p);
  * into `ready` (at most `max`). Returns how many. */
 int plum_poller_wait(PlumPoller *p, int timeout_ms, void **ready, int max);
 
-/* "linux", "macos", "windows", or "unix". */
+/* "linux", "macos", "windows", "unix", or "wasm" (the browser). */
 const char *plum_os_name(void);
 
 #endif /* PLUM_STDLIB_PLATFORM_H */
