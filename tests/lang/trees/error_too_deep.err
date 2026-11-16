@@ -1,0 +1,4 @@
+tests/lang/trees/error_too_deep.plum:36:1: error[E0428]: T33 extends trees and traits 33 deep, more than the 32 allowed; make the hierarchy flatter
+36 | tree T33 : T32 {}
+   | ^~~~~~~~~~~~~~~~~
+1 error

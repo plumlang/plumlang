@@ -51,6 +51,9 @@ struct PlumSymbol {
     PlumTy *ty;         /* its type, filled in by the type checker */
     int slot;           /* the compiler's local or global slot */
     bool has_slot;      /* slot has been assigned */
+    /* Trees and traits, for the type checker: 1 + the longest chain of
+     * trees and traits it extends; 0 not measured yet, -1 while measuring. */
+    int lineage;
 };
 
 /*

@@ -35,6 +35,11 @@ typedef struct PlumParser {
  */
 #define PLUM_MAX_NESTING 1000
 
+/* The most parameters a function, lambda, kind case or function type may
+ * have (E0219), and the most fields a tree may have with its parents'
+ * (E0429): calls are compiled for up to this many arguments. */
+#define PLUM_MAX_PARAMS 255
+
 /* `tokens` must end with EOF, as plum_lex leaves them. */
 void plum_parser_init(PlumParser *p, const PlumTokenList *tokens, PlumArena *arena,
                       PlumInterner *names, PlumDiagList *diags);

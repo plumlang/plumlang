@@ -57,7 +57,11 @@ order mark at the start is ignored. Line endings may be `\n` or `\r\n`.
 
 Code may nest up to 1000 deep: brackets, blocks, types and lambdas inside
 each other, with each operator of a chain like `a + b + c` counting one
-level. Deeper code is a compile error (E0218), never a crash.
+level. Deeper code is a compile error (E0218), never a crash. Other limits,
+each a compile error: a function, lambda or kind case has at most 255
+parameters (E0219); a tree has at most 255 fields with its parents'
+(E0429); a tree or trait extends trees and traits at most 32 deep (E0428),
+and never itself (E0427).
 
 ### 2.2 Comments
 

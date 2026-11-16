@@ -216,6 +216,16 @@ static void *to_arena(PlumParser *p, const void *items, size_t count, size_t siz
     return copy;
 }
 
+/* E0219 when a parameter list ending at `at` has more than PLUM_MAX_PARAMS. */
+static void too_many_params(PlumParser *p, size_t count, PlumSpan at) {
+    if (count > PLUM_MAX_PARAMS) {
+        error_at(p, at, "E0219",
+                 "%zu parameters are more than the %d a function can have; pass a list, a map "
+                 "or a tree instead",
+                 count, PLUM_MAX_PARAMS);
+    }
+}
+
 static PlumExpr *error_expr(PlumParser *p) {
     return new_expr(p, PLUM_EXPR_ERROR, peek(p)->span);
 }
@@ -249,6 +259,7 @@ static PlumType *parse_type(PlumParser *p) {
             } while (match(p, PLUM_TOK_COMMA));
         }
         expect(p, PLUM_TOK_RPAREN, "')' after the parameter types");
+        too_many_params(p, params.len, previous(p)->span);
         expect(p, PLUM_TOK_ARROW, "'->' and a result type");
         PlumType *result = plum_parse_type(p);
         type = new_type(p, PLUM_TYPE_FUNC, join(start->span, previous(p)->span));
@@ -495,6 +506,7 @@ static PlumExpr *parse_lambda(PlumParser *p) {
         }
     }
     expect(p, PLUM_TOK_RPAREN, "',' or ')' after the parameters");
+    too_many_params(p, params.len, previous(p)->span);
     expect(p, PLUM_TOK_FAT_ARROW, "'=>'");
 
     PlumExpr *body = NULL;
@@ -1023,6 +1035,7 @@ static void parse_params(PlumParser *p, PlumParam **out, size_t *count) {
         }
     }
     expect(p, PLUM_TOK_RPAREN, "',' or ')' after the parameters");
+    too_many_params(p, params.len, previous(p)->span);
     *out = to_arena(p, params.items, params.len, sizeof(PlumParam));
     *count = params.len;
     plum_array_free(&params);

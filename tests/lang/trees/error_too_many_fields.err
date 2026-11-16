@@ -1,0 +1,4 @@
+tests/lang/trees/error_too_many_fields.plum:2:1: error[E0429]: Wide has 256 fields with its parents', more than the 255 a tree can have; group some into a tree of their own
+2 | tree Wide {
+  | ^~~~~~~~~~~
+1 error

@@ -376,6 +376,11 @@ plant first = a1 + a2 + ... + a1000       # fix
 plant total = first + a1001 + ... + a2000
 ```
 
+### E0219
+
+A function, method, lambda, kind case or function type with more than 255
+parameters. Pass the values in a list, a map or a tree instead.
+
 ## Names
 
 ### E0301
@@ -695,6 +700,28 @@ A tree object given to `spawn`, as an argument or as the object whose
 method the task would run (also inside a list or map). Tasks don't share
 objects (spec 12.3): give the task the plain values it needs, and send
 results back through a `Channel`.
+
+### E0427
+
+A tree or trait that extends itself, directly or through the trees and
+traits it extends. Break the circle.
+
+```plum
+tree A : B {}         # error: A extends B, which extends A
+tree B : A {}
+```
+
+### E0428
+
+A tree or trait that extends trees and traits more than 32 deep (counting
+itself). Make the hierarchy flatter: hold a value instead of extending its
+tree, or merge levels.
+
+### E0429
+
+A tree with more than 255 fields, counting the fields of the trees it
+extends. Its constructor would take more arguments than a call can pass;
+group related fields into a tree of their own.
 
 ## Control flow
 
