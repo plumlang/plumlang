@@ -5,9 +5,11 @@
 #
 #   sh tools/release/package.sh <binary> <target> <outdir>
 #
-# <target> is os-arch, e.g. linux-x86_64, macos-universal, windows-arm64.
+# <target> is os-arch, e.g. linux-x86_64, macos-universal, windows-arm64,
+# or wasm, for which <binary> is the folder make wasm wrote (build/wasm).
 # Writes <outdir>/plum-<version>-<target>.tar.gz (.zip for windows), holding
-# one folder with the binary, the licence and the README.
+# one folder with the binary (plum.js and plum.wasm for wasm, with
+# docs/playground.md), the licence and the README.
 set -eu
 [ $# -eq 3 ] || { echo "usage: package.sh <binary> <target> <outdir>" >&2; exit 2; }
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -20,6 +22,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/$name" "$outdir"
 case $target in
     windows-*) cp "$binary" "$work/$name/plum.exe" ;;
+    wasm) cp "$binary/plum.js" "$binary/plum.wasm" "$root/docs/playground.md" "$work/$name/" ;;
     *) cp "$binary" "$work/$name/plum"; chmod 755 "$work/$name/plum" ;;
 esac
 cp "$root/LICENSE" "$root/README.md" "$root/CHANGELOG.md" "$work/$name/"

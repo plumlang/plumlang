@@ -209,6 +209,30 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # plum for the browser (docs/playground.md): checked against the native
+  # build under Node, then packaged like the others.
+  wasm:
+    name: wasm
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build and test (Emscripten, the image pinned in the Makefile)
+        run: |
+          make -j"$(nproc)" COMMIT="${GITHUB_SHA::7}"
+          make wasm WASM_JOBS="$(nproc)" COMMIT="${GITHUB_SHA::7}"
+          test -f build/wasm/plum.wasm
+          sh tests/wasm.sh ./plum
+      - run: sh tools/release/package.sh build/wasm wasm dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: plum-wasm
+          path: dist/*
+          if-no-files-found: error
+
   # Install every archive the way users will, on clean runners.
   install:
     name: install / ${{ matrix.os }}
@@ -265,7 +289,7 @@ jobs:
 
   publish:
     name: publish
-    needs: [version, install]
+    needs: [version, install, wasm]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
