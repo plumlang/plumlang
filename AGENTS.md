@@ -49,6 +49,7 @@ don't invent syntax that isn't in it.
 | `src/stdlib/` | Built-in modules: io, math, string, fs, time, json, net, http. |
 | `src/cli/` | The `plum` command. |
 | `src/repl/` | The REPL and its line editor. |
+| `src/lsp/` | The language server, `plum lsp`. |
 | `src/util/` | Allocation wrappers, arrays, hash maps, string interning. |
 | `include/plum/` | Public headers. |
 | `tests/` | Golden-file tests: `name.plum` with `name.out` or `name.err`. |
