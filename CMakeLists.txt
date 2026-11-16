@@ -128,4 +128,6 @@ if(PLUM_SH)
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME orchard COMMAND ${PLUM_SH} tests/orchard.sh $<TARGET_FILE:plum>
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  add_test(NAME lsp COMMAND ${PLUM_SH} tests/lsp.sh $<TARGET_FILE:plum>
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()

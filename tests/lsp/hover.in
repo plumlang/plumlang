@@ -1,0 +1,59 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"seed math\nseed ./lib/shapes { Shape, circle }\n\nroot LIMIT: int = 10\nplant words: list[str] = [\"a\", \"b\"]\n\ntree Point {\n    x: float\n    y: float = 0.0\n\n    branch length() -> float => math.sqrt(self.x * self.x + self.y * self.y)\n}\n\nbranch distance(a: Point, b: Point) -> float {\n    plant dx = a.x - b.x\n    return math.abs(dx)\n}\n\nplant p = Point(3.0, 4.0)\ndrop(p.length(), distance(p, Point(0.0)), LIMIT)\ndrop(words.push, \"x\".upper(), len(words), math.PI)\nplant s: Shape = circle(2.0)\ndrop(s.area(), s.form, (1 + 2) * 3)\nfor i, w in words.enumerate() {\n    drop(w)\n}\n"}}}
+# hover seedpath
+{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":1,"character":5}}}
+# hover sname
+{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":1,"character":20}}}
+# hover pi
+{"jsonrpc":"2.0","id":4,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":3,"character":5}}}
+# hover words
+{"jsonrpc":"2.0","id":5,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":4,"character":6}}}
+# hover fx
+{"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":7,"character":4}}}
+# hover mlen
+{"jsonrpc":"2.0","id":7,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":10,"character":11}}}
+# hover sqrt
+{"jsonrpc":"2.0","id":8,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":10,"character":37}}}
+# hover self
+{"jsonrpc":"2.0","id":9,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":10,"character":42}}}
+# hover sx
+{"jsonrpc":"2.0","id":10,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":10,"character":47}}}
+# hover fdist
+{"jsonrpc":"2.0","id":11,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":13,"character":7}}}
+# hover pb
+{"jsonrpc":"2.0","id":12,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":13,"character":26}}}
+# hover bx
+{"jsonrpc":"2.0","id":13,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":14,"character":21}}}
+# hover dx
+{"jsonrpc":"2.0","id":14,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":15,"character":20}}}
+# hover len
+{"jsonrpc":"2.0","id":15,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":19,"character":7}}}
+# hover dist
+{"jsonrpc":"2.0","id":16,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":19,"character":17}}}
+# hover lim
+{"jsonrpc":"2.0","id":17,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":19,"character":42}}}
+# hover push
+{"jsonrpc":"2.0","id":18,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":20,"character":11}}}
+# hover upper
+{"jsonrpc":"2.0","id":19,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":20,"character":21}}}
+# hover lenb
+{"jsonrpc":"2.0","id":20,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":20,"character":30}}}
+# hover mpi
+{"jsonrpc":"2.0","id":21,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":20,"character":47}}}
+# hover ty
+{"jsonrpc":"2.0","id":22,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":21,"character":9}}}
+# hover circ
+{"jsonrpc":"2.0","id":23,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":21,"character":17}}}
+# hover area
+{"jsonrpc":"2.0","id":24,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":22,"character":7}}}
+# hover form
+{"jsonrpc":"2.0","id":25,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":22,"character":17}}}
+# hover expr
+{"jsonrpc":"2.0","id":26,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":22,"character":24}}}
+# hover i
+{"jsonrpc":"2.0","id":27,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":23,"character":4}}}
+# hover w
+{"jsonrpc":"2.0","id":28,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":24,"character":9}}}
+{"jsonrpc":"2.0","id":29,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

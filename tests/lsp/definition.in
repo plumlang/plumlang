@@ -1,0 +1,51 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+# other.plum is open in the editor only: imports read the editor's text.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/other.plum","languageId":"plum","version":1,"text":"# only in the editor, not on disk\nbranch helper(n: int) -> int => n * 2\n\ntree Box {\n    item: int\n}\n"}}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"seed ./lib/shapes { Shape, Form }\nseed ./other\nseed ./other as o\n\nkind Light {\n    Red\n    Green\n}\n\ntree Lamp {\n    on: bool = bad\n\n    branch toggle() {\n        self.on = not self.on\n    }\n}\n\nbranch go(l: Light) -> int {\n    plant count = 0\n    match l {\n        Red => count += 1\n        Green => count += 2\n    }\n    return count\n}\n\nplant lamp = Lamp()\nlamp.toggle()\ndrop(go(Light.Green), lamp.on)\ndrop(other.helper(2), o.Box(1).item, Form.Round)\nplant s: Shape = Shape(\"a\", Form.Square)\ndrop(s.area(), s.size)\ndrop(drop)\n"}}}
+# definition sh
+{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":0,"character":20}}}
+# definition op
+{"jsonrpc":"2.0","id":3,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":1,"character":5}}}
+# definition alias
+{"jsonrpc":"2.0","id":4,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":2,"character":16}}}
+# definition on
+{"jsonrpc":"2.0","id":5,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":13,"character":13}}}
+# definition lp
+{"jsonrpc":"2.0","id":6,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":17,"character":10}}}
+# definition local
+{"jsonrpc":"2.0","id":7,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":18,"character":10}}}
+# definition red
+{"jsonrpc":"2.0","id":8,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":20,"character":8}}}
+# definition cnt
+{"jsonrpc":"2.0","id":9,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":23,"character":11}}}
+# definition lamp
+{"jsonrpc":"2.0","id":10,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":13}}}
+# definition tog
+{"jsonrpc":"2.0","id":11,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":27,"character":5}}}
+# definition go
+{"jsonrpc":"2.0","id":12,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":28,"character":5}}}
+# definition grn
+{"jsonrpc":"2.0","id":13,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":28,"character":14}}}
+# definition lon
+{"jsonrpc":"2.0","id":14,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":28,"character":27}}}
+# definition help
+{"jsonrpc":"2.0","id":15,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":29,"character":11}}}
+# definition box
+{"jsonrpc":"2.0","id":16,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":29,"character":24}}}
+# definition item
+{"jsonrpc":"2.0","id":17,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":29,"character":31}}}
+# definition round
+{"jsonrpc":"2.0","id":18,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":29,"character":42}}}
+# definition area
+{"jsonrpc":"2.0","id":19,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":31,"character":7}}}
+# definition size
+{"jsonrpc":"2.0","id":20,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":31,"character":17}}}
+# definition drop
+{"jsonrpc":"2.0","id":21,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":32,"character":5}}}
+# Editing the open import checks the importer again.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/other.plum","version":2},"contentChanges":[{"text":"branch helper(n: str) -> int => 0\n"}]}}
+# Closing it: the importer now reads the disk, where there is no other.plum.
+{"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"@ROOT@/other.plum"}}}
+{"jsonrpc":"2.0","id":22,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

@@ -1,0 +1,33 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+# Malformed JSON, the wrong kind of message, a bad id, a response.
+{"jsonrpc":"2.0","id":1,"method":
+[1,2,3]
+{"jsonrpc":"2.0","id":{"x":1},"method":"textDocument/hover"}
+{"jsonrpc":"2.0","method":42}
+{"jsonrpc":"2.0","id":7,"result":null}
+{"jsonrpc":"2.0","id":"str-id","method":"no/such/method"}
+"\ud800 lone surrogate"
+# A header without Content-Length, a Content-Length that isn't a number.
+@raw X-Other: 1\r\n\r\n
+@raw Content-Length: lots\r\n\r\n
+# Half-typed code: every request still answers.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"plant x = \nbranch f(a: int) -> \ntree T {\n    x: \n}\ndrop(x.\n"}}}
+{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":0,"character":10}}}
+{"jsonrpc":"2.0","id":3,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":0,"character":10}}}
+{"jsonrpc":"2.0","id":4,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":1,"character":20}}}
+{"jsonrpc":"2.0","id":5,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":1,"character":20}}}
+{"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":3,"character":7}}}
+{"jsonrpc":"2.0","id":7,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":3,"character":7}}}
+{"jsonrpc":"2.0","id":8,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":5,"character":7}}}
+{"jsonrpc":"2.0","id":9,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":5,"character":7}}}
+{"jsonrpc":"2.0","id":10,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":5,"character":7}}}
+{"jsonrpc":"2.0","id":11,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"@ROOT@/main.plum"}}}
+{"jsonrpc":"2.0","id":12,"method":"textDocument/formatting","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"options":{"tabSize":4,"insertSpaces":true}}}
+# Positions past the end of a line or of the file are clamped.
+{"jsonrpc":"2.0","id":13,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":99,"character":99}}}
+{"jsonrpc":"2.0","id":14,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":0,"character":999}}}
+# Text that isn't UTF-8 encoded as JSON escapes, and a NUL.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":2},"contentChanges":[{"text":"plant s = \"café 🌿\"\ndrop(s\u0000)\n"}]}}
+{"jsonrpc":"2.0","id":15,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

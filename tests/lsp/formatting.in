@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"plant   x=1+2\nbranch f(a:int)->int{\nreturn a*2 # double\n}\n"}}}
+{"jsonrpc":"2.0","id":2,"method":"textDocument/formatting","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"options":{"tabSize":4,"insertSpaces":true}}}
+# Already formatted: no edits.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":2},"contentChanges":[{"text":"plant x = 1 + 2\n"}]}}
+{"jsonrpc":"2.0","id":3,"method":"textDocument/formatting","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"options":{"tabSize":4,"insertSpaces":true}}}
+# Syntax errors: nothing to format.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":3},"contentChanges":[{"text":"plant x = (\n"}]}}
+{"jsonrpc":"2.0","id":4,"method":"textDocument/formatting","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"options":{"tabSize":4,"insertSpaces":true}}}
+{"jsonrpc":"2.0","id":5,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}
