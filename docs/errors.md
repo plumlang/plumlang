@@ -803,6 +803,25 @@ A version range that isn't one of `^1.2` (compatible: the same left-most
 non-zero number), `~1.2.3` (the same minor version), `=1.2.3` (exactly),
 `>=1.2` (at least) or `*` (any). A bare version, `"1.2"`, means `^1.2`.
 
+### E0908
+
+A `seed` of a package the module's `plum.toml` doesn't list in
+`[dependencies]`. Standard modules come first; any other name is a
+package, and only declared ones can be seeded. Add it with `plum add
+NAME`. Inside an installed package, the package's own `plum.toml` must
+list it. (A file with no `plum.toml` above it gets E0308 instead.) In
+`plum remove`, the package isn't a dependency.
+
+```plum
+seed weather      # error: run `plum add weather` first
+```
+
+### E0909
+
+A `seed` of a declared package that isn't installed: there is no
+`plum.lock`, the lock doesn't list it, or the cache doesn't hold the
+version it names (or holds a damaged copy). Run `plum install`.
+
 ### E0910
 
 A `plum.lock` that `plum` didn't write: every table is

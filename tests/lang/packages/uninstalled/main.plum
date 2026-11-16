@@ -1,0 +1,3 @@
+# seed of a dependency that is not installed (E0909)
+seed colors
+drop(colors.name())

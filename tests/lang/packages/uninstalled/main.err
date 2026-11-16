@@ -1,0 +1,4 @@
+tests/lang/packages/uninstalled/main.plum:2:1: error[E0909]: the package 'colors' isn't installed (the project has no plum.lock); run `plum install`
+2 | seed colors
+  | ^~~~~~~~~~~
+1 error

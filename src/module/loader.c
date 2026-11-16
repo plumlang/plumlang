@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
 #include "module/loader.h"
 
+#include "orchard/packages.h"
 #include "parser/parser.h"
 #include "stdlib/embedded.h"
 #include "util/alloc.h"
@@ -234,6 +235,45 @@ static PlumModule *import(Loader *l, PlumModule *importer, PlumStmt *s) {
         return NULL;
     }
     mod = add(l, path, text, len);
+    mod->package = importer->package; /* a file of the same package */
+    parse(l, mod);
+    return mod;
+}
+
+/* seed weather, seed weather.client: a file of an installed package. */
+static PlumModule *import_package(Loader *l, PlumModule *importer, PlumStmt *s) {
+    int package = 0;
+    char *path = plum_packages_find(&l->m->packages, importer->path, importer->package,
+                                    s->as.seed.path, &importer->diags, s->span, &package);
+    if (path == NULL) {
+        return NULL;
+    }
+    PlumModule *mod = find(l, path);
+    if (mod != NULL) {
+        plum_free(path);
+        if (mod->state == 1) {
+            char cycle[1024];
+            cycle_text(l, mod, cycle, sizeof cycle);
+            plum_diag_error(&importer->diags, s->span, "E0311",
+                            "these modules import each other in a circle: %s; move what they "
+                            "share into a module of its own",
+                            cycle);
+            return NULL;
+        }
+        return mod;
+    }
+    size_t len = 0;
+    int err = 0;
+    char *text = plum_read_file(path, &len, &err);
+    if (text == NULL) {
+        plum_diag_error(&importer->diags, s->span, "E0308",
+                        "can't read the package module '%s' (%s): %s", s->as.seed.path, path,
+                        strerror(err));
+        plum_free(path);
+        return NULL;
+    }
+    mod = add(l, path, text, len);
+    mod->package = package;
     parse(l, mod);
     return mod;
 }
@@ -249,6 +289,9 @@ static void parse(Loader *l, PlumModule *mod) {
         PlumStmt *s = mod->program.stmts[i];
         const PlumEmbeddedModule *embedded =
             s->kind == PLUM_STMT_SEED ? plum_embedded_module(s->as.seed.path) : NULL;
+        if (embedded != NULL && strncmp(embedded->name, "plum.", 5) == 0 && mod->path[0] != '<') {
+            embedded = NULL; /* plum's own tools, for modules built in only */
+        }
         if (embedded != NULL) {
             PlumModule *dep = import_embedded(l, embedded);
             if (dep != NULL) {
@@ -259,6 +302,11 @@ static void parse(Loader *l, PlumModule *mod) {
         if (s->kind == PLUM_STMT_SEED && s->as.seed.path[0] == '.' &&
             strchr(s->as.seed.path, '<') == NULL) { /* not a path that failed to parse */
             PlumModule *dep = import(l, mod, s);
+            if (dep != NULL) {
+                s->as.seed.exports = &dep->exports;
+            }
+        } else if (s->kind == PLUM_STMT_SEED && plum_seed_is_package(s->as.seed.path)) {
+            PlumModule *dep = import_package(l, mod, s);
             if (dep != NULL) {
                 s->as.seed.exports = &dep->exports;
             }
@@ -277,6 +325,12 @@ int plum_modules_load(PlumModules *out, const char *path) {
     if (text == NULL) {
         return err;
     }
+    plum_modules_load_text(out, path, text, len);
+    return 0;
+}
+
+void plum_modules_load_text(PlumModules *out, const char *path, char *text, size_t len) {
+    memset(out, 0, sizeof *out);
     plum_arena_init(&out->arena);
     plum_interner_init(&out->names);
     Loader l;
@@ -289,7 +343,6 @@ int plum_modules_load(PlumModules *out, const char *path) {
     out->items = l.order.items; /* the array moves to `out` */
     out->count = l.order.len;
     plum_array_free(&l.stack);
-    return 0;
 }
 
 void plum_modules_init(PlumModules *m) {
@@ -348,6 +401,7 @@ void plum_modules_free(PlumModules *m) {
     }
     plum_free(m->all);
     plum_free(m->items);
+    plum_packages_free(m->packages);
     if (m->all_count > 0 || m->open) {
         plum_interner_free(&m->names);
         plum_arena_free(&m->arena);

@@ -1,0 +1,5 @@
+# A project for the tests, with no dependencies
+[package]
+name = "undeclared"
+version = "0.1.0"
+entry = "main.plum"
