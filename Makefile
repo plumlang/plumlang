@@ -5,7 +5,8 @@
 #   make                  release build -> ./plum
 #   make debug            debug build (-O0 -g)
 #   make sanitize         debug build under AddressSanitizer + UBSan
-#   make test             unit, smoke, harness, golden, formatter, REPL, package and language server tests
+#   make test             unit, smoke, harness, golden, formatter, REPL, package and language server
+#                         tests, and the WebAssembly build's if there is one (make wasm)
 #   make sanitize test    the tests, under the sanitizers
 #   make golden-update    rewrite golden expectations from actual output (and the REPL's)
 #   make format           format the C sources with clang-format
@@ -14,6 +15,8 @@
 #   make fuzz             build the fuzz targets (tests/fuzz) and run each one
 #                         for FUZZ_TIME seconds (default 60): make fuzz FUZZ_TIME=600
 #   make fuzz-build       only build them, into build/fuzz/fuzz-NAME
+#   make wasm             the WebAssembly build for the browser playground:
+#                         build/wasm/plum.js and plum.wasm (docs/playground.md)
 #
 # The fuzz targets need clang with libFuzzer (FUZZ_CC=clang, the default)
 # on Linux or macOS; nothing else in the build depends on them. Crashes
@@ -34,9 +37,18 @@ INCLUDE := -Iinclude -Isrc
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DEFS    := -DPLUM_COMMIT=\"$(COMMIT)\"
 
+# make wasm: Emscripten's emcc if it is on the PATH, or else this image
+# (docker), pinned so every build is the same.
+EMSDK_IMAGE ?= emscripten/emsdk:6.0.13
+EMCC        ?= emcc
+WASM_JOBS   ?= 2
+
 ifneq ($(filter fuzz fuzz-build,$(MAKECMDGOALS)),)
   MODE := fuzz
   CC := $(FUZZ_CC)
+else ifneq ($(filter wasm,$(MAKECMDGOALS)),)
+  MODE := wasm
+  CC := $(EMCC)
 else ifneq ($(filter sanitize,$(MAKECMDGOALS)),)
   MODE := sanitize
 else ifneq ($(filter debug,$(MAKECMDGOALS)),)
@@ -49,6 +61,10 @@ ifeq ($(MODE),release)
   OPT := -O2 -DNDEBUG
 else ifeq ($(MODE),debug)
   OPT := -O0 -g3
+else ifeq ($(MODE),wasm)
+  # Without Mbed TLS's TLS layer: there are no sockets in the browser
+  # (src/stdlib/tls.c stubs it). Its crypto stays, for the hash module.
+  OPT := -O2 -DNDEBUG -DPLUM_NO_TLS
 else ifeq ($(MODE),sanitize)
   OPT := -O1 -g3 -fno-omit-frame-pointer -fsanitize=address,undefined \
          -fno-sanitize-recover=all
@@ -78,7 +94,9 @@ VENDOR_INCLUDE := -I$(MBEDTLS)/include -I$(MBEDTLS)/library -I$(TFPSA)/include \
 # never calls (about 120 KB of the library).
 VENDOR_CFLAGS := $(STD) $(OPT) $(VENDOR_INCLUDE) $(TLS_DEFS) -ffunction-sections \
                  -fdata-sections -MMD -MP
-ifeq ($(shell uname -s 2>/dev/null),Darwin)
+ifeq ($(MODE),wasm)
+  LDGC :=
+else ifeq ($(shell uname -s 2>/dev/null),Darwin)
   LDGC := -Wl,-dead_strip
 else
   LDGC := -Wl,--gc-sections
@@ -96,14 +114,21 @@ LDFLAGS += -Wl,--stack,8388608
 endif
 
 BUILD   := build/$(MODE)
+ifeq ($(MODE),wasm)
+  BUILD := build/wasm-obj
+endif
 # Everything but the command-line front end is the library the unit tests
-# link against.
-LIB_SRCS  := $(shell find src -name '*.c' ! -path 'src/cli/*' | sort)
+# link against; src/wasm/bindings.c is for Emscripten only.
+LIB_SRCS  := $(shell find src -name '*.c' ! -path 'src/cli/*' ! -path 'src/wasm/bindings.c' | sort)
 CLI_SRCS  := $(shell find src/cli -name '*.c' | sort)
 UNIT_SRCS := $(shell find tests/unit -name '*.c' | sort)
 VENDOR_SRCS := $(sort $(wildcard $(MBEDTLS)/library/*.c $(TFPSA)/core/*.c \
                  $(TFPSA)/drivers/builtin/src/*.c $(TFPSA)/dispatch/*.c $(TFPSA)/extras/*.c \
                  $(TFPSA)/platform/*.c $(TFPSA)/utilities/*.c))
+ifeq ($(MODE),wasm)
+  LIB_SRCS += src/wasm/bindings.c
+  VENDOR_SRCS := $(filter $(TFPSA)/%,$(VENDOR_SRCS))
+endif
 LIB_OBJS  := $(LIB_SRCS:%.c=$(BUILD)/%.o) $(VENDOR_SRCS:%.c=$(BUILD)/%.o)
 CLI_OBJS  := $(CLI_SRCS:%.c=$(BUILD)/%.o)
 UNIT_OBJS := $(UNIT_SRCS:%.c=$(BUILD)/%.o)
@@ -114,7 +139,7 @@ PLUM      := ./plum
 
 FUZZ_BINS := $(FUZZ_TARGETS:%=$(BUILD)/fuzz-%)
 
-.PHONY: all release debug sanitize fuzz fuzz-build test golden-update bytecode-doc stdlib-doc stdlib-embed format format-check clean
+.PHONY: all release debug sanitize fuzz fuzz-build wasm test golden-update bytecode-doc stdlib-doc stdlib-embed format format-check clean
 
 # Always refresh ./plum, so it is the binary of the mode asked for even when
 # another mode's copy is newer.
@@ -135,6 +160,31 @@ fuzz-build: $(FUZZ_BINS)
 
 fuzz: fuzz-build
 	@sh tests/fuzz/run.sh $(BUILD) $(FUZZ_TIME) $(FUZZ_TARGETS)
+
+# The WebAssembly build: an ES module (plum.js) that loads plum.wasm, with
+# the JavaScript API of src/wasm/api.js. No files are bundled; memory grows
+# as needed up to 256 MB (a run's own limit is lower: src/wasm/playground.h).
+WASM_DIR := build/wasm
+WASM_EXPORTS := _plum_wasm_run,_plum_wasm_check,_plum_wasm_format,_plum_wasm_free,_plum_wasm_version,_malloc,_free
+WASM_LDFLAGS := -O2 -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createPlum \
+                -sENVIRONMENT=web,worker,node -sFILESYSTEM=0 \
+                -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=32MB -sMAXIMUM_MEMORY=256MB \
+                -sSTACK_SIZE=8MB -sEXPORTED_FUNCTIONS=$(WASM_EXPORTS) \
+                -sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,lengthBytesUTF8 \
+                --post-js src/wasm/api.js
+
+ifeq ($(shell command -v $(EMCC) 2>/dev/null),)
+wasm:
+	docker run --rm -v "$(CURDIR):/src" -w /src -u "$$(id -u):$$(id -g)" -e HOME=/tmp \
+	    $(EMSDK_IMAGE) make wasm -j$(WASM_JOBS) COMMIT=$(COMMIT)
+else
+wasm: $(WASM_DIR)/plum.js
+	@ls -l $(WASM_DIR)/plum.js $(WASM_DIR)/plum.wasm
+endif
+
+$(WASM_DIR)/plum.js: $(LIB_OBJS) src/wasm/api.js
+	@mkdir -p $(WASM_DIR)
+	$(CC) $(LIB_OBJS) $(WASM_LDFLAGS) -o $@
 
 # Third-party code first: make 3.81 (macOS) takes the first rule that matches.
 $(BUILD)/vendor/%.o: vendor/%.c
@@ -161,6 +211,7 @@ test: all $(UNIT_BIN)
 	@sh tests/reference.sh $(PLUM)
 	@sh tests/orchard.sh $(PLUM)
 	@sh tests/lsp.sh $(PLUM)
+	@sh tests/wasm.sh $(PLUM)
 
 # Regenerate the instruction table in docs/bytecode.md from opcodes.h.
 bytecode-doc:
