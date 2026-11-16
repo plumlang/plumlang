@@ -52,7 +52,7 @@ typedef struct PlumModules {
     PlumInterner names;
     bool open;                     /* made by plum_modules_init: entries are added one at a time */
     struct PlumPackages *packages; /* the project's packages, once one is seeded */
-    PlumModuleReader read; /* NULL: imported files are read from disk */
+    PlumModuleReader read;         /* NULL: imported files are read from disk */
     void *read_ctx;
 } PlumModules;
 
