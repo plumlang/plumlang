@@ -1,0 +1,3 @@
+# A name under a standard module's is never a package: net.nothing is an
+# unknown standard module, not a package called net (tests/orchard.sh).
+seed net.nothing
