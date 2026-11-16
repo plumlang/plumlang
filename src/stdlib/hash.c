@@ -1,9 +1,38 @@
 /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
 /* The hash module: cryptographic digests of text, as lowercase hex.
  * SHA-256 comes from the vendored Mbed TLS, through its PSA crypto API. */
+#if defined(__EMSCRIPTEN__)
+#define _DEFAULT_SOURCE /* getentropy */
+#endif
+
 #include "stdlib/native.h"
 
 #include "psa/crypto.h"
+
+#if defined(__EMSCRIPTEN__)
+#include "mbedtls/platform.h"
+
+#include <unistd.h>
+
+/* The browser has no /dev/urandom for Mbed TLS's own entropy source
+ * (src/stdlib/tls/crypto_user_config.h): crypto.getRandomValues instead,
+ * by way of getentropy, which gives at most 256 bytes a call. */
+int mbedtls_platform_get_entropy(psa_driver_get_entropy_flags_t flags, size_t *estimate_bits,
+                                 unsigned char *output, size_t output_size) {
+    if (flags != 0) {
+        return PSA_ERROR_NOT_SUPPORTED;
+    }
+    for (size_t done = 0; done < output_size;) {
+        size_t n = output_size - done < 256 ? output_size - done : 256;
+        if (getentropy(output + done, n) != 0) {
+            return PSA_ERROR_INSUFFICIENT_ENTROPY;
+        }
+        done += n;
+    }
+    *estimate_bits = 8 * output_size;
+    return 0;
+}
+#endif
 
 #define ARGS PlumNative *n, const PlumValue *args, int argc, PlumValue *result
 

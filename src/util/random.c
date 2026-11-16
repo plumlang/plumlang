@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+#if defined(__EMSCRIPTEN__)
+#define _DEFAULT_SOURCE /* getentropy */
+#endif
 #if defined(_WIN32)
 #define _CRT_RAND_S /* rand_s, from the OS's cryptographic generator */
 #endif
