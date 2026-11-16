@@ -16,6 +16,18 @@ Format for a new entry:
 
 ## Unreleased
 
+## v2.1.4 — 2026-11-16
+
+The first public release of Plumlang: the language, its standard library and
+its tools, as one dependency-free `plum` binary for Linux (x86_64, arm64,
+riscv64), macOS (universal) and Windows (x64, arm64), plus a WebAssembly
+build for the browser. Highlights: a statically typed language with trees,
+traits, kinds and `match`; tasks and channels on an event loop; `json`,
+`fs`, `net` (TCP, UDP, TLS) and an HTTP server and client; `plum fmt`, a
+REPL, `plum lsp` for editors, and Orchard packages (`plum add`). Every
+change below is tested on every platform, under the sanitizers and by
+fuzzing.
+
 - **Playground** (#32): `make wasm` builds plum for the browser with Emscripten (`build/wasm/plum.js` and `plum.wasm`, about 190 KB gzipped), with a JavaScript API to run, check and format programs (`docs/playground.md`). Runs are sandboxed, with step, memory and sleep limits, so an endless loop stops with a message; output streams as it is written; tasks and channels work. Releases carry it as `plum-X.Y.Z-wasm.tar.gz`, and `tests/wasm.sh` checks it prints what native `plum run` prints. `os.platform()` is `"wasm"` there.
 - **Hardening** (#86): libFuzzer targets for the lexer, parser, checker, compiler and VM, json, interpolation formats and `net.http` (`make fuzz`), run on every pull request and nightly. Fixed what they and the limit tests found: a crash in `plum ast` on a field with no type; deep nesting crashing the compiler (now E0218 past 1000 levels); trees extending each other hanging `plum run` (E0427); hierarchies past 32 levels silently losing methods (E0428); trees past 64 fields unbuildable (now up to 255, E0429; parameters E0219); traits sharing ancestors taking exponential time; `json.parse` truncating long numbers and accepting `1e999`; `net.http` leaking ParseError and OverflowError on malformed messages. A `str` holds at most 1 GiB and a list 2^27 items (ValueError past that), and out of memory exits with an error instead of aborting.
 - **VM**: a module variable used before its `plant` line has run is a runtime error, not a crash (#94).
