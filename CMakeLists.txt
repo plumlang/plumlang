@@ -8,7 +8,7 @@
 #   ctest --test-dir build -C Release
 
 cmake_minimum_required(VERSION 3.16)
-project(plumlang VERSION 0.0.1 LANGUAGES C)
+project(plumlang VERSION 2.1.4 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
