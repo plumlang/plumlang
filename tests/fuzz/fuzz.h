@@ -62,7 +62,8 @@ static inline char *fuzz_text(const uint8_t *data, size_t size) {
  * Take `text` (taken over) as the program fuzz.plum up to `stage`, the way
  * `plum run` does. Returns the exit code.
  */
-static inline int fuzz_program(char *text, size_t len, FuzzStage stage, const PlumRunOptions *options) {
+static inline int fuzz_program(char *text, size_t len, FuzzStage stage,
+                               const PlumRunOptions *options) {
     PlumModules modules;
     plum_modules_load_text(&modules, "fuzz.plum", text, len);
     bool ok = !plum_modules_failed(&modules);

@@ -107,7 +107,8 @@ static void lineage_from(const PlumSymbol *decl, bool traits_only, PlumLineage *
     for (size_t i = 0; i < s->as.tree.super_count; i++) {
         const PlumType *super = s->as.tree.supers[i];
         const PlumSymbol *up = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
-        if (up != NULL && (up->kind == PLUM_SYM_TRAIT || (!traits_only && up->kind == PLUM_SYM_TREE))) {
+        if (up != NULL &&
+            (up->kind == PLUM_SYM_TRAIT || (!traits_only && up->kind == PLUM_SYM_TREE))) {
             lineage_from(up, traits_only, out, depth + 1);
         }
     }

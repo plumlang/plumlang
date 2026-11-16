@@ -1022,8 +1022,7 @@ static void fill_method_tables(Compiler *c) {
         Names traits = {0};
         collect_traits(tree, &traits);
         info->trait_count = (int)traits.len;
-        info->traits =
-            plum_alloc_zeroed(traits.len > 0 ? traits.len : 1, sizeof(const char *));
+        info->traits = plum_alloc_zeroed(traits.len > 0 ? traits.len : 1, sizeof(const char *));
         for (size_t k = 0; k < traits.len; k++) {
             info->traits[k] = traits.items[k];
         }

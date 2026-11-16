@@ -1856,7 +1856,8 @@ static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
 static bool list_has_room(VM *vm, PlumMethod m, PlumValue receiver) {
     if ((m == PLUM_METHOD_LIST_PUSH || m == PLUM_METHOD_LIST_INSERT) &&
         plum_as_list(receiver)->len >= PLUM_MAX_LIST) {
-        runtime_error(vm, PLUM_ERROR_VALUE, "%s(): the list has %zu items, the most a list can hold",
+        runtime_error(vm, PLUM_ERROR_VALUE,
+                      "%s(): the list has %zu items, the most a list can hold",
                       m == PLUM_METHOD_LIST_PUSH ? "push" : "insert", PLUM_MAX_LIST);
         return false;
     }
@@ -1866,8 +1867,8 @@ static bool list_has_room(VM *vm, PlumMethod m, PlumValue receiver) {
 /* Does `fn` reach outside the process? (PlumRunOptions.sandbox) */
 static bool outside_world(const PlumNativeFunction *fn) {
     static const PlumNativeModule *const modules[] = {
-        &plum_module_fs, &plum_module_net, &plum_module_listener, &plum_module_connection,
-        &plum_module_udp,
+        &plum_module_fs,         &plum_module_net, &plum_module_listener,
+        &plum_module_connection, &plum_module_udp,
     };
     for (size_t i = 0; i < sizeof modules / sizeof modules[0]; i++) {
         if (fn >= modules[i]->functions &&
@@ -1917,13 +1918,13 @@ static bool execute(VM *vm) {
         push(vm, plum_int(r));                                                                \
     } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
-#define CHECK_GLOBAL(n)                                                                     \
-    do {                                                                                    \
-        if (is_unset(vm->globals[(n)])) {                                                   \
-            FAIL(PLUM_ERROR_ERROR,                                                          \
+#define CHECK_GLOBAL(n)                                                                      \
+    do {                                                                                     \
+        if (is_unset(vm->globals[(n)])) {                                                    \
+            FAIL(PLUM_ERROR_ERROR,                                                           \
                  "a module variable was used before its `plant` line ran: declare it above " \
-                 "the code that calls this function");                                      \
-        }                                                                                   \
+                 "the code that calls this function");                                       \
+        }                                                                                    \
     } while (0)
 #define STR_COMPARE(test)                                              \
     do {                                                               \
@@ -2163,8 +2164,10 @@ static bool execute(VM *vm) {
         case PLUM_OP_CONCAT: {
             if (plum_as_string(*peek(vm, 1))->len >
                 PLUM_MAX_STRING - plum_as_string(*peek(vm, 0))->len) {
-                FAIL(PLUM_ERROR_VALUE, "+: the text would be longer than %zu bytes, the most a "
-                     "str can hold", PLUM_MAX_STRING);
+                FAIL(PLUM_ERROR_VALUE,
+                     "+: the text would be longer than %zu bytes, the most a "
+                     "str can hold",
+                     PLUM_MAX_STRING);
             }
             PlumValue b = pop(vm);
             PlumValue a = pop(vm);
@@ -2215,8 +2218,10 @@ static bool execute(VM *vm) {
                 total = plum_add_size(total, plum_as_string(*peek(vm, i))->len);
             }
             if (total > PLUM_MAX_STRING) {
-                FAIL(PLUM_ERROR_VALUE, "the text would be longer than %zu bytes, the most a "
-                     "str can hold", PLUM_MAX_STRING);
+                FAIL(PLUM_ERROR_VALUE,
+                     "the text would be longer than %zu bytes, the most a "
+                     "str can hold",
+                     PLUM_MAX_STRING);
             }
             PlumString *s = plum_string_alloc(total);
             size_t at = total;
@@ -2362,8 +2367,10 @@ static bool execute(VM *vm) {
         }
         case PLUM_OP_CONCAT_LIST: {
             if (plum_as_list(*peek(vm, 1))->len > PLUM_MAX_LIST - plum_as_list(*peek(vm, 0))->len) {
-                FAIL(PLUM_ERROR_VALUE, "+: the list would have more than %zu items, the most a "
-                     "list can hold", PLUM_MAX_LIST);
+                FAIL(PLUM_ERROR_VALUE,
+                     "+: the list would have more than %zu items, the most a "
+                     "list can hold",
+                     PLUM_MAX_LIST);
             }
             PlumValue b = pop(vm);
             PlumValue a = pop(vm);
