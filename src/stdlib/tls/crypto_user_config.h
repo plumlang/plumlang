@@ -67,4 +67,10 @@
 /* plum never makes RSA keys */
 #undef PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_GENERATE
 
+/* The browser (make wasm): plum gives the entropy itself (src/stdlib/hash.c). */
+#if defined(__EMSCRIPTEN__)
+#undef MBEDTLS_PSA_BUILTIN_GET_ENTROPY
+#define MBEDTLS_PSA_DRIVER_GET_ENTROPY
+#endif
+
 #endif /* PLUM_CRYPTO_USER_CONFIG_H */

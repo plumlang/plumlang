@@ -12,5 +12,6 @@ void plum_test_fmt(void);
 void plum_test_random(void);
 void plum_test_orchard(void);
 void plum_test_lsp(void);
+void plum_test_playground(void);
 
 #endif /* PLUM_TEST_SUITES_H */

@@ -104,6 +104,7 @@ typedef struct PlumVM {
     bool session;
     PLUM_ARRAY(struct PlumTask *) parked;
     uint64_t steps;        /* calls and backward jumps so far (max_steps) */
+    double slept;          /* seconds spent waiting for sleeps so far (max_sleep) */
     PlumAllocStats *stats; /* the allocator's counts, if it counts */
 } VM;
 
@@ -1338,11 +1339,33 @@ static bool can_wait(VM *vm, const char *what) {
 
 static void add_timer(VM *vm, PlumTask *t, double when);
 
+/*
+ * A sandboxed run may spend max_sleep seconds in all waiting for sleeps
+ * (tasks sleeping at the same time wait together): may it sleep
+ * `seconds` more? If not, the program stops, as if by exit(1).
+ */
+static bool sleep_allowed(VM *vm, double seconds) {
+    const PlumRunOptions *o = vm->options;
+    if (!o->sandbox || vm->slept + seconds <= o->max_sleep) {
+        return true;
+    }
+    fprintf(vm->err,
+            "%s: Error: stopped sleeping more than %g seconds in all, the limit of this run\n",
+            vm->source->path, o->max_sleep);
+    vm->exit_code = 1;
+    vm->stopped = true;
+    return false;
+}
+
 bool plum_native_sleep(PlumNative *n, double seconds) {
     VM *vm = VM_OF(n);
     PlumTask *t = vm->current;
+    if ((vm->callback_depth > 0 || t == NULL || t->wake_at == 0) && !sleep_allowed(vm, seconds)) {
+        return false;
+    }
     if (vm->callback_depth > 0 || t == NULL) {
         plum_os_sleep(seconds);
+        vm->slept += seconds;
         return true;
     }
     double now = plum_os_monotonic();
@@ -1682,6 +1705,7 @@ static bool wait_for_events(VM *vm) {
         }
     } else if (ms > 0) {
         plum_os_sleep(ms / 1000.0);
+        vm->slept += ms / 1000.0; /* every task asleep waits at once */
     }
     /* the timers that are due, earliest first */
     now = plum_os_monotonic();
@@ -1865,7 +1889,7 @@ static bool list_has_room(VM *vm, PlumMethod m, PlumValue receiver) {
 }
 
 /* Does `fn` reach outside the process? (PlumRunOptions.sandbox) */
-static bool outside_world(const PlumNativeFunction *fn) {
+static bool outside_world(const PlumNativeFunction *fn, const PlumRunOptions *options) {
     static const PlumNativeModule *const modules[] = {
         &plum_module_fs,         &plum_module_net, &plum_module_listener,
         &plum_module_connection, &plum_module_udp,
@@ -1877,7 +1901,7 @@ static bool outside_world(const PlumNativeFunction *fn) {
         }
     }
     return fn == plum_native_function(&plum_module_os, "run") ||
-           fn == plum_native_function(&plum_module_time, "sleep");
+           (fn == plum_native_function(&plum_module_time, "sleep") && options->max_sleep <= 0);
 }
 
 static bool execute(VM *vm) {
@@ -2746,7 +2770,7 @@ static bool execute(VM *vm) {
             }
             PlumValue result = plum_none();
             SAVE_IP();
-            bool ok = vm->options->sandbox && outside_world(fn)
+            bool ok = vm->options->sandbox && outside_world(fn, vm->options)
                           ? plum_native_throw((PlumNative *)(void *)vm, PLUM_ERROR_IO,
                                               "%s() isn't allowed in this run (sandbox)", fn->name)
                           : fn->fn((PlumNative *)(void *)vm, args, argc, &result);

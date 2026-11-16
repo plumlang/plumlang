@@ -115,6 +115,16 @@ const char *plum_os_name(void) {
 #include <time.h>
 #include <unistd.h>
 
+#if defined(__EMSCRIPTEN__)
+/* The browser (make wasm): there are no sockets to wait on. */
+int plum_os_poll(PlumPollItem *items, size_t count, int timeout_ms) {
+    (void)timeout_ms;
+    for (size_t i = 0; i < count; i++) {
+        items[i].ready = false;
+    }
+    return -1;
+}
+#else
 int plum_os_poll(PlumPollItem *items, size_t count, int timeout_ms) {
     struct pollfd *fds = calloc(count > 0 ? count : 1, sizeof *fds);
     if (fds == NULL) {
@@ -134,6 +144,7 @@ int plum_os_poll(PlumPollItem *items, size_t count, int timeout_ms) {
     free(fds);
     return n;
 }
+#endif
 
 double plum_os_now(void) {
     struct timespec ts;
@@ -147,6 +158,17 @@ double plum_os_monotonic(void) {
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
+#if defined(__EMSCRIPTEN__)
+/* The browser has no blocking sleep without Asyncify; the playground runs
+ * plum in a Web Worker, so waiting on the clock blocks nothing else.
+ * Sandboxed runs bound the total (PlumRunOptions.max_sleep). */
+void plum_os_sleep(double seconds) {
+    double until = plum_os_monotonic() + seconds;
+    while (plum_os_monotonic() < until) {
+        /* wait */
+    }
+}
+#else
 void plum_os_sleep(double seconds) {
     if (seconds <= 0) {
         return;
@@ -158,6 +180,7 @@ void plum_os_sleep(double seconds) {
         /* interrupted by a signal: sleep the rest */
     }
 }
+#endif
 
 bool plum_os_is_dir(const char *path) {
     struct stat st;
@@ -203,6 +226,8 @@ void plum_os_temp_dir(char *buf, size_t size) {
 const char *plum_os_name(void) {
 #if defined(__APPLE__)
     return "macos";
+#elif defined(__EMSCRIPTEN__)
+    return "wasm";
 #elif defined(__linux__)
     return "linux";
 #else
@@ -331,6 +356,48 @@ int plum_poller_wait(PlumPoller *p, int timeout_ms, void **ready, int max) {
         p->armed -= (size_t)n;
     }
     return n < 0 ? 0 : n;
+}
+
+#elif defined(__EMSCRIPTEN__)
+/* The browser (make wasm): no sockets, so nothing is ever armed; tasks
+ * still wait on timers (wait_for_events in vm.c sleeps for those). */
+struct PlumPoller {
+    size_t armed;
+};
+
+PlumPoller *plum_poller_new(void) {
+    return calloc(1, sizeof(PlumPoller));
+}
+
+void plum_poller_free(PlumPoller *p) {
+    free(p);
+}
+
+void plum_poller_arm(PlumPoller *p, intptr_t fd, bool write, void *who) {
+    (void)p;
+    (void)fd;
+    (void)write;
+    (void)who;
+}
+
+void plum_poller_disarm(PlumPoller *p, intptr_t fd, bool write) {
+    (void)p;
+    (void)fd;
+    (void)write;
+}
+
+size_t plum_poller_armed(const PlumPoller *p) {
+    return p->armed;
+}
+
+int plum_poller_wait(PlumPoller *p, int timeout_ms, void **ready, int max) {
+    (void)p;
+    (void)ready;
+    (void)max;
+    if (timeout_ms > 0) {
+        plum_os_sleep(timeout_ms / 1000.0);
+    }
+    return 0;
 }
 
 #else

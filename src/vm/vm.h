@@ -42,6 +42,11 @@ typedef struct PlumRunOptions {
     /* Native functions that reach outside the process (files, the network,
      * running commands, sleeping) throw an IOError instead. */
     bool sandbox;
+    /* With sandbox: time.sleep still waits, for this many seconds in all
+     * over the run (the browser playground; tasks asleep at the same time
+     * wait together). A sleep that would go past it stops the program,
+     * like the other limits. 0: sleeping is refused with the rest. */
+    double max_sleep;
 } PlumRunOptions;
 
 /*

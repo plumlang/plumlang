@@ -17,9 +17,10 @@ set(CMAKE_C_EXTENSIONS OFF)
 option(PLUM_SANITIZE "Build with AddressSanitizer and UBSan (GCC/Clang)" OFF)
 
 # Everything but the command-line front end is a static library, which the
-# plum binary and the unit tests both link.
+# plum binary and the unit tests both link (src/wasm/bindings.c is built
+# only by `make wasm`, with Emscripten).
 file(GLOB_RECURSE PLUM_LIB_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.c)
-list(FILTER PLUM_LIB_SOURCES EXCLUDE REGEX "/src/cli/")
+list(FILTER PLUM_LIB_SOURCES EXCLUDE REGEX "/src/cli/|/src/wasm/bindings\\.c$")
 file(GLOB_RECURSE PLUM_CLI_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/cli/*.c)
 file(GLOB_RECURSE PLUM_UNIT_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/unit/*.c)
 

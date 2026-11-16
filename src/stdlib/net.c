@@ -76,6 +76,101 @@ static const char *error_text(int err, char *buf, size_t size) {
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#if defined(__EMSCRIPTEN__)
+/*
+ * The browser (make wasm) has no sockets: each call fails as if the system
+ * had no network. Replacing them keeps Emscripten's socket emulation, and
+ * the file system it needs, out of the build.
+ */
+static int no_sockets(void) {
+    errno = ENOSYS;
+    return -1;
+}
+static int wasm_socket(int domain, int type, int protocol) {
+    (void)domain;
+    (void)type;
+    (void)protocol;
+    return no_sockets();
+}
+static int wasm_address(int s, const struct sockaddr *addr, socklen_t len) {
+    (void)s;
+    (void)addr;
+    (void)len;
+    return no_sockets();
+}
+static int wasm_accept(int s, struct sockaddr *addr, socklen_t *len) {
+    (void)s;
+    (void)addr;
+    (void)len;
+    return no_sockets();
+}
+static int wasm_listen(int s, int backlog) {
+    (void)s;
+    (void)backlog;
+    return no_sockets();
+}
+static int wasm_getsockopt(int s, int level, int name, void *value, socklen_t *len) {
+    (void)s;
+    (void)level;
+    (void)name;
+    (void)value;
+    (void)len;
+    return no_sockets();
+}
+static int wasm_setsockopt(int s, int level, int name, const void *value, socklen_t len) {
+    (void)s;
+    (void)level;
+    (void)name;
+    (void)value;
+    (void)len;
+    return no_sockets();
+}
+static ssize_t wasm_recv(int s, void *buf, size_t len, int flags) {
+    (void)s;
+    (void)buf;
+    (void)len;
+    (void)flags;
+    return no_sockets();
+}
+static ssize_t wasm_send(int s, const void *buf, size_t len, int flags) {
+    (void)s;
+    (void)buf;
+    (void)len;
+    (void)flags;
+    return no_sockets();
+}
+static ssize_t wasm_recvfrom(int s, void *buf, size_t len, int flags, struct sockaddr *from,
+                             socklen_t *from_len) {
+    (void)from;
+    (void)from_len;
+    return wasm_recv(s, buf, len, flags);
+}
+static ssize_t wasm_sendto(int s, const void *buf, size_t len, int flags, const struct sockaddr *to,
+                           socklen_t to_len) {
+    (void)to;
+    (void)to_len;
+    return wasm_send(s, buf, len, flags);
+}
+static int wasm_fcntl(int s, int cmd, int arg) {
+    (void)s;
+    (void)cmd;
+    (void)arg;
+    return no_sockets();
+}
+#define socket      wasm_socket
+#define bind        wasm_address
+#define connect     wasm_address
+#define getsockname wasm_accept
+#define accept      wasm_accept
+#define listen      wasm_listen
+#define getsockopt  wasm_getsockopt
+#define setsockopt  wasm_setsockopt
+#define recv        wasm_recv
+#define send        wasm_send
+#define recvfrom    wasm_recvfrom
+#define sendto      wasm_sendto
+#define fcntl       wasm_fcntl
+#endif
 typedef int sock_t;
 #define BAD_SOCKET (-1)
 static int last_error(void) {

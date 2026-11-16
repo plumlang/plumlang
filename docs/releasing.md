@@ -38,11 +38,13 @@ publishing, and so does **Actions › Release › Run workflow**.
 | `plum-X.Y.Z-macos-universal.tar.gz` | macOS, arm64 + x86_64 | macOS 11 or later. Full test suite on arm64. |
 | `plum-X.Y.Z-windows-x86_64.zip` | MSVC, x64 | Static C runtime. Full test suite. |
 | `plum-X.Y.Z-windows-arm64.zip` | MSVC, ARM64 (cross-compiled) | Static C runtime. |
+| `plum-X.Y.Z-wasm.tar.gz` | Emscripten (`make wasm`) | `plum.js` and `plum.wasm` for the browser ([playground.md](playground.md)). Checked against the native build under Node. |
 | `install.sh`, `install.ps1` | | The installers. |
 | `SHA256SUMS` | | Checksums of every file above. |
 
-Each archive holds one folder with `plum` (or `plum.exe`), `LICENSE`,
-`LICENSES/`, `README.md` and `CHANGELOG.md`.
+Each archive holds one folder with `plum` (or `plum.exe`; for wasm,
+`plum.js`, `plum.wasm` and `playground.md`), `LICENSE`, `LICENSES/`,
+`README.md` and `CHANGELOG.md`.
 
 Every file has a [build attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations),
 which proves it was built by this workflow from the tagged commit:

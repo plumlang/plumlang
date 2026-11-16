@@ -1,9 +1,16 @@
 /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+#if defined(__EMSCRIPTEN__)
+#define _DEFAULT_SOURCE /* getentropy */
+#endif
 #if defined(_WIN32)
 #define _CRT_RAND_S /* rand_s, from the OS's cryptographic generator */
 #endif
 
 #include "util/random.h"
+
+#if defined(__EMSCRIPTEN__)
+#include <unistd.h> /* getentropy */
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +31,9 @@ void plum_random_key(uint64_t key[2]) {
         key[0] = ((uint64_t)parts[0] << 32) | parts[1];
         key[1] = ((uint64_t)parts[2] << 32) | parts[3];
     }
+#elif defined(__EMSCRIPTEN__)
+    /* The browser: crypto.getRandomValues, by way of getentropy. */
+    ok = getentropy(key, 2 * sizeof(uint64_t)) == 0;
 #else
     FILE *f = fopen("/dev/urandom", "rb");
     if (f != NULL) {

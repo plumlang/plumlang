@@ -22,6 +22,8 @@
 #define PLUM_OS "windows"
 #elif defined(__APPLE__)
 #define PLUM_OS "macos"
+#elif defined(__EMSCRIPTEN__)
+#define PLUM_OS "wasm"
 #elif defined(__linux__)
 #define PLUM_OS "linux"
 #elif defined(__FreeBSD__)
@@ -40,6 +42,8 @@
 #define PLUM_ARCH "x86"
 #elif defined(__arm__) || defined(_M_ARM)
 #define PLUM_ARCH "arm"
+#elif defined(__wasm32__)
+#define PLUM_ARCH "wasm32"
 #elif defined(__riscv) && __riscv_xlen == 64
 #define PLUM_ARCH "riscv64"
 #elif defined(__riscv)

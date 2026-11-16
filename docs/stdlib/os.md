@@ -30,7 +30,7 @@ text a user typed: the shell would run whatever it says.
 |---|---|---|
 | `args` | `args() -> list[str]` | the arguments after the program's file: plum run app.plum a b gives ["a", "b"] |
 | `env` | `env(name: str) -> str?` | an environment variable, or none if it isn't set |
-| `platform` | `platform() -> str` | "linux", "macos", "windows" or "unix" |
+| `platform` | `platform() -> str` | "linux", "macos", "windows", "unix", or "wasm" in the browser |
 | `cwd` | `cwd() -> str` | the working directory |
 | `run` | `run(command: str) -> int` | run a command through the system's shell and give its exit code |
 <!-- reference:end -->
