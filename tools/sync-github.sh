@@ -1,18 +1,19 @@
 #!/bin/sh
 # SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
 #
-# Keep the .github files the three Plumlang repositories share identical:
-# plumlang (this one, the source), plum.elixpo and branding. That's the
+# Keep the .github files the Plumlang repositories share identical:
+# plumlang (this one, the source), plum.elixpo, branding and registry. That's the
 # community files (CODEOWNERS, issue forms, the pull request template) and
 # the shared workflows: Elixpo CI, and the Elixpoo callers from
 # elixpo/agent.elixpo's distribution/workflows.
 #
-#   sh tools/sync-github.sh ../plum.elixpo ../branding          copy them over
+#   sh tools/sync-github.sh ../plum.elixpo ../branding ../registry   copy them over
 #   sh tools/sync-github.sh --check ../plum.elixpo ...          only report differences
 #
 # Each repository keeps its own files beside these: plumlang's build matrix,
 # scorecard and language/library proposal forms; plum.elixpo's deploy and
-# Search Console sync; branding's extension publishing.
+# Search Console sync; branding's extension publishing; registry's publish
+# and validate workflows.
 SHARED="CODEOWNERS pull_request_template.md
 ISSUE_TEMPLATE/config.yml ISSUE_TEMPLATE/bug_report.yml ISSUE_TEMPLATE/feature_request.yml
 workflows/elixpo-ci.yml workflows/quality-gate.yml workflows/pr-management.yml
