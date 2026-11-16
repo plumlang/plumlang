@@ -2,9 +2,9 @@
 /*
  * Programs of several files (spec section 9). Starting from the program's
  * file, the loader reads, lexes and parses every file it imports with
- * `seed ./path`, once each, and orders them so a module comes after the
- * modules it imports. Import cycles and missing files are reported at the
- * `seed` that names them.
+ * `seed ./path` or `seed package` (src/orchard/packages.h), once each, and orders them so a module
+ * comes after the modules it imports. Import cycles and missing files are reported at the `seed`
+ * that names them.
  */
 #ifndef PLUM_MODULE_LOADER_H
 #define PLUM_MODULE_LOADER_H
@@ -29,6 +29,7 @@ typedef struct PlumModule {
     PlumProgram program;
     PlumMap exports; /* name -> PlumSymbol*, after resolution */
     int state;       /* while loading: 0 new, 1 being loaded, 2 done; or PLUM_MODULE_FORGOTTEN */
+    int package;     /* 0: the program's project; n: the nth installed package it seeded */
 } PlumModule;
 
 /* A module the REPL dropped (its entry failed): kept in memory, since
@@ -42,7 +43,8 @@ typedef struct PlumModules {
     size_t all_count;
     PlumArena arena;
     PlumInterner names;
-    bool open; /* made by plum_modules_init: entries are added one at a time */
+    bool open;                     /* made by plum_modules_init: entries are added one at a time */
+    struct PlumPackages *packages; /* the project's packages, once one is seeded */
 } PlumModules;
 
 /*
@@ -51,6 +53,11 @@ typedef struct PlumModules {
  * Problems in the files go to each module's diagnostics.
  */
 int plum_modules_load(PlumModules *out, const char *path);
+
+/* The same for a program held in memory: `text` (malloc'd, NUL-terminated)
+ * moves here. A `path` like "<stdlib plum.orchard>" marks a module built
+ * into plum. */
+void plum_modules_load_text(PlumModules *out, const char *path, char *text, size_t len);
 
 /*
  * The REPL's modules: an empty set, to which each entry is added as a

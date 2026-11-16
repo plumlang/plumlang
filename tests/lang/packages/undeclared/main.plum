@@ -1,0 +1,4 @@
+# seed of a package plum.toml does not list (E0908)
+seed colors
+seed json
+drop(colors.name())

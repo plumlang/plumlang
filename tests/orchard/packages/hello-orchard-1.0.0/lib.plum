@@ -1,0 +1,10 @@
+# hello-orchard: the example package of Orchard.
+#
+#   seed hello_orchard
+#   drop(hello_orchard.greet("Ada"))    # Hello, Ada, from the orchard!
+
+seed ./text/shout
+
+branch greet(name: str) -> str => "Hello, {name}, from the orchard!"
+
+branch cheer(name: str) -> str => shout.loud(greet(name))

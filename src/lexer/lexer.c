@@ -505,6 +505,15 @@ static const struct {
     {"while", PLUM_TOK_WHILE},
 };
 
+bool plum_is_keyword(const char *word, size_t len) {
+    for (size_t i = 0; i < sizeof keywords / sizeof keywords[0]; i++) {
+        if (strlen(keywords[i].word) == len && memcmp(keywords[i].word, word, len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void lex_name(Lexer *lx) {
     PlumSpan start = here(lx);
     while (is_alnum(peek(lx))) {

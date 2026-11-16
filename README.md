@@ -94,6 +94,7 @@ plum run --mem-stats program.plum   # report how much memory the program used
 | [Examples](examples/README.md) | Small complete programs, including a REST API and a multi-file package. |
 | [Bytecode](docs/bytecode.md) | The instruction set of the virtual machine. |
 | [REPL](docs/repl.md) | The interactive prompt: entries, commands and keys. |
+| [Packages](docs/orchard.md) | Orchard: `plum add`, `plum.toml`, `plum.lock`, publishing, and the registry's formats. |
 
 The same documentation, with a guided tour, is published at [plum.elixpo.com](https://plum.elixpo.com/docs/).
 

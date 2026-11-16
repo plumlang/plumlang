@@ -1,0 +1,8 @@
+[package]
+name = "paint"
+version = "1.0.0"
+entry = "lib.plum"
+description = "Needs colors ^1.0, a test fixture"
+
+[dependencies]
+colors = "^1.0"

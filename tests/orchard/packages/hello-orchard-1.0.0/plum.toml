@@ -1,0 +1,12 @@
+# The example package of Orchard, Plumlang's package registry.
+[package]
+name = "hello-orchard"
+version = "1.0.0"
+entry = "main.plum"
+lib = "lib.plum"
+description = "A friendly greeting: the example package of Orchard"
+license = "MIT"
+authors = ["Elixpo <hello@elixpo.com>"]
+repository = "https://github.com/plumlang/registry"
+keywords = ["example", "greeting"]
+plum = ">=0.0"

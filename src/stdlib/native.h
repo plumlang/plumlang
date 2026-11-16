@@ -71,9 +71,16 @@ const PlumNativeModule *plum_native_handle_methods(const char *name);
 /* Is `m` the methods of a type (str, Json, Task) rather than a module to seed? */
 bool plum_native_is_methods(const PlumNativeModule *m);
 
+/*
+ * Is `m` internal: a helper of plum's own tools written in Plumlang
+ * (plum.pkg), which only modules built into plum may seed, and which
+ * `plum stdlib` doesn't list?
+ */
+bool plum_native_is_internal(const PlumNativeModule *m);
+
 /* The standard module `name` ("math"), or NULL. */
 const PlumNativeModule *plum_native_module(const char *name);
-/* Every module, for listing; NULL past the end. */
+/* Every module but the internal ones, for listing; NULL past the end. */
 const PlumNativeModule *plum_native_module_at(size_t i);
 const PlumNativeFunction *plum_native_function(const PlumNativeModule *m, const char *name);
 const PlumNativeConstant *plum_native_constant(const PlumNativeModule *m, const char *name);
@@ -164,5 +171,7 @@ extern const PlumNativeModule plum_module_net;
 extern const PlumNativeModule plum_module_listener;   /* the methods of Listener */
 extern const PlumNativeModule plum_module_connection; /* the methods of Connection */
 extern const PlumNativeModule plum_module_udp;        /* the methods of UdpSocket */
+extern const PlumNativeModule plum_module_hash;
+extern const PlumNativeModule plum_module_pkg; /* plum.pkg, internal (src/orchard/native.c) */
 
 #endif /* PLUM_STDLIB_NATIVE_H */

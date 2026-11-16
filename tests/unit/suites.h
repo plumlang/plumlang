@@ -10,5 +10,6 @@ void plum_test_map(void);
 void plum_test_intern(void);
 void plum_test_fmt(void);
 void plum_test_random(void);
+void plum_test_orchard(void);
 
 #endif /* PLUM_TEST_SUITES_H */

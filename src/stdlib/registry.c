@@ -4,10 +4,10 @@
 #include <string.h>
 
 static const PlumNativeModule *const modules[] = {
-    &plum_module_math,  &plum_module_str, &plum_module_io,       &plum_module_os,
-    &plum_module_time,  &plum_module_fs,  &plum_module_json,     &plum_module_json_value,
-    &plum_module_tasks, &plum_module_net, &plum_module_listener, &plum_module_connection,
-    &plum_module_udp,
+    &plum_module_math,  &plum_module_str,  &plum_module_io,       &plum_module_os,
+    &plum_module_time,  &plum_module_fs,   &plum_module_json,     &plum_module_json_value,
+    &plum_module_tasks, &plum_module_net,  &plum_module_listener, &plum_module_connection,
+    &plum_module_udp,   &plum_module_hash, &plum_module_pkg,
 };
 
 #define MODULE_COUNT (sizeof modules / sizeof modules[0])
@@ -33,8 +33,20 @@ const PlumNativeModule *plum_native_handle_methods(const char *name) {
                                              : NULL;
 }
 
+bool plum_native_is_internal(const PlumNativeModule *m) {
+    return m == &plum_module_pkg;
+}
+
 const PlumNativeModule *plum_native_module_at(size_t i) {
-    return i < MODULE_COUNT ? modules[i] : NULL;
+    for (size_t k = 0; k < MODULE_COUNT; k++) {
+        if (plum_native_is_internal(modules[k])) {
+            continue;
+        }
+        if (i-- == 0) {
+            return modules[k];
+        }
+    }
+    return NULL;
 }
 
 const PlumNativeFunction *plum_native_function(const PlumNativeModule *m, const char *name) {

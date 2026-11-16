@@ -49,3 +49,7 @@ echo "        }"
 echo "    }"
 echo "    return NULL;"
 echo "}"
+echo
+echo "const PlumEmbeddedModule *plum_embedded_module_at(size_t i) {"
+echo "    return i < sizeof modules / sizeof modules[0] ? &modules[i] : NULL;"
+echo "}"

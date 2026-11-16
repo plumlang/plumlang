@@ -1,0 +1,4 @@
+tests/lang/packages/undeclared/main.plum:2:1: error[E0908]: 'colors' isn't a standard module or a dependency in plum.toml; to use the package, run `plum add colors`
+2 | seed colors
+  | ^~~~~~~~~~~
+1 error

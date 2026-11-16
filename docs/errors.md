@@ -12,6 +12,7 @@ each one, with an example that causes it and the fix.
 | E05xx | Control flow |
 | W05xx | Control-flow warnings (the program still runs) |
 | E06xx | Compiling to bytecode |
+| E09xx | Packages: `plum.toml`, `plum.lock`, seeding packages and the `plum add` family ([orchard.md](orchard.md)) |
 
 Codes never change meaning. A retired code is marked retired, not reused.
 `make test` checks that every code in the compiler is documented here and
@@ -741,3 +742,139 @@ like `plant f = (x: float) => math.sqrt(x)`.
 A limit of the bytecode format: a function with more than 65,535 constants
 or local variables, or a block or loop too long to jump over. Split the
 function into smaller ones.
+
+## Packages
+
+Errors in `plum.toml` and `plum.lock` are shown like compile errors, at
+their line and column. They stop `plum run` of a package directory, every
+`seed` of a package, and the package commands. See
+[orchard.md](orchard.md).
+
+### E0901
+
+`plum.toml` or `plum.lock` isn't in the TOML that Plumlang reads: a small,
+strict part of TOML with `[tables]`, `key = "strings"`, `'literal
+strings'`, lists of strings and `#` comments. Numbers, booleans, inline
+tables, `[[arrays of tables]]`, dotted keys and multi-line strings are
+not accepted; write every value as a string.
+
+```toml
+version = 1.0       # error
+version = "1.0.0"   # fix
+```
+
+### E0902
+
+A key set twice in one table, a `[table]` declared twice, or a name used
+both as a key and as a table. Keep one.
+
+### E0903
+
+A table or key `plum.toml` doesn't have, usually a misspelling. The
+tables are `[package]` and `[dependencies]`; the keys of `[package]` are
+`name`, `version`, `entry`, `lib`, `description`, `license`, `authors`,
+`repository`, `keywords` and `plum`.
+
+### E0904
+
+A field that is missing or of the wrong shape: `[package]` needs `name`,
+`version` and `entry`; `authors` and `keywords` are lists of strings, the
+others strings. A description has at most 300 bytes, and a package at
+most 10 keywords of 1 to 30 lowercase letters, digits and `-`.
+
+### E0905
+
+A package name that can't be used, as the package's own name or a
+dependency's: a name has 2 to 40 lowercase letters, digits and single
+`-`, starts with a letter, and doesn't end with `-`. It can't be a
+standard module's name (`json`, `net`, `hash`...), `plum`, `std`,
+`stdlib` or `orchard`, or a keyword once its `-` become `_`. A package
+can't depend on itself.
+
+### E0906
+
+A version that isn't three numbers, `MAJOR.MINOR.PATCH`, like `"1.4.0"`.
+Numbers have no leading zeros; pre-release labels (`1.0.0-beta`) aren't
+supported.
+
+### E0907
+
+A version range that isn't one of `^1.2` (compatible: the same left-most
+non-zero number), `~1.2.3` (the same minor version), `=1.2.3` (exactly),
+`>=1.2` (at least) or `*` (any). A bare version, `"1.2"`, means `^1.2`.
+
+### E0908
+
+A `seed` of a package the module's `plum.toml` doesn't list in
+`[dependencies]`. Standard modules come first; any other name is a
+package, and only declared ones can be seeded. Add it with `plum add
+NAME`. Inside an installed package, the package's own `plum.toml` must
+list it. (A file with no `plum.toml` above it gets E0308 instead.) In
+`plum remove`, the package isn't a dependency.
+
+```plum
+seed weather      # error: run `plum add weather` first
+```
+
+### E0909
+
+A `seed` of a declared package that isn't installed: there is no
+`plum.lock`, the lock doesn't list it, or the cache doesn't hold the
+version it names (or holds a damaged copy). Run `plum install`.
+
+### E0910
+
+A `plum.lock` that `plum` didn't write: every table is
+`[packages.NAME]` with a `version`, a `sha256` of 64 lowercase hex
+digits, and `dependencies`, a list of names. Delete it and run
+`plum install` to write it again.
+
+### E0911
+
+An `entry` or `lib` that doesn't name a `.plum` file inside the package:
+a relative path with `/` between its parts, without `..`, a drive letter
+or a part starting with `.`.
+
+### E0920
+
+`plum install` or `plum add` downloaded a bundle whose sha256 isn't the
+one `plum.lock` (or the index) records. Nothing is unpacked. The bundle
+changed after it was locked, or the download was tampered with. If the
+package was legitimately republished, remove it from `plum.lock` and run
+`plum install`.
+
+### E0921
+
+A bundle holds a path that could write outside its package: `..`, an
+absolute path, a drive letter, a backslash, a part starting with `.`, a
+device name like `NUL`, a file a package doesn't hold, or two names that
+differ only in case. The whole bundle is refused before anything is
+written. Report the package to the registry.
+
+### E0922
+
+No version of a package satisfies every requirement: the message names
+each package that asks for it, with its range (`paint 1.0.0 requires
+colors ^1.0, brush 1.0.0 requires colors ^2.0`), and says when a yanked
+version would have fit. Change a range so they overlap.
+
+### E0923
+
+Orchard has no such package or bundle, `PLUM_ORCHARD` isn't an
+`https://`, `http://` or `file://` URL, or the server answered with an
+error. `plum search` finds the right name.
+
+### E0924
+
+A file from Orchard isn't what it should be: an index or `search.json`
+that isn't valid, or a bundle that isn't JSON, is over 1 MB, has a format
+this `plum` doesn't know, holds non-text files, or holds another
+package's `plum.toml`.
+
+### E0925
+
+`plum package` (or `plum publish`) refused the package: a file of it has
+compile errors (`plum check` runs on every `.plum` file), isn't UTF-8
+text, has a name a package can't hold, the bundle is over 1 MB, `entry`
+or `lib` isn't among its files, or (to publish) `repository` isn't a
+`https://github.com/OWNER/REPO` URL.

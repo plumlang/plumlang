@@ -871,15 +871,33 @@ it. A file may be named like a keyword (`seed ./models/plant`).
 ### 9.3 Packages
 
 A directory with a `plum.toml` is a package; its `entry` file is the
-program, so `plum run my-project` runs it. Third-party packages are a
-post-1.0 feature.
+program, so `plum run my-project` runs it.
 
 ```toml
 [package]
 name = "weather-api"
 version = "0.1.0"
 entry = "main.plum"
+lib = "lib.plum"          # what `seed weather_api` imports (default: entry)
+
+[dependencies]
+colors = "^1.0"
 ```
+
+Packages published on Orchard, Plumlang's registry, are added with
+`plum add NAME` and seeded by name. A name that isn't a standard module
+(nor under one, like `net.x`) is a package: `seed colors` imports the
+package's `lib` file, and `seed colors.palette.dark` its file
+`palette/dark.plum`. A `-` in a package's name is written `_` in `seed`
+(`seed weather_api` for `weather-api`). The module's name is the last part,
+as for other modules.
+
+A module may seed only the packages its own `plum.toml` lists under
+`[dependencies]` (E0908); which version is used comes from the project's
+`plum.lock`, and a declared package that isn't installed is E0909. The
+project is the nearest directory with a `plum.toml` above the file being
+run. Version ranges, the lock file and the commands are described in
+[orchard.md](orchard.md).
 
 ### 9.4 Visibility
 

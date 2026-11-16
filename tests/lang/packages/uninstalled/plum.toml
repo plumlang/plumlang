@@ -1,0 +1,8 @@
+# A project for the tests: it depends on colors, which is not installed
+[package]
+name = "uninstalled"
+version = "0.1.0"
+entry = "main.plum"
+
+[dependencies]
+colors = "^1.0"
