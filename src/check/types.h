@@ -8,6 +8,7 @@
 
 #include "check/resolve.h"
 #include "util/arena.h"
+#include "util/array.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -87,6 +88,16 @@ bool plum_ty_assignable(const PlumTy *from, const PlumTy *to);
 
 /* Does tree `decl` extend `ancestor` (a tree or a trait), directly or not? */
 bool plum_tree_extends(const PlumSymbol *decl, const PlumSymbol *ancestor);
+
+/*
+ * A tree or trait and everything it extends, each once, in the order a
+ * method is looked for: `decl`, then each tree or trait it extends in turn,
+ * depth first. With `traits_only`, only traits are followed past `decl`.
+ * Each is visited once, so traits that share ancestors (diamonds) cost no
+ * more than the hierarchy's size. `out` is the caller's to free.
+ */
+typedef PLUM_ARRAY(const PlumSymbol *) PlumLineage;
+void plum_lineage(const PlumSymbol *decl, bool traits_only, PlumLineage *out);
 
 /* Write a type as it is spelled in source ("list[str]", "int?") into buf. */
 const char *plum_ty_text(const PlumTy *t, char *buf, size_t size);

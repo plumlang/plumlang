@@ -910,55 +910,51 @@ static uint16_t method_id(Compiler *c, const char *name) {
 /* The declaration of method `name` in a tree or trait or what it extends,
  * with or without a body (for its parameters' defaults). */
 static const PlumBranch *method_decl(const PlumSymbol *decl, const char *name, int depth) {
-    if (decl == NULL || decl->decl == NULL || depth > 32) {
+    (void)depth;
+    if (decl == NULL || decl->decl == NULL) {
         return NULL;
     }
-    const PlumStmt *s = decl->decl;
-    if (s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT) {
-        return NULL;
-    }
-    for (size_t i = 0; i < s->as.tree.method_count; i++) {
-        if (strcmp(s->as.tree.methods[i].name, name) == 0) {
-            return &s->as.tree.methods[i];
+    PlumLineage all = {0};
+    plum_lineage(decl, false, &all);
+    const PlumBranch *found = NULL;
+    for (size_t k = 0; k < all.len && found == NULL; k++) {
+        const PlumStmt *s = all.items[k]->decl;
+        if (s == NULL || (s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT)) {
+            continue;
         }
-    }
-    for (size_t i = 0; i < s->as.tree.super_count; i++) {
-        const PlumType *super = s->as.tree.supers[i];
-        if (super->kind == PLUM_TYPE_NAME) {
-            const PlumBranch *m = method_decl(super->as.name.symbol, name, depth + 1);
-            if (m != NULL) {
-                return m;
+        for (size_t i = 0; i < s->as.tree.method_count && found == NULL; i++) {
+            if (strcmp(s->as.tree.methods[i].name, name) == 0) {
+                found = &s->as.tree.methods[i];
             }
         }
     }
-    return NULL;
+    plum_array_free(&all);
+    return found;
 }
 
 /* A trait's default for `name`, searching the traits `decl` names. */
 static const PlumBranch *trait_default(const PlumSymbol *decl, const char *name, int depth) {
-    if (decl == NULL || decl->decl == NULL || depth > 32) {
+    (void)depth;
+    if (decl == NULL || decl->decl == NULL) {
         return NULL;
     }
-    const PlumStmt *s = decl->decl;
-    for (size_t i = 0; i < s->as.tree.super_count; i++) {
-        const PlumType *super = s->as.tree.supers[i];
-        PlumSymbol *sym = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
-        if (sym == NULL || sym->kind != PLUM_SYM_TRAIT || sym->decl == NULL) {
+    PlumLineage all = {0};
+    plum_lineage(decl, true, &all);
+    const PlumBranch *found = NULL;
+    for (size_t i = 1; i < all.len && found == NULL; i++) { /* the traits, after decl */
+        const PlumStmt *trait = all.items[i]->decl;
+        if (trait == NULL) {
             continue;
         }
-        const PlumStmt *trait = sym->decl;
-        for (size_t k = 0; k < trait->as.tree.method_count; k++) {
+        for (size_t k = 0; k < trait->as.tree.method_count && found == NULL; k++) {
             const PlumBranch *m = &trait->as.tree.methods[k];
             if (strcmp(m->name, name) == 0 && (m->body != NULL || m->arrow != NULL)) {
-                return m;
+                found = m;
             }
         }
-        const PlumBranch *m = trait_default(sym, name, depth + 1);
-        if (m != NULL) {
-            return m;
-        }
     }
-    return NULL;
+    plum_array_free(&all);
+    return found;
 }
 
 /* The method `tree` runs for `name`: its own, a parent's, or a trait default. */
@@ -990,28 +986,20 @@ static PlumFunction *method_function(const Compiler *c, const PlumBranch *decl) 
 }
 
 /* Every trait `decl` takes on, through its parents and the traits' own traits. */
-static void collect_traits(const PlumSymbol *decl, const char **out, int *n, int max, int depth) {
-    if (decl == NULL || decl->decl == NULL || depth > 32) {
+typedef PLUM_ARRAY(const char *) Names;
+
+static void collect_traits(const PlumSymbol *decl, Names *out) {
+    if (decl == NULL || decl->decl == NULL) {
         return;
     }
-    const PlumStmt *s = decl->decl;
-    for (size_t i = 0; i < s->as.tree.super_count; i++) {
-        const PlumType *super = s->as.tree.supers[i];
-        PlumSymbol *sym = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
-        if (sym == NULL) {
-            continue;
+    PlumLineage all = {0};
+    plum_lineage(decl, false, &all);
+    for (size_t i = 1; i < all.len; i++) {
+        if (all.items[i]->kind == PLUM_SYM_TRAIT) {
+            plum_array_push(out, all.items[i]->name);
         }
-        if (sym->kind == PLUM_SYM_TRAIT) {
-            bool seen = false;
-            for (int k = 0; k < *n; k++) {
-                seen = seen || out[k] == sym->name;
-            }
-            if (!seen && *n < max) {
-                out[(*n)++] = sym->name;
-            }
-        }
-        collect_traits(sym, out, n, max, depth + 1);
     }
+    plum_array_free(&all);
 }
 
 /* With every method compiled: each tree's table of what it runs. */
@@ -1031,14 +1019,15 @@ static void fill_method_tables(Compiler *c) {
             const PlumBranch *m = method_impl(tree, entry->key);
             info->methods[id] = m != NULL ? method_function(c, m) : NULL;
         }
-        const char *traits[64];
-        int count = 0;
-        collect_traits(tree, traits, &count, 64, 0);
-        info->trait_count = count;
-        info->traits = plum_alloc_zeroed(count > 0 ? (size_t)count : 1, sizeof(const char *));
-        for (int k = 0; k < count; k++) {
-            info->traits[k] = traits[k];
+        Names traits = {0};
+        collect_traits(tree, &traits);
+        info->trait_count = (int)traits.len;
+        info->traits =
+            plum_alloc_zeroed(traits.len > 0 ? traits.len : 1, sizeof(const char *));
+        for (size_t k = 0; k < traits.len; k++) {
+            info->traits[k] = traits.items[k];
         }
+        plum_array_free(&traits);
     }
 }
 
