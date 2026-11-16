@@ -15,6 +15,7 @@
  *   plum fmt <paths>         format source files (src/fmt/command.c)
  *   plum add, remove, install, package, publish, search
  *                            the package commands (src/cli/orchard.c)
+ *   plum lsp                 the language server, for editors (src/lsp/)
  *
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
@@ -28,6 +29,7 @@
 #include "diag/diag.h"
 #include "fmt/format.h"
 #include "lexer/lexer.h"
+#include "lsp/lsp.h"
 #include "module/loader.h"
 #include "orchard/manifest.h"
 #include "parser/parser.h"
@@ -66,6 +68,7 @@ static void print_help(FILE *out) {
           "    --check                   ...change nothing; list files that would change\n"
           "  plum fmt -                  Format standard input to standard output\n"
           "  plum repl                   Type and run code interactively (also plain `plum`)\n"
+          "  plum lsp                    The language server, for editors (docs/lsp.md)\n"
           "  plum version                Show the version and build\n"
           "  plum tokens <file>          Print the tokens of a file (debugging)\n"
           "  plum ast <file>             Print the syntax tree of a file (debugging)\n"
@@ -381,6 +384,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "fmt") == 0) {
         return plum_fmt_command(argc - 2, argv + 2);
+    }
+    if (strcmp(cmd, "lsp") == 0) {
+        return plum_lsp_command(argc - 2, argv + 2);
     }
     if (strcmp(cmd, "run") == 0) {
         return cmd_run(argc - 2, argv + 2);
