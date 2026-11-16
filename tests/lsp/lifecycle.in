@@ -1,0 +1,15 @@
+# Requests before initialize are refused; then the handshake.
+{"jsonrpc":"2.0","id":1,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":0,"character":0}}}
+{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+# An unknown request gets MethodNotFound; an unknown notification is ignored.
+{"jsonrpc":"2.0","id":3,"method":"workspace/symbol","params":{"query":"x"}}
+{"jsonrpc":"2.0","method":"$/setTrace","params":{"value":"off"}}
+{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{}}}
+# Requests for files that aren't open answer null.
+{"jsonrpc":"2.0","id":4,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/nowhere.plum"},"position":{"line":0,"character":0}}}
+# Bad params.
+{"jsonrpc":"2.0","id":5,"method":"textDocument/hover","params":{"position":{"line":0,"character":0}}}
+{"jsonrpc":"2.0","id":6,"method":"textDocument/definition","params":{"textDocument":{"uri":"@ROOT@/main.plum"}}}
+{"jsonrpc":"2.0","id":7,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

@@ -1,0 +1,15 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+# The same errors, codes and messages as plum check; warnings too.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"plant n: int = \"one\"\nbranch f() {\n    plant unused = 1\n}\nf()\n"}}}
+# A syntax error: plum check reports only that.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":2},"contentChanges":[{"text":"plant n: int = (1\ndrop(nope)\n"}]}}
+# A name that doesn't exist, with a suggestion.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":3},"contentChanges":[{"text":"plant count = 1\ndrop(cuont)\n"}]}}
+# Fixed: the diagnostics are cleared.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":4},"contentChanges":[{"text":"plant count = 1\ndrop(count)\n"}]}}
+# Characters outside the BMP count two UTF-16 units.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":5},"contentChanges":[{"text":"drop(\"🌿🌿\", nope)\n"}]}}
+{"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"@ROOT@/main.plum"}}}
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

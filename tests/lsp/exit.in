@@ -1,0 +1,5 @@
+# exit: 1
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+# exit before shutdown: the exit code is 1.
+{"jsonrpc":"2.0","method":"exit"}

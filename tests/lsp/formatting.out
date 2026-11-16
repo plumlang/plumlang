@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"positionEncoding":"utf-16","textDocumentSync":{"openClose":true,"change":1},"hoverProvider":true,"definitionProvider":true,"completionProvider":{"triggerCharacters":["."]},"documentSymbolProvider":true,"documentFormattingProvider":true},"serverInfo":{"name":"plum","version":"VERSION"}}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"@ROOT@/main.plum","diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":13}},"severity":2,"code":"W0502","source":"plum","message":"'x' is never used; remove it, or start its name with '_' to keep it"}]}}
+{"jsonrpc":"2.0","id":2,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":4,"character":0}},"newText":"plant x = 1 + 2\n\nbranch f(a: int) -> int {\n    return a * 2  # double\n}\n"}]}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"@ROOT@/main.plum","diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":15}},"severity":2,"code":"W0502","source":"plum","message":"'x' is never used; remove it, or start its name with '_' to keep it"}]}}
+{"jsonrpc":"2.0","id":3,"result":[]}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"@ROOT@/main.plum","diagnostics":[{"range":{"start":{"line":0,"character":10},"end":{"line":0,"character":11}},"severity":1,"code":"E0130","source":"plum","message":"'(' is never closed"},{"range":{"start":{"line":0,"character":11},"end":{"line":0,"character":11}},"severity":1,"code":"E0201","source":"plum","message":"expected an expression, found end of file"}]}}
+{"jsonrpc":"2.0","id":4,"result":null}
+{"jsonrpc":"2.0","id":5,"result":null}

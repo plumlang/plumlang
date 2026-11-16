@@ -1,0 +1,17 @@
+# A module on disk, for the language server tests.
+kind Form {
+    Round
+    Square
+}
+
+tree Shape {
+    name: str
+    form: Form
+    size: float = 1.0
+
+    branch area() -> float => self.size * self.size
+}
+
+branch circle(r: float) -> Shape => Shape("circle", Form.Round, r)
+
+root UNIT: float = 1.0

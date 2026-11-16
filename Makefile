@@ -5,7 +5,7 @@
 #   make                  release build -> ./plum
 #   make debug            debug build (-O0 -g)
 #   make sanitize         debug build under AddressSanitizer + UBSan
-#   make test             unit, smoke, harness, golden, formatter and package tests on the selected build
+#   make test             unit, smoke, harness, golden, formatter, REPL, package and language server tests
 #   make sanitize test    the tests, under the sanitizers
 #   make golden-update    rewrite golden expectations from actual output (and the REPL's)
 #   make format           format the C sources with clang-format
@@ -129,6 +129,7 @@ test: all $(UNIT_BIN)
 	@sh tests/repl.sh $(PLUM)
 	@sh tests/reference.sh $(PLUM)
 	@sh tests/orchard.sh $(PLUM)
+	@sh tests/lsp.sh $(PLUM)
 
 # Regenerate the instruction table in docs/bytecode.md from opcodes.h.
 bytecode-doc:
@@ -155,6 +156,7 @@ golden-update: all
 	@UPDATE=1 sh tests/golden.sh $(PLUM)
 	@UPDATE=1 sh tests/golden.sh $(PLUM) examples
 	@UPDATE=1 sh tests/repl.sh $(PLUM)
+	@UPDATE=1 sh tests/lsp.sh $(PLUM)
 
 # Ours only: vendor/ keeps its upstream formatting.
 C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)

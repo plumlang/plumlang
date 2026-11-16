@@ -227,7 +227,8 @@ static PlumModule *import(Loader *l, PlumModule *importer, PlumStmt *s) {
     }
     size_t len = 0;
     int err = 0;
-    char *text = plum_read_file(path, &len, &err);
+    char *text = l->m->read != NULL ? l->m->read(l->m->read_ctx, path, &len, &err)
+                                    : plum_read_file(path, &len, &err);
     if (text == NULL) {
         plum_diag_error(&importer->diags, s->span, "E0308", "can't read the module '%s' (%s): %s",
                         s->as.seed.path, path, strerror(err));

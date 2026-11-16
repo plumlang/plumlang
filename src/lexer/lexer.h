@@ -50,4 +50,7 @@ void plum_lex_comments(const PlumSource *source, PlumArena *arena, PlumInterner 
 /* Is the word (of `len` bytes) a keyword, like `plant` or `true`? */
 bool plum_is_keyword(const char *word, size_t len);
 
+/* The keywords, in alphabetical order: the i-th, or NULL past the end. */
+const char *plum_keyword_at(size_t i);
+
 #endif /* PLUM_LEXER_LEXER_H */

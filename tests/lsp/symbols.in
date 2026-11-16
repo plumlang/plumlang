@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"seed math\nroot MAX: int = 3\nplant names: list[str] = []\n\ntree Animal {\n    name: str\n    branch speak() -> str => \"...\"\n}\n\ntrait Named {\n    branch label() -> str\n}\n\nkind Size {\n    Small\n    Large(n: int)\n}\n\nbranch main() {\n    drop(MAX)\n}\n"}}}
+{"jsonrpc":"2.0","id":2,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"@ROOT@/main.plum"}}}
+{"jsonrpc":"2.0","id":3,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

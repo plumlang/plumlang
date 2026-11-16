@@ -80,6 +80,7 @@ plum run program.plum [args...]     # run a program (or a directory with a plum.
 plum check program.plum             # report every error without running
 plum fmt .                          # format every .plum file here (--check: only list them)
 plum stdlib [module]                # list the standard library
+plum lsp                            # the language server for editors, see docs/lsp.md
 plum run --check-leaks program.plum # report objects left alive in reference cycles
 plum run --mem-stats program.plum   # report how much memory the program used
 ```
@@ -95,6 +96,7 @@ plum run --mem-stats program.plum   # report how much memory the program used
 | [Bytecode](docs/bytecode.md) | The instruction set of the virtual machine. |
 | [REPL](docs/repl.md) | The interactive prompt: entries, commands and keys. |
 | [Packages](docs/orchard.md) | Orchard: `plum add`, `plum.toml`, `plum.lock`, publishing, and the registry's formats. |
+| [Language server](docs/lsp.md) | `plum lsp`: what editors get, and how to set it up in each. |
 
 The same documentation, with a guided tour, is published at [plum.elixpo.com](https://plum.elixpo.com/docs/).
 

@@ -1,0 +1,28 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"seed math\nseed ./lib/shapes as shapes\n\nkind Dir {\n    Up\n    Down\n}\n\ntree Counter {\n    count: int = 0\n    branch bump() {\n        self.count += 1\n    }\n}\n\nbranch total(xs: list[int]) -> int {\n    plant sum = 0\n    for x in xs {\n        sum += x\n    }\n    return sum\n}\n\nplant c = Counter()\nplant names: list[str] = []\nplant ages: map[str, int] = {:}\ndrop(c.bump, names.push, ages.keys, \"a\".upper, math.sqrt, shapes.circle, Dir.Up)\n\n"}}}
+# completion self
+{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":11,"character":13}}}
+# completion inner
+{"jsonrpc":"2.0","id":3,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":18,"character":15}}}
+# completion c
+{"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":7}}}
+# completion list
+{"jsonrpc":"2.0","id":5,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":19}}}
+# completion map
+{"jsonrpc":"2.0","id":6,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":30}}}
+# completion str
+{"jsonrpc":"2.0","id":7,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":40}}}
+# completion math
+{"jsonrpc":"2.0","id":8,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":52}}}
+# completion mod
+{"jsonrpc":"2.0","id":9,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":65}}}
+# completion kind
+{"jsonrpc":"2.0","id":10,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":26,"character":77}}}
+# completion top
+{"jsonrpc":"2.0","id":11,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":27,"character":0}}}
+# Typing a dot at the end of a line: the file has a syntax error there.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":2},"contentChanges":[{"text":"plant c = Counter()\ntree Counter {\n    count: int = 0\n}\nc.\n"}]}}
+{"jsonrpc":"2.0","id":12,"method":"textDocument/completion","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":4,"character":2}}}
+{"jsonrpc":"2.0","id":13,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

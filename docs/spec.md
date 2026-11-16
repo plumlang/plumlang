@@ -1197,6 +1197,7 @@ plum fmt --check paths...           # ...change nothing; list files that would c
 plum fmt -                          # format standard input to standard output
 plum                                # interactive prompt, on a terminal (14.2)
 plum repl                           # the interactive prompt, also with piped input
+plum lsp                            # the language server, for editors (docs/lsp.md)
 ```
 
 Exit codes: 0 success, 1 the program failed (compile or runtime error, or
