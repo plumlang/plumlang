@@ -85,6 +85,25 @@ jobs:
       - run: make CC=gcc test
       - run: ./plum version
 
+  # The browser build (make wasm, docs/playground.md), with Emscripten
+  # from the image the Makefile pins, checked against native plum.
+  wasm:
+    name: wasm / emscripten
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: make -j"$(nproc)"
+      - run: make wasm WASM_JOBS="$(nproc)"
+      - run: test -f build/wasm/plum.wasm && sh tests/wasm.sh ./plum
+      - name: Size
+        run: |
+          raw=$(wc -c < build/wasm/plum.wasm)
+          gz=$(gzip -9c build/wasm/plum.wasm | wc -c)
+          echo "plum.wasm: $raw bytes, $gz gzipped" | tee -a "$GITHUB_STEP_SUMMARY"
+
   format:
     name: clang-format
     runs-on: ubuntu-latest
