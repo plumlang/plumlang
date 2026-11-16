@@ -1,0 +1,8 @@
+9223372036854775807 -9223372036854775808
+number 9.223372036854776e+18
+1e+99 10000.0
+json.parse: line 1, column 1: a number too large for a float
+json.parse: line 1, column 1: a number too large for a float
+json.parse: line 1, column 5: a number too large for a float
+json.parse: line 1, column 1: a number too large for a float
+0.0

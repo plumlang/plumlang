@@ -93,26 +93,47 @@ bool plum_ty_equal(const PlumTy *a, const PlumTy *b) {
     }
 }
 
+static void lineage_from(const PlumSymbol *decl, bool traits_only, PlumLineage *out, int depth) {
+    for (size_t i = 0; i < out->len; i++) {
+        if (out->items[i] == decl) {
+            return; /* reached before, along another path */
+        }
+    }
+    plum_array_push(out, decl);
+    const PlumStmt *s = decl->decl;
+    if (s == NULL || (s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT) || depth > 64) {
+        return; /* a built-in error tree; or a hierarchy E0427/E0428 reports */
+    }
+    for (size_t i = 0; i < s->as.tree.super_count; i++) {
+        const PlumType *super = s->as.tree.supers[i];
+        const PlumSymbol *up = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
+        if (up != NULL &&
+            (up->kind == PLUM_SYM_TRAIT || (!traits_only && up->kind == PLUM_SYM_TREE))) {
+            lineage_from(up, traits_only, out, depth + 1);
+        }
+    }
+}
+
+void plum_lineage(const PlumSymbol *decl, bool traits_only, PlumLineage *out) {
+    out->len = 0;
+    lineage_from(decl, traits_only, out, 0);
+}
+
 bool plum_tree_extends(const PlumSymbol *decl, const PlumSymbol *ancestor) {
     if (decl == ancestor) {
         return true;
     }
-    if (decl->decl == NULL) {
-        /* A built-in error tree extends Error. */
-        return strcmp(ancestor->name, "Error") == 0 && ancestor->decl == NULL;
+    /* A built-in error tree extends Error, and so does whatever extends one. */
+    bool builtin_error = strcmp(ancestor->name, "Error") == 0 && ancestor->decl == NULL;
+    PlumLineage all = {0};
+    plum_lineage(decl, false, &all);
+    bool found = false;
+    for (size_t i = 0; i < all.len && !found; i++) {
+        found = all.items[i] == ancestor || (builtin_error && all.items[i]->decl == NULL &&
+                                             all.items[i]->kind == PLUM_SYM_TREE);
     }
-    const PlumStmt *s = decl->decl;
-    if (s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT) {
-        return false;
-    }
-    for (size_t i = 0; i < s->as.tree.super_count; i++) {
-        const PlumType *super = s->as.tree.supers[i];
-        if (super->kind == PLUM_TYPE_NAME && super->as.name.symbol != NULL &&
-            super->as.name.symbol != decl && plum_tree_extends(super->as.name.symbol, ancestor)) {
-            return true;
-        }
-    }
-    return false;
+    plum_array_free(&all);
+    return found;
 }
 
 /* Can a value of type `t` be JSON: plain data, all the way down? */

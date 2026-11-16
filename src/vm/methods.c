@@ -225,6 +225,12 @@ bool plum_run_method(PlumMethod m, PlumValue *receiver, const PlumValue *args, i
                 total = plum_add_size(total, sep_len);
             }
         }
+        if (total > PLUM_MAX_STRING) {
+            snprintf(error, error_size,
+                     "join: the text would be longer than %zu bytes, the most a str can hold",
+                     PLUM_MAX_STRING);
+            return false;
+        }
         PlumString *s = plum_string_alloc(total);
         size_t at = 0;
         for (size_t i = 0; i < list->len; i++) {

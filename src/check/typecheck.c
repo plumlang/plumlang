@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
 #include "check/typecheck.h"
 
+#include "parser/parser.h"
+
 #include "stdlib/native.h"
 
 #include "util/alloc.h"
@@ -229,28 +231,26 @@ static const PlumField *find_field(const PlumSymbol *tree, const char *name) {
 
 /* A method of a tree or trait, searching parents and the traits it names. */
 static const PlumBranch *find_method(const PlumSymbol *decl, const char *name, int depth) {
-    if (decl == NULL || decl->decl == NULL || depth > 32) {
+    (void)depth;
+    if (decl == NULL || decl->decl == NULL) {
         return NULL;
     }
-    const PlumStmt *s = decl->decl;
-    if (s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT) {
-        return NULL;
-    }
-    for (size_t i = 0; i < s->as.tree.method_count; i++) {
-        if (s->as.tree.methods[i].name == name) {
-            return &s->as.tree.methods[i];
+    PlumLineage all = {0};
+    plum_lineage(decl, false, &all);
+    const PlumBranch *found = NULL;
+    for (size_t k = 0; k < all.len && found == NULL; k++) {
+        const PlumStmt *s = all.items[k]->decl;
+        if (s == NULL || (s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT)) {
+            continue;
         }
-    }
-    for (size_t i = 0; i < s->as.tree.super_count; i++) {
-        const PlumType *super = s->as.tree.supers[i];
-        if (super->kind == PLUM_TYPE_NAME && super->as.name.symbol != NULL) {
-            const PlumBranch *m = find_method(super->as.name.symbol, name, depth + 1);
-            if (m != NULL) {
-                return m;
+        for (size_t i = 0; i < s->as.tree.method_count && found == NULL; i++) {
+            if (s->as.tree.methods[i].name == name) {
+                found = &s->as.tree.methods[i];
             }
         }
     }
-    return NULL;
+    plum_array_free(&all);
+    return found;
 }
 
 /* The declared type of a tree's or trait's method `name`, or NULL. */
@@ -740,11 +740,11 @@ static PlumTy *check_field(Checker *c, PlumExpr *e) {
  */
 static void check_args(Checker *c, const PlumExpr *call, const char *what,
                        const PlumTyParam *params, size_t count) {
-    bool given[64] = {false};
+    bool given[PLUM_MAX_PARAMS] = {false};
     size_t n_args = call->as.call.arg_count;
     size_t positional = 0;
-    if (count > 64) {
-        count = 64;
+    if (count > PLUM_MAX_PARAMS) {
+        count = PLUM_MAX_PARAMS; /* a tree with too many fields: E0429 says so */
     }
 
     for (size_t i = 0; i < n_args; i++) {
@@ -2667,6 +2667,86 @@ static void check_tree_decl(Checker *c, PlumStmt *s) {
     }
 }
 
+/* How many trees and traits deep a tree or trait may extend (E0428). */
+#define MAX_LINEAGE 32
+
+/*
+ * 1 + the longest chain of trees and traits `sym` extends, measured once
+ * (sym->lineage); -1 if it extends itself.
+ */
+static int measure_lineage(PlumSymbol *sym) {
+    if (sym->decl == NULL ||
+        (sym->decl->kind != PLUM_STMT_TREE && sym->decl->kind != PLUM_STMT_TRAIT)) {
+        return 1; /* a built-in error tree */
+    }
+    if (sym->lineage != 0) {
+        return sym->lineage; /* measured, or -1: being measured, so a circle */
+    }
+    sym->lineage = -1;
+    int longest = 1;
+    const PlumStmt *s = sym->decl;
+    for (size_t i = 0; i < s->as.tree.super_count; i++) {
+        const PlumType *super = s->as.tree.supers[i];
+        PlumSymbol *up = super->kind == PLUM_TYPE_NAME ? super->as.name.symbol : NULL;
+        if (up == NULL || (up->kind != PLUM_SYM_TREE && up->kind != PLUM_SYM_TRAIT)) {
+            continue;
+        }
+        int d = measure_lineage(up);
+        if (d < 0) {
+            return -1; /* stays -1: whatever reaches it is in or above a circle */
+        }
+        longest = d + 1 > longest ? d + 1 : longest;
+    }
+    sym->lineage = longest;
+    return longest;
+}
+
+/* Every field a tree's objects have, its parents' included. */
+static size_t field_total(const PlumSymbol *tree) {
+    size_t n = 0;
+    for (const PlumSymbol *t = tree; t != NULL; t = parent_tree(t)) {
+        n += t->decl != NULL ? t->decl->as.tree.field_count : 1; /* Error's message */
+    }
+    return n;
+}
+
+/*
+ * Trees and traits may not extend themselves, nor nest past MAX_LINEAGE,
+ * nor have more fields than a constructor takes. Checked first, since all
+ * that follows walks up the parents. False after an error.
+ */
+static bool check_lineage(Checker *c, const PlumProgram *program) {
+    for (size_t i = 0; i < program->count; i++) {
+        PlumStmt *s = program->stmts[i];
+        if ((s->kind != PLUM_STMT_TREE && s->kind != PLUM_STMT_TRAIT) || s->symbol == NULL) {
+            continue;
+        }
+        int d = measure_lineage(s->symbol);
+        if (d < 0) {
+            plum_diag_error(c->diags, s->span, "E0427",
+                            "%s extends itself, through the trees and traits it extends; break "
+                            "the circle",
+                            s->symbol->name);
+            return false;
+        }
+        if (d > MAX_LINEAGE) {
+            plum_diag_error(c->diags, s->span, "E0428",
+                            "%s extends trees and traits %d deep, more than the %d allowed; "
+                            "make the hierarchy flatter",
+                            s->symbol->name, d, MAX_LINEAGE);
+            return false;
+        }
+        if (s->kind == PLUM_STMT_TREE && field_total(s->symbol) > PLUM_MAX_PARAMS) {
+            plum_diag_error(c->diags, s->span, "E0429",
+                            "%s has %zu fields with its parents', more than the %d a tree can "
+                            "have; group some into a tree of their own",
+                            s->symbol->name, field_total(s->symbol), PLUM_MAX_PARAMS);
+            return false;
+        }
+    }
+    return true;
+}
+
 static void typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner *names,
                       PlumDiagList *diags, const PlumExpr *echoed) {
     Checker c;
@@ -2683,6 +2763,9 @@ static void typecheck(const PlumProgram *program, PlumArena *arena, PlumInterner
         if (s->kind == PLUM_STMT_BRANCH && s->symbol != NULL) {
             s->symbol->ty = signature(&c, &s->as.branch);
         }
+    }
+    if (!check_lineage(&c, program)) {
+        return;
     }
     /* Methods' types, and the rules trees and traits follow. */
     for (size_t i = 0; i < program->count; i++) {

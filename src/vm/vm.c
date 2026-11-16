@@ -103,6 +103,8 @@ typedef struct PlumVM {
      * may still point at it. */
     bool session;
     PLUM_ARRAY(struct PlumTask *) parked;
+    uint64_t steps;        /* calls and backward jumps so far (max_steps) */
+    PlumAllocStats *stats; /* the allocator's counts, if it counts */
 } VM;
 
 typedef PLUM_ARRAY(struct PlumTask *) TaskList;
@@ -160,6 +162,21 @@ typedef struct PlumChannel {
     TaskList receivers; /* waiting for a value */
     TaskList senders;   /* waiting for room */
 } PlumChannel;
+
+/*
+ * What a global slot holds until its `plant` line (or function) sets it: a
+ * none no program can make (plum_none's payload is 0), so reading it is a
+ * runtime error and never a value of the wrong type.
+ */
+static inline PlumValue unset(void) {
+    PlumValue v = plum_none();
+    v.as.i = 1;
+    return v;
+}
+
+static inline bool is_unset(PlumValue v) {
+    return v.type == PLUM_VAL_NONE && v.as.i == 1;
+}
 
 static inline Frame *FRAME(VM *vm, int i) {
     return &vm->segs[i / FRAME_SEG][i % FRAME_SEG];
@@ -1753,7 +1770,30 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
 /* The run loop                                                        */
 /* ------------------------------------------------------------------ */
 
+/*
+ * One more step of the run (a call or a backward jump): false, the program
+ * stopped as if by exit(1), once it is past the limits of its options.
+ */
+static bool step(VM *vm) {
+    const PlumRunOptions *o = vm->options;
+    if (o->max_steps > 0 && ++vm->steps > o->max_steps) {
+        fprintf(vm->err, "%s: Error: stopped after %llu steps, the limit of this run\n",
+                vm->source->path, (unsigned long long)o->max_steps);
+    } else if (o->max_memory > 0 && vm->stats != NULL && vm->stats->bytes_in_use > o->max_memory) {
+        fprintf(vm->err, "%s: Error: stopped using more than %lld bytes, the limit of this run\n",
+                vm->source->path, (long long)o->max_memory);
+    } else {
+        return true;
+    }
+    vm->exit_code = 1;
+    vm->stopped = true;
+    return false;
+}
+
 static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
+    if (!step(vm)) {
+        return false;
+    }
     if (vm->frame_count == PLUM_MAX_FRAMES) {
         runtime_error(vm, PLUM_ERROR_ERROR, "too much recursion: more than %d calls deep",
                       PLUM_MAX_FRAMES);
@@ -1811,6 +1851,35 @@ static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
 
 #define PLACE_KIND(op, local, global) ((op) == (local) ? 0 : (op) == (global) ? 1 : 2)
 
+/* Can `m` run on `receiver` without making a list longer than PLUM_MAX_LIST?
+ * If not, a ValueError is thrown. */
+static bool list_has_room(VM *vm, PlumMethod m, PlumValue receiver) {
+    if ((m == PLUM_METHOD_LIST_PUSH || m == PLUM_METHOD_LIST_INSERT) &&
+        plum_as_list(receiver)->len >= PLUM_MAX_LIST) {
+        runtime_error(vm, PLUM_ERROR_VALUE,
+                      "%s(): the list has %zu items, the most a list can hold",
+                      m == PLUM_METHOD_LIST_PUSH ? "push" : "insert", PLUM_MAX_LIST);
+        return false;
+    }
+    return true;
+}
+
+/* Does `fn` reach outside the process? (PlumRunOptions.sandbox) */
+static bool outside_world(const PlumNativeFunction *fn) {
+    static const PlumNativeModule *const modules[] = {
+        &plum_module_fs,         &plum_module_net, &plum_module_listener,
+        &plum_module_connection, &plum_module_udp,
+    };
+    for (size_t i = 0; i < sizeof modules / sizeof modules[0]; i++) {
+        if (fn >= modules[i]->functions &&
+            fn < modules[i]->functions + modules[i]->function_count) {
+            return true;
+        }
+    }
+    return fn == plum_native_function(&plum_module_os, "run") ||
+           fn == plum_native_function(&plum_module_time, "sleep");
+}
+
 static bool execute(VM *vm) {
     Frame *frame = FRAME(vm, vm->frame_count - 1);
     const uint8_t *ip = frame->ip;
@@ -1847,6 +1916,15 @@ static bool execute(VM *vm) {
                  (long long)a, symbol, (long long)b);                                         \
         }                                                                                     \
         push(vm, plum_int(r));                                                                \
+    } while (0)
+/* A module variable read before its `plant` line ran (spec 9.1). */
+#define CHECK_GLOBAL(n)                                                                      \
+    do {                                                                                     \
+        if (is_unset(vm->globals[(n)])) {                                                    \
+            FAIL(PLUM_ERROR_ERROR,                                                           \
+                 "a module variable was used before its `plant` line ran: declare it above " \
+                 "the code that calls this function");                                       \
+        }                                                                                    \
     } while (0)
 #define STR_COMPARE(test)                                              \
     do {                                                               \
@@ -1931,9 +2009,12 @@ static bool execute(VM *vm) {
             push(vm, plum_obj(&closure->obj));
             break;
         }
-        case PLUM_OP_GET_GLOBAL:
-            push(vm, plum_retain(vm->globals[READ_U16()]));
+        case PLUM_OP_GET_GLOBAL: {
+            uint16_t n = READ_U16();
+            CHECK_GLOBAL(n);
+            push(vm, plum_retain(vm->globals[n]));
             break;
+        }
         case PLUM_OP_SET_GLOBAL: {
             uint16_t n = READ_U16();
             PlumValue v = pop(vm);
@@ -2081,6 +2162,13 @@ static bool execute(VM *vm) {
             break;
 
         case PLUM_OP_CONCAT: {
+            if (plum_as_string(*peek(vm, 1))->len >
+                PLUM_MAX_STRING - plum_as_string(*peek(vm, 0))->len) {
+                FAIL(PLUM_ERROR_VALUE,
+                     "+: the text would be longer than %zu bytes, the most a "
+                     "str can hold",
+                     PLUM_MAX_STRING);
+            }
             PlumValue b = pop(vm);
             PlumValue a = pop(vm);
             PlumString *s = concat(plum_as_string(a), plum_as_string(b));
@@ -2128,6 +2216,12 @@ static bool execute(VM *vm) {
             size_t total = 0;
             for (uint16_t i = 0; i < n; i++) {
                 total = plum_add_size(total, plum_as_string(*peek(vm, i))->len);
+            }
+            if (total > PLUM_MAX_STRING) {
+                FAIL(PLUM_ERROR_VALUE,
+                     "the text would be longer than %zu bytes, the most a "
+                     "str can hold",
+                     PLUM_MAX_STRING);
             }
             PlumString *s = plum_string_alloc(total);
             size_t at = total;
@@ -2272,6 +2366,12 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_CONCAT_LIST: {
+            if (plum_as_list(*peek(vm, 1))->len > PLUM_MAX_LIST - plum_as_list(*peek(vm, 0))->len) {
+                FAIL(PLUM_ERROR_VALUE,
+                     "+: the list would have more than %zu items, the most a "
+                     "list can hold",
+                     PLUM_MAX_LIST);
+            }
             PlumValue b = pop(vm);
             PlumValue a = pop(vm);
             PlumList *out = concat_lists(plum_as_list(a), plum_as_list(b));
@@ -2287,6 +2387,9 @@ static bool execute(VM *vm) {
             uint16_t slot = op == PLUM_OP_METHOD ? 0 : READ_U16();
             uint16_t m = READ_U16();
             uint16_t argc = READ_U16();
+            if (op == PLUM_OP_METHOD_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue *receiver =
                 op == PLUM_OP_METHOD
                     ? peek(vm, argc)
@@ -2344,6 +2447,10 @@ static bool execute(VM *vm) {
                 push(vm, result);
                 break;
             }
+            if (!list_has_room(vm, (PlumMethod)m, *receiver)) {
+                SAVE_IP();
+                goto thrown;
+            }
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - argc], argc,
                                       &result, error, sizeof error);
             unwind_to(vm, vm->top - argc - (op == PLUM_OP_METHOD ? 1 : 0));
@@ -2357,6 +2464,9 @@ static bool execute(VM *vm) {
         case PLUM_OP_SET_INDEX_GLOBAL:
         case PLUM_OP_SET_INDEX_CAPTURE: {
             uint16_t slot = READ_U16();
+            if (op == PLUM_OP_SET_INDEX_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue value = pop(vm);
             PlumValue *place = place_of(
                 vm, frame, PLACE_KIND(op, PLUM_OP_SET_INDEX_LOCAL, PLUM_OP_SET_INDEX_GLOBAL), slot);
@@ -2382,6 +2492,9 @@ static bool execute(VM *vm) {
         case PLUM_OP_SET_PATH_FIELD: {
             uint16_t slot = READ_U16();
             uint16_t depth = READ_U16();
+            if (op == PLUM_OP_SET_PATH_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue value = pop(vm);
             PlumValue *keys = &vm->stack[vm->top - depth];
             /* a field's object sits under the keys */
@@ -2422,6 +2535,9 @@ static bool execute(VM *vm) {
             uint16_t packed = READ_U16();
             int depth = packed >> 8, argc = packed & 0xFF;
             size_t under = op == PLUM_OP_METHOD_PATH_FIELD ? 1 : 0; /* the field's object */
+            if (op == PLUM_OP_METHOD_PATH_GLOBAL) {
+                CHECK_GLOBAL(slot);
+            }
             PlumValue *keys = &vm->stack[vm->top - (size_t)argc - (size_t)depth];
             PlumValue *root = under ? &plum_as_object(keys[-1])->fields[slot]
                                     : place_of(vm, frame,
@@ -2468,6 +2584,10 @@ static bool execute(VM *vm) {
                 unwind_to(vm, vm->top - (size_t)argc - (size_t)depth - under);
                 push(vm, result);
                 break;
+            }
+            if (!list_has_room(vm, (PlumMethod)m, *receiver)) {
+                SAVE_IP();
+                goto thrown;
             }
             bool ok = plum_run_method((PlumMethod)m, receiver, &vm->stack[vm->top - (size_t)argc],
                                       argc, &result, error, sizeof error);
@@ -2626,7 +2746,10 @@ static bool execute(VM *vm) {
             }
             PlumValue result = plum_none();
             SAVE_IP();
-            bool ok = fn->fn((PlumNative *)(void *)vm, args, argc, &result);
+            bool ok = vm->options->sandbox && outside_world(fn)
+                          ? plum_native_throw((PlumNative *)(void *)vm, PLUM_ERROR_IO,
+                                              "%s() isn't allowed in this run (sandbox)", fn->name)
+                          : fn->fn((PlumNative *)(void *)vm, args, argc, &result);
             if (args != local) {
                 plum_free(args);
             }
@@ -2731,6 +2854,10 @@ static bool execute(VM *vm) {
         case PLUM_OP_LOOP: {
             uint16_t d = READ_U16();
             ip -= d;
+            if (!step(vm)) {
+                SAVE_IP();
+                goto thrown;
+            }
             break;
         }
         case PLUM_OP_FOR_RANGE: {
@@ -2752,6 +2879,10 @@ static bool execute(VM *vm) {
             if (!(inclusive && SLOT(slot).as.i == SLOT(slot + 1).as.i)) {
                 SLOT(slot).as.i++;
                 ip -= d;
+                if (!step(vm)) {
+                    SAVE_IP();
+                    goto thrown;
+                }
             }
             break;
         }
@@ -2984,14 +3115,14 @@ static VM *vm_create(const PlumRunOptions *options, FILE *out, FILE *err) {
 }
 
 /* Take in what a compiled program (or REPL entry) needs: room for its
- * globals (new ones start as none), its error trees and method numbers. */
+ * globals (new ones start unset), its error trees and method numbers. */
 static void vm_load(VM *vm, const PlumCompiled *program, const PlumSource *source) {
     vm->source = source;
     if (program->global_count > vm->global_count) {
         vm->globals =
             plum_realloc_array(vm->globals, (size_t)program->global_count, sizeof(PlumValue));
         for (int i = vm->global_count; i < program->global_count; i++) {
-            vm->globals[i] = plum_none();
+            vm->globals[i] = unset();
         }
         vm->global_count = program->global_count;
     }
@@ -3154,15 +3285,19 @@ int plum_vm_run(const PlumCompiled *program, const PlumSource *source,
     /* --mem-stats: the run's own counters, which the allocator counts into
      * until the run is over (util/alloc.h). */
     PlumAllocStats stats;
-    if (options->mem_stats) {
+    bool counting = options->mem_stats || options->max_memory > 0;
+    if (counting) {
         plum_alloc_set_stats(&stats);
     }
     VM *vm = vm_create(options, out, err);
+    vm->stats = counting ? &stats : NULL;
     vm_load(vm, program, source);
     int code = vm_run_main(vm, program->main);
     code = vm_destroy(vm, code);
-    if (options->mem_stats) {
+    if (counting) {
         plum_alloc_set_stats(NULL);
+    }
+    if (options->mem_stats) {
         fflush(out);
         print_mem_stats(err, &stats);
     }

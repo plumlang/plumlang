@@ -1,0 +1,4 @@
+repeat(536870913): the text would be longer than 1073741824 bytes, the most a str can hold
+repeat(4611686018427387904): the text would be longer than 1073741824 bytes, the most a str can hold
+pad: a width of 1000000000000 is more than a str can hold
+2000 1000

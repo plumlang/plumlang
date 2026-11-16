@@ -65,6 +65,13 @@ endif()
 add_executable(plum ${PLUM_CLI_SOURCES})
 add_executable(plum_unit_tests ${PLUM_UNIT_SOURCES})
 target_link_libraries(plum PRIVATE plumcore)
+# The same 8 MB stack as Linux and macOS give the main thread; Windows gives
+# 1 MB. The parser's nesting limit (E0218) leaves room within either.
+if(MSVC)
+  target_link_options(plum PRIVATE /STACK:8388608)
+elseif(WIN32)
+  target_link_options(plum PRIVATE -Wl,--stack,8388608)
+endif()
 target_link_libraries(plum_unit_tests PRIVATE plumcore)
 
 find_package(Git QUIET)

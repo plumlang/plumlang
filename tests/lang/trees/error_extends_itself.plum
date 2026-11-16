@@ -1,0 +1,5 @@
+# Trees that extend each other in a circle (#86): an error, not a hang.
+tree A : B {}
+tree B : C {}
+tree C : A {}
+drop(A())

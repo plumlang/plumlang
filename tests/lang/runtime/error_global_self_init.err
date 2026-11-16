@@ -1,0 +1,3 @@
+tests/lang/runtime/error_global_self_init.plum:3: Error: a module variable was used before its `plant` line ran: declare it above the code that calls this function
+  in twice, line 3
+  in <main>, line 5

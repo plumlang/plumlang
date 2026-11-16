@@ -63,9 +63,10 @@ typedef struct PlumModules {
  */
 int plum_modules_load(PlumModules *out, const char *path);
 
-/* The same for a program held in memory: `text` (malloc'd, NUL-terminated)
- * moves here. A `path` like "<stdlib plum.orchard>" marks a module built
- * into plum. */
+/* The same for a program held in memory (the package commands, the fuzz
+ * targets): `text` (malloc'd, NUL-terminated at `len`) moves here. `path`
+ * names the program in messages, and relative imports are found from it; a
+ * path like "<stdlib plum.orchard>" marks a module built into plum. */
 void plum_modules_load_text(PlumModules *out, const char *path, char *text, size_t len);
 
 /*

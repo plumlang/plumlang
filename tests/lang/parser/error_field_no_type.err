@@ -1,0 +1,4 @@
+tests/lang/parser/error_field_no_type.plum:4:10: error[E0201]: expected ':' and the field's type, found end of line
+4 |     greet
+  |          ^
+1 error

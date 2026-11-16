@@ -1,0 +1,4 @@
+tests/lang/trees/error_extends_itself.plum:2:1: error[E0427]: A extends itself, through the trees and traits it extends; break the circle
+2 | tree A : B {}
+  | ^~~~~~~~~~~~~
+1 error

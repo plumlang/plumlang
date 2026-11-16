@@ -55,6 +55,14 @@ for p in planets {
 A Plumlang source file is UTF-8 text with the extension `.plum`. A byte
 order mark at the start is ignored. Line endings may be `\n` or `\r\n`.
 
+Code may nest up to 1000 deep: brackets, blocks, types and lambdas inside
+each other, with each operator of a chain like `a + b + c` counting one
+level. Deeper code is a compile error (E0218), never a crash. Other limits,
+each a compile error: a function, lambda or kind case has at most 255
+parameters (E0219); a tree has at most 255 fields with its parents'
+(E0429); a tree or trait extends trees and traits at most 32 deep (E0428),
+and never itself (E0427).
+
 ### 2.2 Comments
 
 A comment starts with `#` and runs to the end of the line.
@@ -574,7 +582,20 @@ A function body that is a single expression can use `=>`:
 branch square(x: int) -> int => x * x
 ```
 
-Functions can be called before their declaration in the same module.
+Functions can be called before their declaration in the same module. A
+function may use module variables declared anywhere in the module, but
+using one before its `plant` or `root` line has run (a call made above
+the declaration) is a runtime `Error`, not a value of the wrong type:
+
+```plum
+branch greet() -> str => "Hello, {name}"
+drop(greet())        # Error: a module variable was used before its `plant` line ran
+plant name = "Ada"
+drop(greet())        # Hello, Ada
+```
+
+Using a module variable above its declaration outside a function is a
+compile error (E0303).
 
 ### 6.2 Default and named arguments
 
@@ -839,7 +860,9 @@ Shape.Rect(2.0, 3.0)`), and they print as written: `Direction.North`,
 
 Every `.plum` file is a module. Its top-level statements run once, in order,
 the first time it is imported, or when it is the program being run. A
-program needs no `main` function.
+program needs no `main` function. A module's functions exist before its
+first statement runs; its variables exist once their declaration has run
+(section 6.1).
 
 ### 9.2 seed
 
@@ -982,9 +1005,9 @@ and `AssertError`. The errors the language itself raises are these:
 | `IndexError` | a list or string index or slice out of range; `pop()` on an empty list; `insert`/`remove_at` out of range |
 | `KeyError` | `m[k]` for a key not in the map |
 | `ParseError` | `int(text)` or `float(text)` of text that isn't a number |
-| `ValueError` | `byte(n)` out of 0 to 255; an int power with a negative exponent; a shift count out of 0 to 63; a format that doesn't fit the value |
+| `ValueError` | `byte(n)` out of 0 to 255; an int power with a negative exponent; a shift count out of 0 to 63; a format that doesn't fit the value; a `str` or list larger than it may be (11.4) |
 | `AssertError` | `assert(condition)` when the condition is `bad` |
-| `Error` | too much recursion |
+| `Error` | too much recursion; a module variable used before its declaration ran (6.1) |
 
 ## 11. Values and memory
 
@@ -1048,8 +1071,11 @@ leak check: 2 objects are still alive in reference cycles:
 
 No Plumlang program can read or write memory it does not own: every index
 is checked, there are no raw pointers, and objects are never used after
-they are freed. A program can run out of memory, which ends it with a
-runtime error. Values may nest as deep as memory allows: comparing,
+they are freed. A `str` holds at most 1 GiB (2^30 bytes) and a list at
+most 2^27 (134,217,728) items; making a larger one (with `+`, `repeat`,
+`join`, `push`...) throws a `ValueError` before any memory is taken. A
+program that runs out of memory otherwise ends with `plum: error: out of
+memory` and exit code 1. Values may nest as deep as memory allows: comparing,
 copying and freeing them doesn't recurse in the runtime, and printing
 stops at a depth (section 3.2.1).
 

@@ -1,0 +1,37 @@
+# A hierarchy past 32 levels (#86): an error, not methods silently missing.
+tree T1 {
+    branch hello() -> str => "hi"
+}
+tree T2 : T1 {}
+tree T3 : T2 {}
+tree T4 : T3 {}
+tree T5 : T4 {}
+tree T6 : T5 {}
+tree T7 : T6 {}
+tree T8 : T7 {}
+tree T9 : T8 {}
+tree T10 : T9 {}
+tree T11 : T10 {}
+tree T12 : T11 {}
+tree T13 : T12 {}
+tree T14 : T13 {}
+tree T15 : T14 {}
+tree T16 : T15 {}
+tree T17 : T16 {}
+tree T18 : T17 {}
+tree T19 : T18 {}
+tree T20 : T19 {}
+tree T21 : T20 {}
+tree T22 : T21 {}
+tree T23 : T22 {}
+tree T24 : T23 {}
+tree T25 : T24 {}
+tree T26 : T25 {}
+tree T27 : T26 {}
+tree T28 : T27 {}
+tree T29 : T28 {}
+tree T30 : T29 {}
+tree T31 : T30 {}
+tree T32 : T31 {}
+tree T33 : T32 {}
+drop(T33().hello())

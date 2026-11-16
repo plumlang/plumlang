@@ -24,7 +24,21 @@ typedef struct PlumParser {
     PlumInterner *names;
     PlumDiagList *diags;
     bool panic; /* an error was reported; stay quiet until resynchronised */
+    int depth;  /* how deep the syntax tree being built is (PLUM_MAX_NESTING) */
 } PlumParser;
+
+/*
+ * How deep a syntax tree may be: brackets, blocks, types and operators
+ * inside each other, each operator of a chain like `a + b + c` counting
+ * one. Every later stage walks the tree recursively, so this keeps them
+ * within the C stack (E0218). No program written by hand comes near it.
+ */
+#define PLUM_MAX_NESTING 1000
+
+/* The most parameters a function, lambda, kind case or function type may
+ * have (E0219), and the most fields a tree may have with its parents'
+ * (E0429): calls are compiled for up to this many arguments. */
+#define PLUM_MAX_PARAMS 255
 
 /* `tokens` must end with EOF, as plum_lex leaves them. */
 void plum_parser_init(PlumParser *p, const PlumTokenList *tokens, PlumArena *arena,

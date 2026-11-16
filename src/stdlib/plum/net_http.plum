@@ -157,6 +157,9 @@ branch read_chunked(conn: Connection, timeout: float) -> str {
         plant size_line = conn.read_line(timeout: timeout) ?? ""
         plant hex = size_line.split(";")[0].trim()
         plant size = 0
+        if hex.byte_len() > 8 {
+            throw ValueError("a bad chunk size '{hex}'")  # more than MAX_BODY anyway
+        }
         for ch in hex.lower().chars() {
             plant digit = "0123456789abcdef".find(ch)
             if plant d = digit {
@@ -183,7 +186,11 @@ branch read_body(conn: Connection, headers: map[str, str], timeout: float, to_en
         return read_chunked(conn, timeout)
     }
     if plant length = headers.get("content-length") {
-        return read_exactly(conn, int(length.trim()), timeout)
+        plant size = try int(length.trim()) ?? -1
+        if size < 0 {
+            throw ValueError("a bad content-length '{length}'")
+        }
+        return read_exactly(conn, size, timeout)
     }
     if not to_end {
         return ""
@@ -486,7 +493,10 @@ branch parse_url(url: str) -> Url {
     plant port = if secure { 443 } else { 80 }
     if plant colon = rest.find(":") {
         host = rest[0..colon]
-        port = int(rest[colon + 1..len(rest)])
+        port = try int(rest[colon + 1..len(rest)]) ?? -1
+        if port < 0 or port > 65535 {
+            throw ValueError("a bad port in '{url}'")
+        }
     }
     if host == "" {
         throw ValueError("no host in '{url}'")
@@ -529,7 +539,11 @@ branch request(
         conn.close()
         throw NetError("{url}: not an HTTP response")
     }
-    plant code = int(words[1])
+    plant code = try int(words[1]) ?? -1
+    if code < 100 or code > 999 {
+        conn.close()
+        throw NetError("{url}: not an HTTP response (the status '{words[1]}')")
+    }
     plant got = read_headers(conn, timeout) ?? {:}
     plant text = if method.upper() == "HEAD" or code == 204 or code == 304 {
         ""

@@ -1,0 +1,15 @@
+# Strings and lists have a largest size (spec 11.4, #86): asking for more
+# is a ValueError before any memory is taken, not a crash or a fatal error.
+for times in [536870913, 4611686018427387904] {
+    try {
+        drop("ab".repeat(times).byte_len())
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+try {
+    drop("x".pad_start(1000000000000).byte_len())
+} catch e: ValueError {
+    drop(e.message)
+}
+drop("ab".repeat(1000).byte_len(), "x".pad_start(1000).byte_len())

@@ -1,0 +1,28 @@
+# A function that uses a module variable before the variable's plant line
+# has run is a runtime error, never a crash or a wrong value (#94, #86).
+branch shout() -> str { return greeting.upper() }
+branch next() -> int { return count + 1 }
+branch add(word: str) { words.push(word) }
+branch put(key: str) { totals[key] = 1 }
+branch nested() { grid[0][0] = 1 }
+branch maybe() -> str? { return later }
+
+for f in [() => drop(shout()), () => drop(next()), () => add("x"), () => put("k"), () => nested()] {
+    try {
+        f()
+    } catch e: Error {
+        drop(e.message)
+    }
+}
+
+plant greeting = "hi"
+plant count = 1
+plant words: list[str] = []
+plant totals: map[str, int] = {:}
+plant grid = [[0]]
+plant later: str? = none
+drop(shout(), next(), maybe() ?? "none, as set")
+add("x")
+put("k")
+nested()
+drop(words, totals, grid)

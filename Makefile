@@ -11,11 +11,21 @@
 #   make format           format the C sources with clang-format
 #   make format-check     fail if anything is not formatted
 #   make clean
+#   make fuzz             build the fuzz targets (tests/fuzz) and run each one
+#                         for FUZZ_TIME seconds (default 60): make fuzz FUZZ_TIME=600
+#   make fuzz-build       only build them, into build/fuzz/fuzz-NAME
+#
+# The fuzz targets need clang with libFuzzer (FUZZ_CC=clang, the default)
+# on Linux or macOS; nothing else in the build depends on them. Crashes
+# land in build/fuzz/crashes/NAME; see tests/fuzz/README.md.
 #
 # Each mode builds into its own directory under build/, and ./plum is a copy
 # of the last binary built.
 
 CC      ?= cc
+FUZZ_CC   ?= clang
+FUZZ_TIME ?= 60
+FUZZ_TARGETS := lexer parser check run json format http
 STD     := -std=c11
 WARN    := -Wall -Wextra -Wpedantic -Werror -Wshadow -Wstrict-prototypes \
            -Wmissing-prototypes -Wvla -Wformat=2 -Wundef
@@ -24,7 +34,10 @@ INCLUDE := -Iinclude -Isrc
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DEFS    := -DPLUM_COMMIT=\"$(COMMIT)\"
 
-ifneq ($(filter sanitize,$(MAKECMDGOALS)),)
+ifneq ($(filter fuzz fuzz-build,$(MAKECMDGOALS)),)
+  MODE := fuzz
+  CC := $(FUZZ_CC)
+else ifneq ($(filter sanitize,$(MAKECMDGOALS)),)
   MODE := sanitize
 else ifneq ($(filter debug,$(MAKECMDGOALS)),)
   MODE := debug
@@ -36,10 +49,16 @@ ifeq ($(MODE),release)
   OPT := -O2 -DNDEBUG
 else ifeq ($(MODE),debug)
   OPT := -O0 -g3
-else
+else ifeq ($(MODE),sanitize)
   OPT := -O1 -g3 -fno-omit-frame-pointer -fsanitize=address,undefined \
          -fno-sanitize-recover=all
   LDSAN := -fsanitize=address,undefined
+else
+  # Smaller largest values (vm/value.h), to stay within the fuzzer's memory
+  OPT := -O1 -g3 -fno-omit-frame-pointer -fsanitize=fuzzer-no-link,address,undefined \
+         -fno-sanitize-recover=all '-DPLUM_MAX_STRING=((size_t)1 << 24)' \
+         '-DPLUM_MAX_LIST=((size_t)1 << 20)'
+  LDSAN := -fsanitize=fuzzer,address,undefined
 endif
 
 # Mbed TLS, vendored under vendor/mbedtls (see its README.md). It is built
@@ -72,6 +91,8 @@ ifeq ($(OS),Windows_NT)
 # Winsock for the net module; BCrypt (random numbers) and Crypt32 (the
 # system's trusted certificates) for TLS
 LDLIBS  += -lws2_32 -lbcrypt -lcrypt32
+# the 8 MB stack Linux and macOS give, not Windows' 1 MB
+LDFLAGS += -Wl,--stack,8388608
 endif
 
 BUILD   := build/$(MODE)
@@ -86,12 +107,14 @@ VENDOR_SRCS := $(sort $(wildcard $(MBEDTLS)/library/*.c $(TFPSA)/core/*.c \
 LIB_OBJS  := $(LIB_SRCS:%.c=$(BUILD)/%.o) $(VENDOR_SRCS:%.c=$(BUILD)/%.o)
 CLI_OBJS  := $(CLI_SRCS:%.c=$(BUILD)/%.o)
 UNIT_OBJS := $(UNIT_SRCS:%.c=$(BUILD)/%.o)
-OBJS      := $(LIB_OBJS) $(CLI_OBJS) $(UNIT_OBJS)
+OBJS      := $(LIB_OBJS) $(CLI_OBJS) $(UNIT_OBJS) $(FUZZ_TARGETS:%=$(BUILD)/tests/fuzz/fuzz_%.o)
 BIN       := $(BUILD)/plum
 UNIT_BIN  := $(BUILD)/unit-tests
 PLUM      := ./plum
 
-.PHONY: all release debug sanitize test golden-update bytecode-doc stdlib-doc stdlib-embed format format-check clean
+FUZZ_BINS := $(FUZZ_TARGETS:%=$(BUILD)/fuzz-%)
+
+.PHONY: all release debug sanitize fuzz fuzz-build test golden-update bytecode-doc stdlib-doc stdlib-embed format format-check clean
 
 # Always refresh ./plum, so it is the binary of the mode asked for even when
 # another mode's copy is newer.
@@ -104,6 +127,14 @@ $(BIN): $(LIB_OBJS) $(CLI_OBJS)
 
 $(UNIT_BIN): $(LIB_OBJS) $(UNIT_OBJS)
 	$(CC) $^ $(LDFLAGS) $(LDLIBS) -o $@
+
+$(BUILD)/fuzz-%: $(LIB_OBJS) $(BUILD)/tests/fuzz/fuzz_%.o
+	$(CC) $^ $(LDFLAGS) $(LDLIBS) -o $@
+
+fuzz-build: $(FUZZ_BINS)
+
+fuzz: fuzz-build
+	@sh tests/fuzz/run.sh $(BUILD) $(FUZZ_TIME) $(FUZZ_TARGETS)
 
 # Third-party code first: make 3.81 (macOS) takes the first rule that matches.
 $(BUILD)/vendor/%.o: vendor/%.c
@@ -159,7 +190,7 @@ golden-update: all
 	@UPDATE=1 sh tests/lsp.sh $(PLUM)
 
 # Ours only: vendor/ keeps its upstream formatting.
-C_FILES := $(shell find src include tests/unit -name '*.c' -o -name '*.h' | sort)
+C_FILES := $(shell find src include tests/unit tests/fuzz -name '*.c' -o -name '*.h' | sort)
 C_FILES := $(filter-out src/stdlib/embedded.c,$(C_FILES)) # generated
 
 format:

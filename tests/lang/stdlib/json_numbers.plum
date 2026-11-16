@@ -1,0 +1,17 @@
+# json.parse at the edges of numbers (found by fuzzing, #86): every digit of
+# a long number counts, ints fill all 64 bits, and a number too large for a
+# float is a ParseError, not an infinity json.stringify can't write.
+seed json
+
+drop(json.parse("9223372036854775807").int(), json.parse("-9223372036854775808").int())
+drop(json.parse("9223372036854775808").type_name(), json.parse("9223372036854775808").float())
+plant long = "1" + "0".repeat(99)
+drop(json.parse(long).float(), json.parse("0." + "0".repeat(70) + "1e75").float())
+for text in ["1e999", "-1e400", "[1, 2e308]", long + "0".repeat(300)] {
+    try {
+        drop(json.parse(text))
+    } catch e: ParseError {
+        drop(e.message)
+    }
+}
+drop(json.parse("1e-999").float())
