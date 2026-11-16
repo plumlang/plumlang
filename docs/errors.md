@@ -834,3 +834,47 @@ digits, and `dependencies`, a list of names. Delete it and run
 An `entry` or `lib` that doesn't name a `.plum` file inside the package:
 a relative path with `/` between its parts, without `..`, a drive letter
 or a part starting with `.`.
+
+### E0920
+
+`plum install` or `plum add` downloaded a bundle whose sha256 isn't the
+one `plum.lock` (or the index) records. Nothing is unpacked. The bundle
+changed after it was locked, or the download was tampered with. If the
+package was legitimately republished, remove it from `plum.lock` and run
+`plum install`.
+
+### E0921
+
+A bundle holds a path that could write outside its package: `..`, an
+absolute path, a drive letter, a backslash, a part starting with `.`, a
+device name like `NUL`, a file a package doesn't hold, or two names that
+differ only in case. The whole bundle is refused before anything is
+written. Report the package to the registry.
+
+### E0922
+
+No version of a package satisfies every requirement: the message names
+each package that asks for it, with its range (`paint 1.0.0 requires
+colors ^1.0, brush 1.0.0 requires colors ^2.0`), and says when a yanked
+version would have fit. Change a range so they overlap.
+
+### E0923
+
+Orchard has no such package or bundle, `PLUM_ORCHARD` isn't an
+`https://`, `http://` or `file://` URL, or the server answered with an
+error. `plum search` finds the right name.
+
+### E0924
+
+A file from Orchard isn't what it should be: an index or `search.json`
+that isn't valid, or a bundle that isn't JSON, is over 1 MB, has a format
+this `plum` doesn't know, holds non-text files, or holds another
+package's `plum.toml`.
+
+### E0925
+
+`plum package` (or `plum publish`) refused the package: a file of it has
+compile errors (`plum check` runs on every `.plum` file), isn't UTF-8
+text, has a name a package can't hold, the bundle is over 1 MB, `entry`
+or `lib` isn't among its files, or (to publish) `repository` isn't a
+`https://github.com/OWNER/REPO` URL.

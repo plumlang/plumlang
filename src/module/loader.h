@@ -2,9 +2,9 @@
 /*
  * Programs of several files (spec section 9). Starting from the program's
  * file, the loader reads, lexes and parses every file it imports with
- * `seed ./path` or `seed package` (src/orchard/packages.h), once each, and orders them so a module comes after the
- * modules it imports. Import cycles and missing files are reported at the
- * `seed` that names them.
+ * `seed ./path` or `seed package` (src/orchard/packages.h), once each, and orders them so a module
+ * comes after the modules it imports. Import cycles and missing files are reported at the `seed`
+ * that names them.
  */
 #ifndef PLUM_MODULE_LOADER_H
 #define PLUM_MODULE_LOADER_H
@@ -43,7 +43,7 @@ typedef struct PlumModules {
     size_t all_count;
     PlumArena arena;
     PlumInterner names;
-    bool open; /* made by plum_modules_init: entries are added one at a time */
+    bool open;                     /* made by plum_modules_init: entries are added one at a time */
     struct PlumPackages *packages; /* the project's packages, once one is seeded */
 } PlumModules;
 

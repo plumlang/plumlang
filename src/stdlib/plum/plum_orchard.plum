@@ -1,0 +1,778 @@
+# module: plum.orchard, the package commands: plum add, remove, install, package, publish, search.
+#
+# Orchard is Plumlang's package registry (docs/orchard.md): an index of
+# JSON files and .plumpkg bundles under one base URL, PLUM_ORCHARD. This
+# program is built into plum and run by `plum add` and the rest
+# (src/cli/orchard.c), with the command and its arguments as os.args().
+# What it needs from C (plum.toml, plum.lock, versions, names, paths,
+# `plum check`) is the internal module plum.pkg (src/orchard/native.c).
+
+seed os
+seed fs
+seed io
+seed json
+seed hash
+seed net.http
+seed plum.pkg as pkg
+
+root DEFAULT_ORCHARD = "https://raw.githubusercontent.com/plumlang/registry/main"
+root REGISTRY = "https://github.com/plumlang/registry"
+root MAX_BUNDLE = 1048576  # 1 MB
+root MAX_REDIRECTS = 5
+root MARKER = ".orchard-sha256"  # in an unpacked package: the bundle's sha256
+
+# A failure of the command: printed as `plum: error[CODE]: message`.
+tree Failure : Error {
+    code: str = ""
+    hint: str = ""
+}
+
+branch fail(code: str, message: str, hint: str = "") -> Failure => Failure(message, code, hint)
+
+# ------------------------------------------------------------------
+# The index
+# ------------------------------------------------------------------
+
+branch orchard_url() -> str {
+    plant base = os.env("PLUM_ORCHARD") ?? DEFAULT_ORCHARD
+    if base == "" {
+        base = DEFAULT_ORCHARD
+    }
+    while base.ends_with("/") {
+        base = base[0..len(base) - 1]
+    }
+    return base
+}
+
+# A file:// URL as a path: file:///home/x is /home/x, file:///C:/x is C:/x.
+branch file_path(url: str) -> str {
+    plant path = url[7..len(url)]
+    if len(path) > 2 and path[0] == "/" and path[2] == ":" {
+        path = path[1..len(path)]
+    }
+    return path.url_decode()
+}
+
+# The scheme, host and port of an http(s) URL: "https://example.com".
+branch origin(url: str) -> str {
+    plant start = if url.starts_with("https://") { 8 } else { 7 }
+    plant rest = url[start..len(url)]
+    plant slash = rest.find("/") ?? len(rest)
+    return url[0..start + slash]
+}
+
+# The file at `rel` under the base URL; none if there is no such file.
+branch fetch(rel: str) -> str? {
+    plant base = orchard_url()
+    if base.starts_with("file://") {
+        plant path = file_path(base) + "/" + rel
+        if not fs.exists(path) or fs.is_dir(path) {
+            return none
+        }
+        return fs.read(path)
+    }
+    if not base.starts_with("https://") and not base.starts_with("http://") {
+        throw fail("E0923", "PLUM_ORCHARD is '{base}'; it must start with https://, http:// or file://")
+    }
+    plant url = base + "/" + rel
+    for hop in 0..MAX_REDIRECTS + 1 {
+        plant response = http.get(url, timeout: 60.0)
+        match response.status {
+            301, 302, 303, 307, 308 => {
+                plant to = response.header("location") ?? ""
+                if to == "" {
+                    throw fail("E0923", "{url} redirects nowhere")
+                }
+                url = if to.starts_with("/") { origin(url) + to } else { to }
+                if not url.starts_with("https://") and not url.starts_with("http://") {
+                    throw fail("E0923", "{base}/{rel} redirects to '{to}', which isn't http(s)")
+                }
+            }
+            404, 410 => return none
+            else => {
+                if not response.ok() {
+                    throw fail("E0923", "{url}: the server answered {response.status}")
+                }
+                return response.body
+            }
+        }
+    }
+    throw fail("E0923", "{base}/{rel}: more than {MAX_REDIRECTS} redirects")
+}
+
+branch index_path(name: str) -> str => "index/{name[0..2]}/{name}.json"
+
+# A version of a package, as the index lists it.
+tree Release {
+    version: str
+    sha256: str
+    deps: map[str, str]
+    plum: str
+    yanked: bool
+}
+
+tree Index {
+    name: str
+    releases: list[Release]
+}
+
+branch parse_index(name: str, text: str) -> Index {
+    plant doc = try json.parse(text)
+    if doc == none {
+        throw fail("E0924", "the index file of '{name}' isn't JSON")
+    }
+    plant data: Json = doc
+    if (data.get("name").str() ?? "") != name {
+        throw fail("E0924", "the index file of '{name}' names another package")
+    }
+    plant releases: list[Release] = []
+    for item in data.get("versions").list() ?? [] {
+        plant version = item.get("version").str() ?? ""
+        plant sha = item.get("sha256").str() ?? ""
+        if not pkg.is_version(version) or len(sha) != 64 {
+            throw fail("E0924", "the index file of '{name}' has a bad version entry")
+        }
+        plant deps: map[str, str] = {:}
+        for dep, range in item.get("dependencies").map() ?? {:} {
+            plant r = range.str() ?? ""
+            if pkg.name_problem(dep) != none or not pkg.is_range(r) {
+                throw fail("E0924", "'{name}' {version} has a bad dependency '{dep}'")
+            }
+            deps[dep] = r
+        }
+        releases.push(Release(
+            version,
+            sha,
+            deps,
+            item.get("plum").str() ?? "*",
+            item.get("yanked").bool() ?? bad,
+        ))
+    }
+    return Index(name, releases)
+}
+
+# ------------------------------------------------------------------
+# Resolving versions
+# ------------------------------------------------------------------
+
+# One requirement on a package: a range, and who asks for it.
+tree Want {
+    range: str
+    by: str
+}
+
+tree Resolver {
+    project: str
+    indexes: map[str, Index] = {:}
+    locked: map[str, str] = {:}  # what plum.lock had: kept when it still fits
+
+    branch index(name: str) -> Index {
+        if plant found = self.indexes.get(name) {
+            return found
+        }
+        plant text = fetch(index_path(name))
+        if text == none {
+            throw fail(
+                "E0923",
+                "there is no package '{name}' in Orchard ({orchard_url()})",
+                "check the name with `plum search {name}`",
+            )
+        }
+        plant index = parse_index(name, text ?? "")
+        self.indexes[name] = index
+        return index
+    }
+
+    branch release(name: str, version: str) -> Release? {
+        for r in self.index(name).releases {
+            if r.version == version {
+                return r
+            }
+        }
+        return none
+    }
+
+    # The version of `name` to use: the locked one if it fits every want,
+    # else the highest one that isn't yanked and fits them all.
+    branch choose(name: str, wants: list[Want]) -> Release {
+        plant index = self.index(name)
+        if plant v = self.locked.get(name) {
+            if plant r = self.release(name, v) {
+                if wants.all((w) => pkg.satisfies(v, w.range)) {
+                    return r
+                }
+            }
+        }
+        plant best: Release? = none
+        for r in index.releases {
+            if r.yanked or not wants.all((w) => pkg.satisfies(r.version, w.range)) {
+                continue
+            }
+            if plant b = best {
+                if pkg.compare(r.version, b.version) > 0 {
+                    best = r
+                }
+            } else {
+                best = r
+            }
+        }
+        if plant b = best {
+            return b
+        }
+        plant asks = wants.map((w) => "{w.by} requires {name} {w.range}").join(", ")
+        plant yanked = index.releases.filter((r) => r.yanked and wants.all((w) => pkg.satisfies(r.version, w.range)))
+        plant note = if len(yanked) > 0 { "; {yanked[0].version} would, but it was yanked" } else { "" }
+        if len(wants) == 1 {
+            plant have = index.releases.filter((r) => not r.yanked).map((r) => r.version).join(", ")
+            throw fail(
+                "E0922",
+                "no version of '{name}' matches {wants[0].range} ({asks}){note}",
+                "the versions are: {if have == "" { "none" } else { have }}",
+            )
+        }
+        throw fail(
+            "E0922",
+            "version conflict for '{name}': {asks}; no version satisfies them all{note}",
+            "change one of the ranges so they overlap",
+        )
+    }
+
+    # Every package the project needs, from its direct dependencies down.
+    branch resolve(direct: map[str, str]) -> map[str, Release] {
+        plant chosen: map[str, Release] = {:}
+        for round in 0..100 {
+            plant wants: map[str, list[Want]] = {:}
+            plant queue: list[str] = []
+            for name, range in direct {
+                wants[name] = [Want(range, self.project)]
+                queue.push(name)
+            }
+            plant at = 0
+            while at < len(queue) {
+                plant name = queue[at]
+                at += 1
+                if plant r = chosen.get(name) {
+                    for dep, range in r.deps {
+                        plant list = wants.get(dep) ?? []
+                        if len(list) == 0 {
+                            queue.push(dep)
+                        }
+                        list.push(Want(range, "{name} {r.version}"))
+                        wants[dep] = list
+                    }
+                }
+            }
+            plant next: map[str, Release] = {:}
+            for name in wants.keys().sorted() {
+                next[name] = self.choose(name, wants[name])
+            }
+            plant same = len(next) == len(chosen)
+            for name, r in next {
+                plant before = chosen.get(name)
+                same = same and before != none and (before?.version ?? "") == r.version
+            }
+            chosen = next
+            if same {
+                return chosen
+            }
+        }
+        throw fail("E0922", "the dependencies didn't settle on one set of versions")
+    }
+}
+
+# ------------------------------------------------------------------
+# The lock file
+# ------------------------------------------------------------------
+
+branch lock_text(chosen: map[str, Release]) -> str {
+    plant lines = [
+        "# plum.lock: the exact packages this project uses, written by plum.",
+        "# Commit it with the project; don't edit it by hand.",
+    ]
+    for name in chosen.keys().sorted() {
+        plant r = chosen[name]
+        plant deps = r.deps.keys().sorted().map((d) => "\"{d}\"").join(", ")
+        lines.push("")
+        lines.push("[packages.{name}]")
+        lines.push("version = \"{r.version}\"")
+        lines.push("sha256 = \"{r.sha256}\"")
+        lines.push("dependencies = [{deps}]")
+    }
+    return lines.join("\n") + "\n"
+}
+
+# A locked package: what install needs.
+tree Locked {
+    name: str
+    version: str
+    sha256: str
+    deps: list[str]
+}
+
+branch read_lock(dir: str) -> list[Locked]? {
+    plant data = pkg.lock(dir)
+    if data == none {
+        return none
+    }
+    plant out: list[Locked] = []
+    for name in data.keys() {
+        plant e = data.get(name)
+        plant deps: list[str] = []
+        for d in e.get("dependencies").list() ?? [] {
+            deps.push(d.str() ?? "")
+        }
+        out.push(Locked(name, e.get("version").str() ?? "", e.get("sha256").str() ?? "", deps))
+    }
+    return out
+}
+
+# ------------------------------------------------------------------
+# The cache: downloading, checking and unpacking
+# ------------------------------------------------------------------
+
+branch make_dirs(path: str) {
+    plant parts = path.split("/")
+    plant at = ""
+    for i, part in parts.enumerate() {
+        at = if i == 0 { part } else { at + "/" + part }
+        if at != "" and not fs.is_dir(at) {
+            fs.make_dir(at)
+        }
+    }
+}
+
+# Remove a directory this program made, and everything in it.
+branch remove_tree(path: str) {
+    if fs.is_dir(path) {
+        for name in fs.list(path) {
+            remove_tree(path + "/" + name)
+        }
+    }
+    if fs.exists(path) {
+        fs.remove(path)
+    }
+}
+
+# The files of a bundle, checked: every path safe, nothing twice.
+branch bundle_files(text: str, name: str, version: str) -> map[str, str] {
+    if text.byte_len() > MAX_BUNDLE {
+        throw fail("E0924", "the bundle of {name} {version} is over 1 MB")
+    }
+    plant doc = try json.parse(text)
+    if doc == none {
+        throw fail("E0924", "the bundle of {name} {version} isn't JSON")
+    }
+    plant data: Json = doc
+    if data.get("format").int() != 1 {
+        throw fail(
+            "E0924",
+            "the bundle of {name} {version} is in a format this plum doesn't know",
+            "a newer plum may read it",
+        )
+    }
+    if data.get("name").str() != name or data.get("version").str() != version {
+        throw fail("E0924", "the bundle for {name} {version} holds another package")
+    }
+    plant files: map[str, str] = {:}
+    plant seen: map[str, bool] = {:}
+    for path, value in data.get("files").map() ?? {:} {
+        if plant problem = pkg.path_problem(path) {
+            throw fail(
+                "E0921",
+                "the bundle of {name} {version} has an unsafe path '{path}': {problem}",
+                "nothing was unpacked; report the package on {REGISTRY}",
+            )
+        }
+        if path.lower() in seen {
+            throw fail("E0921", "the bundle of {name} {version} has two files named '{path}' but for case")
+        }
+        seen[path.lower()] = good
+        plant content = value.str()
+        if content == none or not pkg.is_text(content ?? "") {
+            throw fail("E0924", "'{path}' in the bundle of {name} {version} isn't UTF-8 text")
+        }
+        files[path] = content ?? ""
+    }
+    if not ("plum.toml" in files) {
+        throw fail("E0924", "the bundle of {name} {version} has no plum.toml")
+    }
+    return files
+}
+
+# Make sure `name` `version` is unpacked in the cache, its bundle's
+# sha256 the one given. Returns whether it had to download it.
+branch ensure_installed(name: str, version: str, sha256: str) -> bool {
+    plant dir = "{pkg.cache()}/{name}/{version}"
+    if fs.exists(dir + "/" + MARKER) and fs.read(dir + "/" + MARKER).trim() == sha256 {
+        return bad
+    }
+    plant text = fetch("packages/{name}/{version}.plumpkg")
+    if text == none {
+        throw fail("E0923", "Orchard has no bundle for {name} {version}")
+    }
+    plant body = text ?? ""
+    plant got = hash.sha256(body)
+    if got != sha256 {
+        throw fail(
+            "E0920",
+            "checksum mismatch for {name} {version}: plum.lock expects {sha256}, the download is {got}",
+            "nothing was installed; if the package was republished, remove it from plum.lock and run `plum install`",
+        )
+    }
+    plant files = bundle_files(body, name, version)
+    # Unpack beside the final place, then move it there in one step.
+    plant part = dir + ".part"
+    remove_tree(part)
+    make_dirs(part)
+    for path, content in files {
+        plant slash = path.split("/")
+        if len(slash) > 1 {
+            make_dirs(part + "/" + slash[0..len(slash) - 1].join("/"))
+        }
+        fs.write(part + "/" + path, content)
+    }
+    fs.write(part + "/" + MARKER, sha256 + "\n")
+    plant m = pkg.manifest(part)
+    if m.get("name").str() != name or m.get("version").str() != version {
+        remove_tree(part)
+        throw fail("E0924", "the bundle for {name} {version} has the plum.toml of another package")
+    }
+    remove_tree(dir)
+    fs.rename(part, dir)
+    return good
+}
+
+# Install exactly what the lock lists.
+branch install_locked(entries: list[Locked]) -> int {
+    plant fetched = 0
+    for e in entries {
+        if ensure_installed(e.name, e.version, e.sha256) {
+            drop("  installed {e.name} {e.version}")
+            fetched += 1
+        }
+    }
+    return fetched
+}
+
+# ------------------------------------------------------------------
+# The project
+# ------------------------------------------------------------------
+
+branch direct_deps(manifest: Json) -> map[str, str] {
+    plant out: map[str, str] = {:}
+    for name, range in manifest.get("dependencies").map() ?? {:} {
+        out[name] = range.str() ?? "*"
+    }
+    return out
+}
+
+branch locked_versions(entries: list[Locked]?) -> map[str, str] {
+    plant out: map[str, str] = {:}
+    for e in entries ?? [] {
+        out[e.name] = e.version
+    }
+    return out
+}
+
+# Resolve, write plum.lock and install it.
+branch lock_and_install(project: str, direct: map[str, str], before: list[Locked]?) -> map[str, Release] {
+    plant r = Resolver(project, locked: locked_versions(before))
+    plant chosen = r.resolve(direct)
+    for name, rel in chosen {
+        if rel.plum != "*" and pkg.is_range(rel.plum) and not pkg.satisfies(pkg.plum_version(), rel.plum) {
+            io.write_err("plum: warning: {name} {rel.version} asks for plum {rel.plum}; this is plum {pkg.plum_version()}\n")
+        }
+    }
+    plant entries: list[Locked] = []
+    for name in chosen.keys().sorted() {
+        plant rel = chosen[name]
+        entries.push(Locked(name, rel.version, rel.sha256, rel.deps.keys()))
+    }
+    install_locked(entries)  # first, so a bad download leaves plum.lock as it was
+    fs.write("plum.lock", lock_text(chosen))
+    return chosen
+}
+
+# Does the lock still match plum.toml?
+branch lock_fits(direct: map[str, str], entries: list[Locked]) -> bool {
+    plant versions = locked_versions(entries)
+    for name, range in direct {
+        plant v = versions.get(name)
+        if v == none or not pkg.satisfies(v ?? "", range) {
+            return bad
+        }
+    }
+    for e in entries {
+        for d in e.deps {
+            if not (d in versions) {
+                return bad
+            }
+        }
+    }
+    return good
+}
+
+branch cmd_install(args: list[str]) {
+    if len(args) > 0 {
+        throw fail("", "`plum install` takes no arguments", "to add a package, run `plum add NAME`")
+    }
+    plant manifest = pkg.manifest(".")
+    plant direct = direct_deps(manifest)
+    plant project = manifest.get("name").str() ?? "the project"
+    plant entries = read_lock(".")
+    if plant locked = entries {
+        if lock_fits(direct, locked) {
+            plant fetched = install_locked(locked)
+            drop("{len(locked)} packages from plum.lock, {fetched} downloaded")
+            return
+        }
+        drop("plum.lock doesn't match plum.toml; resolving again")
+    }
+    plant chosen = lock_and_install(project, direct, entries)
+    drop("{len(chosen)} packages installed; plum.lock written")
+}
+
+branch cmd_add(args: list[str]) {
+    if len(args) != 1 {
+        throw fail("", "`plum add` takes one package", "plum add weather, or plum add weather@^1.2")
+    }
+    plant spec = args[0]
+    plant name = spec
+    plant range: str? = none
+    if plant at = spec.find("@") {
+        name = spec[0..at]
+        range = spec[at + 1..len(spec)]
+    }
+    if plant problem = pkg.name_problem(name) {
+        throw fail("E0905", "'{name}' can't be a package: {problem}")
+    }
+    if plant r = range {
+        if not pkg.is_range(r) {
+            throw fail("E0907", "'{r}' isn't a version range", "use ^1.2, ~1.2.3, =1.2.3, >=1.2 or *")
+        }
+    }
+    plant manifest = pkg.manifest(".")
+    plant project = manifest.get("name").str() ?? "the project"
+    if name == project {
+        throw fail("E0905", "a package can't depend on itself ('{name}')")
+    }
+    plant entries = read_lock(".")
+    plant resolver = Resolver(project, locked: locked_versions(entries))
+    plant want = range ?? ""
+    if want == "" {
+        # the newest version that isn't yanked, as ^VERSION
+        plant newest = resolver.choose(name, [Want("*", project)])
+        want = "^{newest.version}"
+    }
+    plant direct = direct_deps(manifest)
+    direct[name] = want
+    plant chosen = lock_and_install(project, direct, entries)
+    pkg.set_dependency(".", name, want)
+    drop("added {name} {want} ({chosen[name].version})")
+}
+
+branch cmd_remove(args: list[str]) {
+    if len(args) != 1 {
+        throw fail("", "`plum remove` takes one package", "plum remove weather")
+    }
+    plant name = args[0]
+    plant manifest = pkg.manifest(".")
+    plant direct = direct_deps(manifest)
+    if not (name in direct) {
+        throw fail("E0908", "'{name}' isn't in [dependencies]")
+    }
+    direct.remove(name)
+    lock_and_install(manifest.get("name").str() ?? "the project", direct, read_lock("."))
+    pkg.set_dependency(".", name, none)
+    drop("removed {name}")
+}
+
+# ------------------------------------------------------------------
+# plum package and plum publish
+# ------------------------------------------------------------------
+
+# The files a package ships, relative to `dir`, sorted.
+branch package_files(dir: str, prefix: str, out: list[str]) -> list[str] {
+    plant found = out
+    plant here = if prefix == "" { dir } else { dir + "/" + prefix }
+    for name in fs.list(here) {
+        if name.starts_with(".") {
+            continue  # .git, .github, editor files
+        }
+        plant rel = if prefix == "" { name } else { prefix + "/" + name }
+        if fs.is_dir(here + "/" + name) {
+            found = package_files(dir, rel, found)
+        } else if name.ends_with(".plum") or (prefix == "" and (name == "plum.toml" or name == "README.md" or name.starts_with("LICENSE"))) {
+            found.push(rel)
+        }
+    }
+    return found
+}
+
+tree Bundle {
+    name: str
+    version: str
+    text: str
+    files: list[str]
+}
+
+branch build_bundle(dir: str) -> Bundle {
+    plant manifest = pkg.manifest(dir)
+    plant name = manifest.get("name").str() ?? ""
+    plant version = manifest.get("version").str() ?? ""
+    if len(direct_deps(manifest)) > 0 and dir == "." {
+        cmd_install([])  # its dependencies, so its files check
+    }
+    plant paths = package_files(dir, "", []).sorted()
+    plant files: map[str, Json] = {:}
+    plant seen: map[str, bool] = {:}
+    plant errors = 0
+    for path in paths {
+        if plant problem = pkg.path_problem(path) {
+            throw fail("E0925", "'{path}' can't be in a package: {problem}", "rename it, or move it out of the package")
+        }
+        if path.lower() in seen {
+            throw fail("E0925", "two files are named '{path}' but for case", "rename one")
+        }
+        seen[path.lower()] = good
+        plant text = fs.read(dir + "/" + path)
+        if not pkg.is_text(text) {
+            throw fail("E0925", "'{path}' isn't UTF-8 text", "a package holds text files only")
+        }
+        files[path] = text.replace("\r\n", "\n")
+        if path.ends_with(".plum") {
+            errors += pkg.check(dir + "/" + path)
+        }
+    }
+    for key in ["entry", "lib"] {
+        plant file = manifest.get(key).str() ?? ""
+        if not (file in files) {
+            throw fail("E0925", "{key} = \"{file}\" isn't a file of the package")
+        }
+    }
+    if errors > 0 {
+        throw fail("E0925", "{errors} errors in the package's files (above)", "fix them; `plum check FILE` shows them too")
+    }
+    # Every object's keys in order, no spaces: the same source, the same bytes.
+    plant bundle: map[str, Json] = {"files": files, "format": 1, "name": name, "version": version}
+    plant text = json.stringify(bundle)
+    if text.byte_len() > MAX_BUNDLE {
+        throw fail("E0925", "the package is {text.byte_len()} bytes; the limit is 1 MB (1048576 bytes)")
+    }
+    return Bundle(name, version, text, paths)
+}
+
+branch cmd_package(args: list[str]) {
+    plant out_dir = "."
+    if len(args) == 2 and args[0] == "--out" {
+        out_dir = args[1]
+    } else if len(args) > 0 {
+        throw fail("", "`plum package` takes no arguments but --out DIR", "run it in the package's directory")
+    }
+    plant b = build_bundle(".")
+    plant file = "{b.name}-{b.version}.plumpkg"
+    fs.write(out_dir + "/" + file, b.text)
+    drop("packaged {b.name} {b.version}: {len(b.files)} files, {b.text.byte_len()} bytes")
+    drop("  {out_dir}/{file}")
+    drop("  sha256 {hash.sha256(b.text)}")
+}
+
+branch cmd_publish(args: list[str]) {
+    plant tag: str? = none
+    if len(args) == 2 and args[0] == "--tag" {
+        tag = args[1]
+    } else if len(args) > 0 {
+        throw fail("", "`plum publish` takes only --tag TAG", "plum publish --tag v1.2.0")
+    }
+    plant manifest = pkg.manifest(".")
+    plant repository = manifest.get("repository").str() ?? ""
+    if not repository.starts_with("https://github.com/") {
+        throw fail(
+            "E0925",
+            "publishing needs repository = \"https://github.com/OWNER/REPO\" in [package]",
+            "Orchard builds the package from a tag of that repository",
+        )
+    }
+    plant b = build_bundle(".")
+    plant release = tag ?? "v{b.version}"
+    plant link = "{REGISTRY}/issues/new?template=publish.yml" + "&title=" + "Publish {b.name} {b.version}".url_encode() + "&package=" + b.name.url_encode() + "&repository=" + repository.url_encode() + "&tag=" + release.url_encode()
+    drop("{b.name} {b.version} is ready: {len(b.files)} files, {b.text.byte_len()} bytes, sha256 {hash.sha256(b.text)}")
+    drop("")
+    drop("1. Push the tag {release} to {repository}:")
+    drop("     git tag {release} && git push origin {release}")
+    drop("2. Open this link, signed in to GitHub as an owner of the package, and submit the request:")
+    drop("     {link}")
+    drop("")
+    drop("Orchard builds the package from the tag with `plum package`, and replies on the issue.")
+}
+
+# ------------------------------------------------------------------
+# plum search
+# ------------------------------------------------------------------
+
+branch cmd_search(args: list[str]) {
+    if len(args) == 0 {
+        throw fail("", "`plum search` needs some text to look for", "plum search weather")
+    }
+    plant words = args.map((a) => a.lower())
+    plant text = fetch("search.json")
+    if text == none {
+        throw fail("E0923", "Orchard ({orchard_url()}) has no search.json")
+    }
+    plant doc = try json.parse(text ?? "")
+    if doc == none {
+        throw fail("E0924", "Orchard's search.json isn't JSON")
+    }
+    plant data: Json = doc
+    plant found = 0
+    for item in data.get("packages").list() ?? [] {
+        plant name = item.get("name").str() ?? ""
+        plant description = item.get("description").str() ?? ""
+        plant keywords: list[str] = []
+        for k in item.get("keywords").list() ?? [] {
+            keywords.push(k.str() ?? "")
+        }
+        plant hay = "{name} {description} {keywords.join(" ")}".lower()
+        if words.all((w) => hay.contains(w)) {
+            plant version = item.get("version").str() ?? "?"
+            drop("{name} {version}" + if description == "" { "" } else { "  {description}" })
+            found += 1
+        }
+    }
+    if found == 0 {
+        drop("no packages match '{args.join(" ")}'")
+    }
+}
+
+# ------------------------------------------------------------------
+# The command
+# ------------------------------------------------------------------
+
+branch run(argv: list[str]) {
+    plant command = argv[0]
+    plant rest = argv[1..len(argv)]
+    match command {
+        "add" => cmd_add(rest)
+        "remove" => cmd_remove(rest)
+        "install" => cmd_install(rest)
+        "package" => cmd_package(rest)
+        "publish" => cmd_publish(rest)
+        "search" => cmd_search(rest)
+        else => throw fail("", "unknown command '{command}'")
+    }
+}
+
+plant argv = os.args()
+try {
+    run(argv)
+} catch e: Failure {
+    plant code = if e.code == "" { "" } else { "[{e.code}]" }
+    io.write_err("plum: error{code}: {e.message}\n")
+    if e.hint != "" {
+        io.write_err("  hint: {e.hint}\n")
+    }
+    exit(if e.code == "" { 2 } else { 1 })
+} catch e {
+    io.write_err("plum: error: {e.message}\n")
+    exit(1)
+}

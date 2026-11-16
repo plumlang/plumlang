@@ -13,6 +13,8 @@
  *   plum check <file>        report every error without running the program
  *   plum dis <file>          print the compiled bytecode (for debugging)
  *   plum fmt <paths>         format source files (src/fmt/command.c)
+ *   plum add, remove, install, package, publish, search
+ *                            the package commands (src/cli/orchard.c)
  *
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
@@ -20,6 +22,7 @@
 #include "check/flow.h"
 #include "check/resolve.h"
 #include "check/typecheck.h"
+#include "cli/orchard.h"
 #include "compiler/chunk.h"
 #include "compiler/compiler.h"
 #include "diag/diag.h"
@@ -69,6 +72,14 @@ static void print_help(FILE *out) {
           "  plum dis <file>             Print the compiled bytecode (debugging)\n"
           "  plum stdlib [module]        List the standard library's functions\n"
           "  plum help                   Show this help\n"
+          "\n"
+          "Packages (Orchard; run in the project's directory):\n"
+          "  plum add <name>[@range]     Add a dependency to plum.toml, lock and install it\n"
+          "  plum remove <name>          Remove a dependency\n"
+          "  plum install                Install what plum.lock lists (or resolve and write it)\n"
+          "  plum package                Check the package and write NAME-VERSION.plumpkg\n"
+          "  plum publish [--tag TAG]    Package, then print the link to publish it on Orchard\n"
+          "  plum search <text>          Search Orchard's packages\n"
           "\n"
           "Docs and source: https://github.com/plumlang/plumlang\n",
           out);
@@ -376,6 +387,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "repl") == 0) {
         return plum_repl_main();
+    }
+    if (plum_orchard_is_command(cmd)) {
+        return plum_orchard_command(argc, argv);
     }
     if (ends_with(cmd, ".plum")) {
         return cmd_run(argc - 1, argv + 1);

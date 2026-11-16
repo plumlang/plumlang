@@ -22,7 +22,7 @@ typedef struct Installed {
 } Installed;
 
 struct PlumPackages {
-    char *root;  /* the project's directory, or NULL when there is none */
+    char *root;      /* the project's directory, or NULL when there is none */
     int root_status; /* plum_manifest_load's result */
     PlumManifest manifest;
     int lock_status; /* plum_lock_load's result */
@@ -184,9 +184,10 @@ char *plum_packages_find(PlumPackages **pp, const char *from_path, int from_pack
     } else {
         if (p->root_status != 0) {
             first_problem(&p->manifest.diags, problem, sizeof problem);
-            plum_diag_error(diags, span, p->root_status > 0 ? "E0909" : "E0901",
-                            "can't seed the package '%s': the project's plum.toml has a problem: %s",
-                            name, problem);
+            plum_diag_error(
+                diags, span, p->root_status > 0 ? "E0909" : "E0901",
+                "can't seed the package '%s': the project's plum.toml has a problem: %s", name,
+                problem);
             return NULL;
         }
         asking = &p->manifest;

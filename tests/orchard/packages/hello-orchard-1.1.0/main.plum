@@ -1,0 +1,4 @@
+# Run the package itself: plum run .
+seed ./lib
+
+drop(lib.greet("world"))

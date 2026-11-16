@@ -954,6 +954,9 @@ static void resolve_seed(Resolver *r, PlumStmt *s) {
     if (m != NULL && plum_native_is_methods(m)) {
         m = NULL; /* the methods of a type can't be imported */
     }
+    if (m != NULL && plum_native_is_internal(m) && r->diags->source->path[0] != '<') {
+        m = NULL; /* plum's own tools' helpers, for modules built into plum */
+    }
     if (m == NULL) {
         char known[256];
         module_names(known, sizeof known);

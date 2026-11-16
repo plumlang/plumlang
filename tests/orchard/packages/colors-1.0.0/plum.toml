@@ -1,0 +1,6 @@
+[package]
+name = "colors"
+version = "1.0.0"
+entry = "lib.plum"
+description = "Colour names, a test fixture"
+keywords = ["color", "test"]
