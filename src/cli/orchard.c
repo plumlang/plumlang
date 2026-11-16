@@ -66,7 +66,7 @@ int plum_orchard_command(int argc, char **argv) {
     free(list);
     int status = 1;
     if (compiled.main != NULL && !plum_modules_failed(&modules)) {
-        PlumRunOptions options = {argc, argv, false, false};
+        PlumRunOptions options = {.argc = argc, .argv = argv};
         PlumModule *program = modules.items[modules.count - 1];
         status = plum_vm_run(&compiled, &program->source, &options, stdout, stderr);
     } else {
