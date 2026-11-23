@@ -1187,6 +1187,11 @@ Modules are imported with `seed`. The 1.0 library is planned as:
 | `json` | parse and produce JSON, mapped to maps, lists and trees |
 | `net` | TCP and UDP sockets, TLS, DNS |
 | `net.http` | an HTTP and HTTPS server and client |
+| `hash` | cryptographic digests |
+| `path` | file paths as text: join them, take them apart |
+| `base64`, `hex` | bytes as Base64 or hexadecimal text, and back |
+| `utf8` | code points; checking and repairing UTF-8 |
+| `csv` | read and write comma-separated values |
 | `test` | assertions and a test runner (`plum test`) |
 
 Each module is documented in `docs/stdlib/` as it lands, and `plum stdlib`
