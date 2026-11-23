@@ -1,0 +1,9 @@
+ok: plum-shop on 127.0.0.1:8080, debug good, admins: ada, grace
+examples/config/incomplete.json: has 4 problems
+  - 'name' is missing
+  - 'port' should be a whole number, not a string
+  - 'host' should be a string, not a number
+  - 'admins' item 1 should be a string, not a number
+examples/config/broken.json: is not valid JSON
+  - json.parse: line 4, column 1: expected a key in quotes
+1 of 3 config files are fine

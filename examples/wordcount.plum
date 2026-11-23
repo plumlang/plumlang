@@ -1,0 +1,85 @@
+# Count the words in a file and print the ten most common:
+# `plum run examples/wordcount.plum notes.txt`. Without a file it counts
+# a short built-in text, so the example also runs on its own.
+seed os
+seed fs
+seed io
+seed math
+
+root SAMPLE = """
+    The plum tree grows in the garden. The garden has a plum tree,
+    an apple tree and a pear tree. In spring the plum tree blooms;
+    in summer the plums are ripe, and the birds come for the plums.
+    """
+
+tree Entry {
+    word: str
+    count: int
+
+    # most common first; words with the same count in alphabetical order
+    branch compare(other: Entry) -> int {
+        if self.count != other.count {
+            return other.count - self.count
+        }
+        if self.word < other.word {
+            return -1
+        }
+        return if self.word > other.word { 1 } else { 0 }
+    }
+
+    branch to_str() -> str => "{self.count:>5}  {self.word}"
+}
+
+# Letters (and apostrophes inside words) make words; everything else
+# separates them.
+branch words_in(text: str) -> list[str] {
+    plant words: list[str] = []
+    plant current = ""
+    for c in text.lower().chars() {
+        if c.is_alpha() or (c == "'" and current != "") {
+            current += c
+        } else if current != "" {
+            words.push(current)
+            current = ""
+        }
+    }
+    if current != "" {
+        words.push(current)
+    }
+    return words
+}
+
+branch count_words(text: str) -> map[str, int] {
+    plant counts: map[str, int] = {:}
+    for w in words_in(text) {
+        counts[w] = (counts.get(w) ?? 0) + 1
+    }
+    return counts
+}
+
+plant args = os.args()
+plant text = SAMPLE
+plant source = "the built-in sample"
+if len(args) > 0 {
+    source = args[0]
+    try {
+        text = fs.read(source)
+    } catch e: IOError {
+        io.write_err("wordcount: {e.message}\n")
+        exit(1)
+    }
+}
+
+plant counts = count_words(text)
+plant entries: list[Entry] = []
+plant total = 0
+for word, n in counts {
+    entries.push(Entry(word, n))
+    total += n
+}
+
+drop("{total} words, {len(counts)} different, in {source}")
+plant ranked = entries.sorted()
+for e in ranked[0..math.min(10, len(ranked))] {
+    drop(e)
+}

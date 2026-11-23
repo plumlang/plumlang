@@ -1,0 +1,23 @@
+# Read and check config files: `plum run examples/config my.json`.
+# Without arguments it checks the samples next to it (paths from the
+# repository root, where `make test` runs it): one good, one with
+# missing and wrong fields, and one that isn't valid JSON.
+seed os
+seed ./settings { load, ConfigError }
+
+plant paths = os.args()
+if len(paths) == 0 {
+    paths = ["good.json", "incomplete.json", "broken.json"].map((f) => "examples/config/{f}")
+}
+
+plant failed = 0
+for path in paths {
+    try {
+        plant s = load(path)
+        drop("ok: {s}")
+    } catch e: ConfigError {
+        drop(e)
+        failed += 1
+    }
+}
+drop("{len(paths) - failed} of {len(paths)} config files are fine")
