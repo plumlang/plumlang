@@ -11,7 +11,7 @@
 # SHA256SUMS and a GitHub build attestation for each file
 # (gh attestation verify <file> --repo plumlang/plumlang).
 #
-# Signing and package managers switch on when their secrets exist (see
+# Signing, package managers and npm switch on when their secrets exist (see
 # docs/releasing.md); without them those steps say so and are skipped.
 name: Release
 
@@ -340,6 +340,20 @@ jobs:
           EOF
           gh release create "v$VERSION" dist/* --title "Plumlang $VERSION" \
             --notes-file notes.md --verify-tag
+
+  # The wasm build on npm as @plumlang/plumlang (npm.yml), from the
+  # release just published.
+  npm:
+    name: npm
+    needs: [version, publish]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/npm.yml
+    with:
+      tag: v${{ needs.version.outputs.version }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   homebrew:
     name: homebrew

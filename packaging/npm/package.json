@@ -1,0 +1,53 @@
+{
+  "name": "@plumlang/plumlang",
+  "version": "0.0.0",
+  "description": "Plumlang compiled to WebAssembly: run, check and format Plumlang programs in the browser or Node.js.",
+  "type": "module",
+  "main": "./plum.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./plum.js"
+    },
+    "./plum.wasm": "./plum.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "plum.js",
+    "plum.wasm",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "plumlang",
+    "plum",
+    "programming-language",
+    "compiler",
+    "interpreter",
+    "webassembly",
+    "wasm",
+    "playground",
+    "sandbox"
+  ],
+  "homepage": "https://plum.elixpo.com/docs/tools/wasm/",
+  "bugs": {
+    "url": "https://github.com/plumlang/plumlang/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plumlang/plumlang.git",
+    "directory": "packaging/npm"
+  },
+  "license": "Apache-2.0",
+  "author": "Elixpo <hello@elixpo.com>",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

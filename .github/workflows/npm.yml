@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+#
+# Publish the WebAssembly build to npm as @plumlang/plumlang
+# (packaging/npm, docs/playground.md).
+#
+#   a release tag              release.yml calls this after the GitHub release
+#   a release published by hand  the release event
+#   Actions > npm > Run workflow  with a tag, to publish (or republish) one
+#
+# The package is the release's own plum-X.Y.Z-wasm.tar.gz, checked against
+# its SHA256SUMS, not a new build. The npm package carries a provenance
+# statement linking it to this workflow run. Needs the NPM_TOKEN secret (an
+# npm automation token for the plumlang organisation); without it the job
+# prints a notice and skips.
+name: npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, such as v2.2.0
+        required: true
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+    secrets:
+      NPM_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: NPM_TOKEN
+        id: token
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::notice::npm skipped: NPM_TOKEN is not set (docs/releasing.md)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.token.outputs.skip != 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+      - if: steps.token.outputs.skip != 'true'
+        name: The tag matches the version in the source
+        id: v
+        run: |
+          test -f packaging/npm/package.json || {
+            echo "::error::$TAG has no packaging/npm: the npm package starts with a later release"
+            exit 1
+          }
+          version=$(sh tools/release/version.sh "$TAG")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - if: steps.token.outputs.skip != 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - if: steps.token.outputs.skip != 'true'
+        name: The release's wasm build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          mkdir release
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D release \
+            -p "plum-$VERSION-wasm.tar.gz" -p SHA256SUMS
+          (cd release && sha256sum -c --ignore-missing SHA256SUMS)
+          tar -xzf "release/plum-$VERSION-wasm.tar.gz" -C release
+          sh tools/release/npm.sh "release/plum-$VERSION-wasm" "$VERSION" npm-out
+          cd npm-out && npm pack --dry-run
+      - if: steps.token.outputs.skip != 'true'
+        name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          if npm view "@plumlang/plumlang@$VERSION" version > /dev/null 2>&1; then
+            echo "::notice::@plumlang/plumlang@$VERSION is already on npm"
+            exit 0
+          fi
+          cd npm-out
+          npm publish --provenance --access public
+          echo "Published [@plumlang/plumlang@$VERSION](https://www.npmjs.com/package/@plumlang/plumlang/v/$VERSION)" >> "$GITHUB_STEP_SUMMARY"
