@@ -5,6 +5,30 @@ programs without a server: the playground at
 [plum.elixpo.com/playground](https://plum.elixpo.com/playground/) is built
 on it. This page is for anyone embedding it in a page of their own.
 
+## From npm
+
+Each release is published to npm as
+[`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang):
+the same `plum.js` and `plum.wasm`, with TypeScript types, for Node 18+
+and for bundlers.
+
+```sh
+npm install @plumlang/plumlang
+```
+
+```js
+import createPlum from "@plumlang/plumlang";
+const plum = await createPlum();
+```
+
+`plum.js` loads `plum.wasm` with `new URL("plum.wasm", import.meta.url)`,
+which bundlers follow; `createPlum({ locateFile: (file) => ... })` points
+it elsewhere. Without a bundler, a page can import
+`https://cdn.jsdelivr.net/npm/@plumlang/plumlang/plum.js`. The package
+is assembled from the release's wasm archive by `tools/release/npm.sh`,
+from [`packaging/npm/`](../packaging/npm/), and published by
+`.github/workflows/npm.yml` ([releasing.md](releasing.md)).
+
 ## Building
 
 ```sh

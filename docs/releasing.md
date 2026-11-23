@@ -80,6 +80,7 @@ organisation), and print a notice and skip when they are not.
 | macOS signing and notarization | `APPLE_CERTIFICATE` (base64 of a Developer ID Application `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (e.g. `Developer ID Application: Elixpo (TEAMID)`), `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` (an app-specific password) | An Apple Developer Program membership. |
 | Windows signing | `WINDOWS_CERTIFICATE` (base64 of a code-signing `.pfx`), `WINDOWS_CERTIFICATE_PASSWORD` | A code-signing certificate (OV or EV). |
 | Homebrew | `HOMEBREW_TAP_TOKEN`: a fine-grained token with contents write on `plumlang/homebrew-tap` | Create the `plumlang/homebrew-tap` repository. Users then run `brew install plumlang/tap/plum`. |
+| npm | `NPM_TOKEN`: an npm automation token that can publish to the `@plumlang` scope | Create the `plumlang` organisation on npm. The `npm` job (`.github/workflows/npm.yml`) publishes the release's `plum-X.Y.Z-wasm.tar.gz` as [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang), with provenance. To publish a release again, or one tagged before the secret was set: Actions > npm > Run workflow, with the tag. |
 | winget | `WINGET_TOKEN`: a classic token with `public_repo`, for the account that opens pull requests on `microsoft/winget-pkgs` | None; the first submission is reviewed by the winget maintainers. Users then run `winget install Elixpo.Plumlang`. |
 
 The Homebrew formula and the winget manifests are generated from the

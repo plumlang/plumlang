@@ -33,6 +33,7 @@ The following identify official Elixpo releases and are covered by
   - the `.plum` file extension as used by official tooling
   - the official release channel on this repository's GitHub Releases
   - official editor extensions published under the Elixpo or Plumlang name
+  - the `@plumlang` scope on npm, such as `@plumlang/plumlang`
 
 THIRD-PARTY MATERIAL
 --------------------

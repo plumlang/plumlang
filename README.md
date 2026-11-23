@@ -97,7 +97,7 @@ plum run --mem-stats program.plum   # report how much memory the program used
 | [REPL](docs/repl.md) | The interactive prompt: entries, commands and keys. |
 | [Packages](docs/orchard.md) | Orchard: `plum add`, `plum.toml`, `plum.lock`, publishing, and the registry's formats. |
 | [Language server](docs/lsp.md) | `plum lsp`: what editors get, and how to set it up in each. |
-| [Playground](docs/playground.md) | Plumlang in the browser: `make wasm` and the JavaScript API for embedding it. |
+| [Playground](docs/playground.md) | Plumlang in the browser: `make wasm`, the npm package [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang), and the JavaScript API for embedding it. |
 
 The same documentation, with a guided tour, is published at [plum.elixpo.com](https://plum.elixpo.com/docs/).
 
