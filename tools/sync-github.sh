@@ -3,20 +3,22 @@
 #
 # Keep the .github files the Plumlang repositories share identical:
 # plumlang (this one, the source), plum.elixpo, branding, registry,
-# tree-sitter-plum, setup-plum, zed-plum and pygments-plum. That's the
-# community files (CODEOWNERS, issue forms, the pull request template) and
-# the shared workflows: Elixpo CI, and the Elixpoo callers from
+# tree-sitter-plum, setup-plum, zed-plum, pygments-plum and highlightjs-plum.
+# That's the community files (CODEOWNERS, issue forms, the pull request
+# template) and the shared workflows: Elixpo CI, and the Elixpoo callers from
 # elixpo/agent.elixpo's distribution/workflows.
 #
 #   sh tools/sync-github.sh ../plum.elixpo ../branding ../registry \
-#       ../tree-sitter-plum ../setup-plum ../zed-plum ../pygments-plum   copy them over
+#       ../tree-sitter-plum ../setup-plum ../zed-plum ../pygments-plum \
+#       ../highlightjs-plum                                         copy them over
 #   sh tools/sync-github.sh --check ../plum.elixpo ...          only report differences
 #
 # Each repository keeps its own files beside these: plumlang's build matrix,
 # scorecard and language/library proposal forms; plum.elixpo's deploy and
 # Search Console sync; branding's extension publishing; registry's publish
 # and validate workflows; tree-sitter-plum's grammar CI; setup-plum's self-test;
-# zed-plum's query check; pygments-plum's tests and PyPI publishing.
+# zed-plum's query check; pygments-plum's tests and PyPI publishing;
+# highlightjs-plum's markup tests.
 SHARED="CODEOWNERS pull_request_template.md
 ISSUE_TEMPLATE/config.yml ISSUE_TEMPLATE/bug_report.yml ISSUE_TEMPLATE/feature_request.yml
 workflows/elixpo-ci.yml workflows/quality-gate.yml workflows/pr-management.yml
