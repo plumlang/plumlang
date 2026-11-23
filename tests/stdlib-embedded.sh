@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # src/stdlib/embedded.c must match src/stdlib/plum/*.plum.
 # Regenerate it with `make stdlib-embed`.

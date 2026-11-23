@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 """Time the benchmarks in bench/ against their Python versions.
 
 Each program runs `--runs` times (default 3) and the fastest run counts.

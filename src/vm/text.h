@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Turning values into text, with the format options of interpolation
  * (spec 4.10): "{price:.2}", "{count:5}", "{name:<10}", "{n:x}".

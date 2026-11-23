@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Arena allocator for data that lives as long as one compilation: tokens,
  * syntax trees, types. Allocation is a pointer bump; everything is freed

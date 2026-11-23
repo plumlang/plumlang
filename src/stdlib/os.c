@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The os module: the program's arguments, the environment, running
  * commands. */
 #include "stdlib/native.h"

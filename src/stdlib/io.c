@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The io module: standard input, output and error, without drop's spaces
  * and newline. */
 #include "stdlib/native.h"

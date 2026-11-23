@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The hash module: cryptographic digests of text, as lowercase hex.
  * SHA-256 comes from the vendored Mbed TLS, through its PSA crypto API. */
 #if defined(__EMSCRIPTEN__)

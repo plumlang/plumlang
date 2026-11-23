@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * A minimal unit-test framework: CHECK records a failure and carries on,
  * REQUIRE stops the current test. Each suite is a function listed in

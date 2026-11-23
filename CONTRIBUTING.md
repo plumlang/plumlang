@@ -91,19 +91,20 @@ cmake -B build && cmake --build build --config Release
 - [ ] Code follows the C rules in [PREAMBLE.md](PREAMBLE.md) section 3 and
       is formatted with `clang-format`.
 - [ ] New C files start with
-      `/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */`.
+      `/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */`.
 - [ ] `CHANGELOG.md` has a line under `## Unreleased` for user-visible
       changes.
 - [ ] Commits are signed off (`git commit -s`).
 
 ## Licensing of contributions
 
-Plumlang is source-available under the
-[Plumlang Commercial License](LICENSE): free for non-commercial use, with a
-paid licence for commercial use. By submitting a contribution you grant
-Elixpo the licence in section 6 of `LICENSE`, including the right to
-relicense your contribution commercially, and you confirm you have the right
-to submit it. The
+Plumlang is licensed under `Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0`:
+the [Apache License 2.0](LICENSE), or, as an alternative, the
+[Plumlang Commercial License](LICENSES/preferred/LicenseRef-Plumlang-Commercial-1.0).
+Contributions are submitted under Apache-2.0. By submitting a contribution
+you also grant Elixpo the right to relicense it under any terms, including
+commercially ([PREAMBLE.md](PREAMBLE.md) rule 1.4), and you confirm you have
+the right to submit it. The
 [Developer Certificate of Origin](https://developercertificate.org) applies
 to every commit; sign off with `git commit -s`. There is no separate CLA.
 See [LICENSE](LICENSE), [NOTICE](LICENSES/NOTICE) and

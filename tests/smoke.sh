@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Smoke tests for the `plum` command. The golden-file test harness (#7)
 # replaces this with tests/**/*.plum and their expected output.

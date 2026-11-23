@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Name resolution (spec sections 4.2, 6, 8 and 9.4): connect every name in
  * a program to the declaration it refers to, and report names that don't

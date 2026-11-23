@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * What the fuzz targets share (see README.md). Each target is a libFuzzer
  * entry point, LLVMFuzzerTestOneInput, built with clang by `make fuzz` on

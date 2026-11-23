@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Rewrite the reference table of each docs/stdlib/MODULE.md from what
 # `plum stdlib --markdown MODULE` prints, so the docs list exactly the

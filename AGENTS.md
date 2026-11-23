@@ -65,7 +65,7 @@ Directories appear as their roadmap stage lands.
 - No mutable global state; state lives in `PlumVM` / `PlumCompiler`.
 - Allocate only through `plum_alloc` and friends; bounds-check every write.
 - New files start with
-  `/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */`.
+  `/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */`.
 - Format with the repository's `.clang-format`.
 
 ## Checks

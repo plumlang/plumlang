@@ -16,6 +16,9 @@ Format for a new entry:
 
 ## Unreleased
 
+- **Licence**: Plumlang is now Apache-2.0, with the Plumlang Commercial License as an option
+  (`Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0`). v2.1.4 and earlier stay as released.
+
 ## v2.1.4 — 2026-11-16
 
 The first public release of Plumlang: the language, its standard library and

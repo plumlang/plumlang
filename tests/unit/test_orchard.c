@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The TOML subset, versions, ranges, names and package paths (src/orchard). */
 #include "check.h"
 #include "orchard/manifest.h"

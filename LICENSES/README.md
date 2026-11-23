@@ -1,8 +1,13 @@
 # LICENSES - directory layout
 
-Plumlang is licensed under the **Plumlang Commercial License 1.0**
-(`LicenseRef-Plumlang-Commercial-1.0`). The top-level [`LICENSE`](../LICENSE)
-is that text. The structure of this directory mirrors the Linux kernel's
+Plumlang is licensed under the **Apache License 2.0**, or, as an
+alternative, the **Plumlang Commercial License 1.0**:
+`Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0`. The top-level
+[`LICENSE`](../LICENSE) is the Apache-2.0 text, and anyone may use Plumlang
+under it. The Plumlang Commercial License is for those who hold a written
+commercial agreement with Elixpo (hello@elixpo.com), for example for
+warranty, support, indemnity or trademark terms that Apache-2.0 does not
+give. The structure of this directory mirrors the Linux kernel's
 `LICENSES/` tree.
 
 Rules for the Elixpo and Plumlang names and logos live in
@@ -12,8 +17,9 @@ Rules for the Elixpo and Plumlang names and logos live in
 
 ```
 preferred/    Licence texts used in this repository.
-              Everything is LicenseRef-Plumlang-Commercial-1.0, except
-              the third-party code under vendor/ (Apache-2.0).
+              Everything is Apache-2.0 OR
+              LicenseRef-Plumlang-Commercial-1.0, except the third-party
+              code under vendor/, which keeps its own licence.
 
 exceptions/   Exceptions to the preferred licences (none yet).
 
@@ -24,8 +30,8 @@ notices/      Third-party attributions (the upstream credit list).
 
 | Path | SPDX ID | Used for |
 |---|---|---|
-| `../LICENSE` / `preferred/LicenseRef-Plumlang-Commercial-1.0` | `LicenseRef-Plumlang-Commercial-1.0` | All source code, build files, scripts, tests, documentation, examples and brand assets. |
-| `preferred/Apache-2.0` | `Apache-2.0` | Third-party code under `vendor/` only: Mbed TLS (`vendor/mbedtls`). |
+| `../LICENSE` / `preferred/Apache-2.0` | `Apache-2.0` | All source code, build files, scripts, tests, documentation, examples and brand assets (the primary licence), and third-party code under `vendor/`: Mbed TLS (`vendor/mbedtls`). |
+| `preferred/LicenseRef-Plumlang-Commercial-1.0` | `LicenseRef-Plumlang-Commercial-1.0` | The alternative to Apache-2.0 for the same files, for holders of a written commercial agreement with Elixpo. Not used by `vendor/`. |
 
 Third-party code vendored under `vendor/` keeps its own licence, and its text
 is added to `preferred/` before it is merged (see `PREAMBLE.md` rule 1.3).
@@ -38,7 +44,8 @@ Third-party credits are in [`notices/notice-board`](notices/notice-board).
 
 ## Contributions
 
-By submitting a pull request you grant Elixpo the licence in section 6 of
-`LICENSE`, and you confirm you have the right to submit it. The
+A contribution is submitted under Apache-2.0, and by submitting a pull
+request you also grant Elixpo the right to relicense it, as `PREAMBLE.md`
+rule 1.4 describes; you confirm you have the right to submit it. The
 [Developer Certificate of Origin](https://developercertificate.org) applies to
 every commit. There is no separate CLA.

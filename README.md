@@ -17,7 +17,7 @@
   <a href="https://github.com/plumlang/plumlang/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/plumlang/plumlang/build.yml?branch=main&style=flat-square&label=build"></a>
   <a href="https://github.com/plumlang/plumlang/releases"><img alt="Release" src="https://img.shields.io/github/v/release/plumlang/plumlang?include_prereleases&style=flat-square&label=release"></a>
   <a href="https://github.com/plumlang/plumlang/issues/36"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-orange?style=flat-square"></a>
-  <a href="LICENSE"><img alt="Licence: Plumlang Commercial 1.0" src="https://img.shields.io/badge/licence-Plumlang%20Commercial%201.0-6b3fa0?style=flat-square"></a>
+  <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-6b3fa0?style=flat-square"></a>
 </p>
 
 ---
@@ -150,13 +150,17 @@ walks through adding to the library. Questions go to
 
 ## Licence
 
-Plumlang is source-available under the
-[Plumlang Commercial License 1.0](LICENSE). It is free for personal,
-educational, research and other non-commercial use, and free to evaluate for
-60 days. Commercial use, redistribution and hosted services need a commercial
-licence: write to **hello@elixpo.com**. Programs you write in Plumlang are
-yours. Third-party code it includes is listed in [LICENSES/](LICENSES/). See
-also [PREAMBLE.md](PREAMBLE.md) and [TRADEMARKS.md](TRADEMARKS.md).
+Plumlang is licensed under the [Apache License 2.0](LICENSE), or, as an
+alternative, the
+[Plumlang Commercial License 1.0](LICENSES/preferred/LicenseRef-Plumlang-Commercial-1.0)
+(`Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0`). Anyone may use, modify
+and redistribute it under Apache-2.0, commercially or not. The commercial
+licence is for those who want a written agreement with Elixpo, for example
+for warranty, support, indemnity or trademark terms that Apache-2.0 does not
+give: write to **hello@elixpo.com**. Programs you write in Plumlang are
+yours. The names and logos are not licensed by either; see
+[TRADEMARKS.md](TRADEMARKS.md). Third-party code it includes is listed in
+[LICENSES/](LICENSES/). See also [PREAMBLE.md](PREAMBLE.md).
 
 ---
 

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Build Plumlang for every platform and publish a GitHub release.
 #
@@ -331,8 +331,8 @@ jobs:
           ## Install
 
           \`\`\`sh
-          curl -fsSL https://github.com/plumlang/plumlang/releases/latest/download/install.sh | sh     # Linux, macOS
-          irm https://github.com/plumlang/plumlang/releases/latest/download/install.ps1 | iex          # Windows
+          curl -fsSL https://plum.elixpo.com/install.sh | sh     # Linux, macOS
+          irm https://plum.elixpo.com/install.ps1 | iex          # Windows
           \`\`\`
 
           Every file is listed in \`SHA256SUMS\` and has a build attestation:
