@@ -209,7 +209,7 @@ static const PlumNativeConstant constants[] = {
      "what join puts between parts: a slash, or a backslash on Windows"},
 };
 
-const PlumNativeModule plum_module_path = {
+const PlumNativeModule plum_module_pathlib = {
     "path",    "file paths as text: join them, take them apart",
     functions, sizeof functions / sizeof functions[0],
     constants, sizeof constants / sizeof constants[0],

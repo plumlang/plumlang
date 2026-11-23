@@ -177,7 +177,7 @@ extern const PlumNativeModule plum_module_connection; /* the methods of Connecti
 extern const PlumNativeModule plum_module_udp;        /* the methods of UdpSocket */
 extern const PlumNativeModule plum_module_hash;
 extern const PlumNativeModule plum_module_pkg; /* plum.pkg, internal (src/orchard/native.c) */
-extern const PlumNativeModule plum_module_path;
+extern const PlumNativeModule plum_module_pathlib; /* the path module (plum_module_path is the loader function) */
 extern const PlumNativeModule plum_module_base64;
 extern const PlumNativeModule plum_module_hex;
 extern const PlumNativeModule plum_module_utf8;
