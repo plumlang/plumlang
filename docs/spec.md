@@ -82,15 +82,19 @@ A statement continues onto the next line when the line ends inside an open
 `(`, `[` or `{`, or ends with a binary operator, `,`, `.` or `->`:
 
 ```plum
-plant total = price
-    + tax
-    + shipping
+plant total = price +
+    tax +
+    shipping
 
 plant names = [
     "Ada",
     "Grace",
 ]
 ```
+
+The operator goes at the end of the line, not the start of the next one: a
+line that starts with `+` is a new statement, and `+ tax` on its own is an
+error (E0201).
 
 A trailing comma is allowed in every list of items.
 
