@@ -12,7 +12,7 @@ Make `src/stdlib/colour.c`. A native function gets its arguments
 its own, and returns `true`; on failure it throws and returns `false`.
 
 ```c
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The colour module: colours as #rrggbb text. */
 #include "stdlib/native.h"
 

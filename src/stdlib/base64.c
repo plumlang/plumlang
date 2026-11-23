@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The base64 module: bytes as Base64 text (RFC 4648) and back, in the
  * standard alphabet (with = padding) and the URL- and file-safe one

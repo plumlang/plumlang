@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The utf8 module: characters as code points, and checking and repairing
  * UTF-8. Decoding is strict (RFC 3629): no overlong forms, no surrogates
