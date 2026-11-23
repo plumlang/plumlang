@@ -1,0 +1,6 @@
+{
+  "name": "plum-shop",
+  "port": 8080,
+  "debug": true,
+  "admins": ["ada", "grace"]
+}

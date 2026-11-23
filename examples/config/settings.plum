@@ -1,0 +1,141 @@
+# module: read a JSON config file and check the fields the program needs
+seed fs
+seed json
+
+# Everything wrong with one config file, so it can be fixed in one go.
+tree ConfigError : Error {
+    path: str
+    problems: list[str]
+
+    branch to_str() -> str {
+        plant lines = ["{self.path}: {self.message}"]
+        for p in self.problems {
+            lines.push("  - {p}")
+        }
+        return lines.join("\n")
+    }
+}
+
+tree Settings {
+    name: str
+    port: int
+    host: str = "127.0.0.1"
+    debug: bool = bad
+    admins: list[str] = []
+
+    branch to_str() -> str {
+        plant who = if len(self.admins) > 0 { self.admins.join(", ") } else { "nobody" }
+        return "{self.name} on {self.host}:{self.port}, debug {self.debug}, admins: {who}"
+    }
+}
+
+# Reads fields from a JSON object and notes each problem instead of
+# stopping at the first. A tree, so every method adds to the same list.
+tree _Fields {
+    data: Json
+    problems: list[str] = []
+
+    branch _missing(key: str) -> bool => self.data.get(key).is_null()
+
+    branch _wrong(key: str, wanted: str) {
+        self.problems.push("'{key}' should be {wanted}, not a {self.data.get(key).type_name()}")
+    }
+
+    branch need_str(key: str) -> str? {
+        if self._missing(key) {
+            self.problems.push("'{key}' is missing")
+            return none
+        }
+        plant s = self.data.get(key).str()
+        if s == none {
+            self._wrong(key, "a string")
+        }
+        return s
+    }
+
+    branch need_int(key: str, low: int, high: int) -> int? {
+        if self._missing(key) {
+            self.problems.push("'{key}' is missing")
+            return none
+        }
+        if plant n = self.data.get(key).int() {
+            if n >= low and n <= high {
+                return n
+            }
+            self.problems.push("'{key}' should be between {low} and {high}, not {n}")
+        } else {
+            self._wrong(key, "a whole number")
+        }
+        return none
+    }
+
+    branch str_or(key: str, default: str) -> str {
+        if self._missing(key) {
+            return default
+        }
+        return self.need_str(key) ?? default
+    }
+
+    branch bool_or(key: str, default: bool) -> bool {
+        if self._missing(key) {
+            return default
+        }
+        plant b = self.data.get(key).bool()
+        if b == none {
+            self._wrong(key, "true or false")
+        }
+        return b ?? default
+    }
+
+    branch str_list(key: str) -> list[str] {
+        plant items: list[str] = []
+        if self._missing(key) {
+            return items
+        }
+        if plant values = self.data.get(key).list() {
+            for i, v in values.enumerate() {
+                if plant s = v.str() {
+                    items.push(s)
+                } else {
+                    self.problems.push("'{key}' item {i} should be a string, not a {v.type_name()}")
+                }
+            }
+        } else {
+            self._wrong(key, "a list of strings")
+        }
+        return items
+    }
+}
+
+# The settings in the file at path, or a ConfigError that lists every
+# problem with it.
+branch load(path: str) -> Settings {
+    plant data: Json = none
+    try {
+        data = json.parse(fs.read(path))
+    } catch e: IOError {
+        throw ConfigError("cannot be read", path, [e.message])
+    } catch e: ParseError {
+        throw ConfigError("is not valid JSON", path, [e.message])
+    }
+    if data.type_name() != "object" {
+        throw ConfigError("should hold a JSON object", path, ["found a {data.type_name()}"])
+    }
+
+    plant f = _Fields(data)
+    plant name = f.need_str("name")
+    plant port = f.need_int("port", 1, 65535)
+    plant host = f.str_or("host", "127.0.0.1")
+    plant debug = f.bool_or("debug", bad)
+    plant admins = f.str_list("admins")
+
+    if plant n = name {
+        if plant p = port {
+            if len(f.problems) == 0 {
+                return Settings(n, p, host: host, debug: debug, admins: admins)
+            }
+        }
+    }
+    plant count = len(f.problems)
+    throw ConfigError("has {count} {if count == 1 { "problem" } else { "problems" }}", path, f.problems)
+}
