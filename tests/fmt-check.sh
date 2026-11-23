@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # `plum fmt` keeps the meaning and is stable. For every .plum file under
 # the directories given (tests/lang, examples and src/stdlib/plum by

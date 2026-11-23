@@ -1,8 +1,8 @@
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Install Plumlang on Windows:
 #
-#   irm https://github.com/plumlang/plumlang/releases/latest/download/install.ps1 | iex
+#   irm https://plum.elixpo.com/install.ps1 | iex
 #
 # Settings, as environment variables:
 #   PLUM_VERSION   the version to install, e.g. 1.2.3 (default: the newest release)

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * plum.pkg: what the package commands (src/stdlib/plum/plum_orchard.plum)
  * need from C. Reading and changing plum.toml and plum.lock, versions and

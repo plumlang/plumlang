@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Diagnostics: errors and warnings found while compiling, with where they
  * are. Every stage appends to one PlumDiagList; the CLI prints them. Rich

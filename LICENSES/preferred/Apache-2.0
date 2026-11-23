@@ -1,9 +1,10 @@
 Valid-License-Identifier: Apache-2.0
 SPDX-URL: https://spdx.org/licenses/Apache-2.0.html
 Usage-Guide:
-  Used only by third-party code vendored under vendor/ (see
-  LICENSES/notices/notice-board). Plumlang's own code is never under
-  this licence.
+  The primary licence of Plumlang ("Apache-2.0 OR
+  LicenseRef-Plumlang-Commercial-1.0"); the top-level LICENSE is this
+  text. Also the licence of third-party code vendored under vendor/
+  (see LICENSES/notices/notice-board).
 License-Text:
 
                                  Apache License

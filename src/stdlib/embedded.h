@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Standard modules written in Plumlang (src/stdlib/plum), built into the
  * binary. `seed net.http` loads one like a file. embedded.c is generated

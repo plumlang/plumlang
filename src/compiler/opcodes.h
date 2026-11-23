@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The instruction set (docs/bytecode.md). Each instruction is a one-byte
  * opcode followed by its operands, each a little-endian 16-bit number.

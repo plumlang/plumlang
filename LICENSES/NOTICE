@@ -1,11 +1,19 @@
 NOTICE
 ======
 
-Plumlang is licensed under the Plumlang Commercial License 1.0 (see
-`../LICENSE` and `preferred/LicenseRef-Plumlang-Commercial-1.0`).
-Non-commercial use is free; commercial use needs a commercial licence from
-Elixpo. Brand rules - names, logos, domains and official listings - are
-separate and documented in `../TRADEMARKS.md`.
+Copyright (c) 2026 Elixpo.
+
+Plumlang is licensed under the Apache License, Version 2.0 (see
+`../LICENSE` and `preferred/Apache-2.0`), or, as an alternative, under the
+Plumlang Commercial License 1.0 (see
+`preferred/LicenseRef-Plumlang-Commercial-1.0`) for those who hold a
+written commercial agreement with Elixpo:
+
+  SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+
+Brand rules - names, logos, domains and official listings - are separate
+and documented in `../TRADEMARKS.md`. Neither licence grants any right to
+them (Apache-2.0 section 6 grants no trademark rights).
 
 REPOSITORY
 ----------

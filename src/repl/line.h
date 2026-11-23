@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * A small line editor for the REPL, with no dependencies: the cursor
  * keys, Home and End, Backspace and Delete, Ctrl-A/E/B/F/U/K/W/L/C/D/P/N,

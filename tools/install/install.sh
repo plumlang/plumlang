@@ -1,9 +1,9 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Install Plumlang on Linux or macOS:
 #
-#   curl -fsSL https://github.com/plumlang/plumlang/releases/latest/download/install.sh | sh
+#   curl -fsSL https://plum.elixpo.com/install.sh | sh
 #
 # Settings, as environment variables:
 #   PLUM_VERSION   the version to install, e.g. 1.2.3 (default: the newest release)
@@ -44,7 +44,7 @@ sha256() {
 case "$(uname -s)" in
     Linux) os=linux ;;
     Darwin) os=macos ;;
-    MINGW* | MSYS* | CYGWIN*) fail "on Windows, use install.ps1: irm https://github.com/plumlang/plumlang/releases/latest/download/install.ps1 | iex" ;;
+    MINGW* | MSYS* | CYGWIN*) fail "on Windows, use install.ps1: irm https://plum.elixpo.com/install.ps1 | iex" ;;
     *) fail "no build for $(uname -s); build from source: https://github.com/$REPO" ;;
 esac
 if [ "$os" = macos ]; then

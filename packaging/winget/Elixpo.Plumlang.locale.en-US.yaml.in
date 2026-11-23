@@ -7,7 +7,7 @@ PublisherUrl: https://elixpo.com
 PublisherSupportUrl: https://github.com/plumlang/plumlang/discussions
 PackageName: Plumlang
 PackageUrl: https://plum.elixpo.com
-License: Plumlang Commercial License 1.0
+License: Apache-2.0
 LicenseUrl: https://github.com/plumlang/plumlang/blob/main/LICENSE
 Copyright: Copyright (c) Elixpo
 ShortDescription: A small, fast, memory-safe programming language.

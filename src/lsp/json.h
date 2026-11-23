@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The JSON the language server speaks (RFC 8259): a reader that builds a
  * tree of values in an arena, and a writer that appends to a buffer.

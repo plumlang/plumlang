@@ -4,7 +4,7 @@ class Plum < Formula
   desc "Small, fast, memory-safe programming language"
   homepage "https://plum.elixpo.com"
   version "@VERSION@"
-  license :cannot_represent
+  license "Apache-2.0"
 
   on_macos do
     url "https://github.com/plumlang/plumlang/releases/download/v@VERSION@/plum-@VERSION@-macos-universal.tar.gz"

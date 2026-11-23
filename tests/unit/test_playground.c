@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The browser playground's core (src/wasm/playground.h), run natively. */
 #include "check.h"
 #include "stdlib/platform.h"

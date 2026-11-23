@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Run fuzz targets built by `make fuzz-build`, each for SECONDS, from the
 # seeds of corpus.sh plus what earlier runs found (BUILD/corpus/NAME,

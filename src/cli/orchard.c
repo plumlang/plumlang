@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * plum add, remove, install, package, publish and search: the package
  * commands (docs/orchard.md). They are a Plumlang program built into plum,

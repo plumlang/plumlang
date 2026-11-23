@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Fuzz target: format options of interpolation ("{x:>10.2f}", spec 4.10)
  * applied to values. The first byte picks the value, the next eight give

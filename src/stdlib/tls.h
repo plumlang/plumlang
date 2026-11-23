@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * TLS over the net module's sockets, by the vendored Mbed TLS
  * (vendor/mbedtls). Nothing here waits: an operation that needs the

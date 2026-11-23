@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Print Plumlang's version from include/plum/version.h, and check that
 # CMakeLists.txt agrees. With a tag (v1.2.3), also check the tag matches.

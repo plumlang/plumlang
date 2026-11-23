@@ -17,7 +17,7 @@
 
 ---
 
-<sub>By submitting this pull request I grant Elixpo the licence in section 6 of
-[LICENSE](https://github.com/plumlang/plumlang/blob/main/LICENSE), as
+<sub>I submit this pull request under the Apache License 2.0 and grant Elixpo
+the right to relicense it, as
 [PREAMBLE.md](https://github.com/plumlang/plumlang/blob/main/PREAMBLE.md) rule 1.4 says,
 and confirm I have the right to submit this contribution.</sub>

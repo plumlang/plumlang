@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 #include "util/array.h"
 
 void *plum_array_grow(void *items, size_t *cap, size_t len, size_t extra, size_t elem_size) {

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The REPL: `plum` on a terminal, or `plum repl`. Each entry (a line, or
  * several while a bracket is open or a line ends with an operator) is
