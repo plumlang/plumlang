@@ -8,7 +8,7 @@ contact_links:
     about: Ask a question or talk an idea through before opening an issue.
   - name: Commercial licensing
     url: mailto:hello@elixpo.com
-    about: Using Plumlang in a business, product or hosted service.
+    about: The optional Plumlang Commercial License, for warranty, support, indemnity or trademark terms Apache-2.0 doesn't give.
   - name: Security issue
     url: https://github.com/plumlang/plumlang/security/advisories/new
     about: Report a vulnerability privately with a security advisory, not a public issue (see docs/SECURITY.md).
