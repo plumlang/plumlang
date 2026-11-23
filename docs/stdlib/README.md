@@ -21,6 +21,11 @@ seed math { sqrt, PI }     # sqrt(PI)
 | [`net`](net.md) | TCP and UDP sockets, DNS; [`Listener`](net.listener.md), [`Connection`](net.connection.md), [`UdpSocket`](net.udp.md) |
 | [`net.http`](net.http.md) | an HTTP/1.1 server and client, written in Plumlang |
 | [`hash`](hash.md) | cryptographic digests: SHA-256 |
+| [`path`](path.md) | file paths as text: join them, take them apart |
+| [`base64`](base64.md) | bytes as Base64 text (RFC 4648) and back |
+| [`hex`](hex.md) | bytes as hexadecimal text and back |
+| [`utf8`](utf8.md) | characters as code points; checking and repairing UTF-8 |
+| [`csv`](csv.md) | read and write comma-separated values (RFC 4180) |
 
 `plum stdlib` lists every module's functions with their signatures, and
 `plum stdlib math` one module's. The reference table on each page is

@@ -459,6 +459,11 @@ channels) pauses only its own task.
 | `json` | parse and produce JSON (`Json` values) |
 | `net` | TCP, UDP, TLS, DNS |
 | `net.http` | an HTTP(S) server and client |
+| `hash` | SHA-256 digests |
+| `path` | file paths: join, parent, name, extension |
+| `base64`, `hex` | bytes as Base64 or hexadecimal text |
+| `utf8` | code points; checking and repairing UTF-8 |
+| `csv` | read and write CSV |
 
 Built-in functions, no `seed` needed: `drop`, `ask`, `len`, `int`, `float`,
 `str`, `byte`, `type_of`, `assert`, `exit`.

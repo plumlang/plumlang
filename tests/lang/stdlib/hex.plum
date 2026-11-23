@@ -1,0 +1,24 @@
+# hex: encoding in either case, every byte value round-tripping, UTF-8
+# text as bytes, and what decode rejects.
+seed hex
+
+drop(hex.encode("hi!"), hex.decode("686921"), hex.encode("z~", upper: good), hex.encode("z~", upper: bad))
+drop("[{hex.encode("")}] [{hex.decode("")}]", hex.encode("é"), hex.encode("🍑"), hex.decode("c3a9"))
+drop(hex.decode("4A4b4C6d"), hex.decode("F09F8D91") == "🍑", hex.encode("a\0b"))
+
+plant digits = "0123456789abcdef"
+plant all_hex = ""
+for i in 0..256 {
+    all_hex += digits[i // 16] + digits[i % 16]
+}
+plant bytes = hex.decode(all_hex)
+drop(bytes.byte_len(), hex.encode(bytes) == all_hex, hex.encode(bytes, upper: good) == all_hex.upper())
+drop(hex.decode(all_hex.upper()) == bytes)
+
+for broken in ["abc", "0", "zz", "12 34", "0x12", "12\n", "c3a9é"] {
+    try {
+        drop(hex.decode(broken))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}

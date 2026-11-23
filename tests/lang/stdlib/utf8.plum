@@ -1,0 +1,52 @@
+# utf8: code points of 1- to 4-byte characters, strict validation
+# (overlong forms, surrogates, past U+10FFFF, truncated sequences), fix,
+# and the errors. Invalid bytes are made with hex.decode.
+seed utf8
+seed hex
+
+drop(utf8.code("a"), utf8.code("é"), utf8.code("€"), utf8.code("🍑"), utf8.code(utf8.char(0x10FFFF)))
+drop(utf8.char(9731), utf8.char(80) + utf8.char(233), utf8.codes("hé"), utf8.codes("a€🍑"))
+for code in [0, 0x7F, 0x80, 0x7FF, 0x800, 0xD7FF, 0xE000, 0xFFFF, 0x10000, 0x10FFFF] {
+    plant ch = utf8.char(code)
+    drop(code, hex.encode(ch), len(ch), utf8.code(ch) == code)
+}
+drop(utf8.from_codes([80, 108, 117, 109]), utf8.from_codes([0x1F351, 32, 0x2603]))
+plant no_codes: list[int] = []
+drop("[{utf8.from_codes(no_codes)}]", utf8.codes(""))
+plant text = "plum 🍑, é and ☃"
+drop(utf8.from_codes(utf8.codes(text)) == text, len(utf8.codes(text)) == len(text))
+
+# validation: hex, valid?, fixed (as hex)
+for h in ["", "706c756d", "f09f8d91", "f48fbfbf", "ff", "80", "c080", "c1bf", "e0809f", "f0808080", "eda080", "edbfbf", "f4908080", "f5808080", "e282", "e28261", "f09f8d", "61c3", "61ff62"] {
+    plant bytes = hex.decode(h)
+    plant fixed = utf8.fix(bytes)
+    drop("[{h}]", utf8.is_valid(bytes), "[{hex.encode(fixed)}]", utf8.is_valid(fixed))
+}
+drop(utf8.fix("plum 🍑") == "plum 🍑", utf8.is_valid("plum"))
+
+for broken in ["", "ab", "🍑🍑", hex.decode("ff"), hex.decode("c3"), hex.decode("eda080")] {
+    try {
+        drop(utf8.code(broken))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+for code in [-1, 0x110000, 0xD800, 0xDFFF] {
+    try {
+        drop(utf8.char(code))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+try {
+    drop(utf8.codes(hex.decode("61ff")))
+} catch e: ValueError {
+    drop(e.message)
+}
+for codes in [[65, 0xDFFF], [-5]] {
+    try {
+        drop(utf8.from_codes(codes))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}

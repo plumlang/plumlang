@@ -1,0 +1,48 @@
+97 233 8364 127825 1114111
+☃ Pé [104, 233] [97, 8364, 127825]
+0 00 1 good
+127 7f 1 good
+128 c280 1 good
+2047 dfbf 1 good
+2048 e0a080 1 good
+55295 ed9fbf 1 good
+57344 ee8080 1 good
+65535 efbfbf 1 good
+65536 f0908080 1 good
+1114111 f48fbfbf 1 good
+Plum 🍑 ☃
+[] []
+good good
+[] good [] good
+[706c756d] good [706c756d] good
+[f09f8d91] good [f09f8d91] good
+[f48fbfbf] good [f48fbfbf] good
+[ff] bad [efbfbd] good
+[80] bad [efbfbd] good
+[c080] bad [efbfbdefbfbd] good
+[c1bf] bad [efbfbdefbfbd] good
+[e0809f] bad [efbfbdefbfbdefbfbd] good
+[f0808080] bad [efbfbdefbfbdefbfbdefbfbd] good
+[eda080] bad [efbfbdefbfbdefbfbd] good
+[edbfbf] bad [efbfbdefbfbdefbfbd] good
+[f4908080] bad [efbfbdefbfbdefbfbdefbfbd] good
+[f5808080] bad [efbfbdefbfbdefbfbdefbfbd] good
+[e282] bad [efbfbd] good
+[e28261] bad [efbfbd61] good
+[f09f8d] bad [efbfbd] good
+[61c3] bad [61efbfbd] good
+[61ff62] bad [61efbfbd62] good
+good good
+utf8.code: the text is empty; give exactly one character
+utf8.code: the text has 2 characters; give exactly one
+utf8.code: the text has 2 characters; give exactly one
+utf8.code: the text isn't valid UTF-8 at byte 0; utf8.fix() replaces the bad bytes
+utf8.code: the text isn't valid UTF-8 at byte 0; utf8.fix() replaces the bad bytes
+utf8.code: the text isn't valid UTF-8 at byte 0; utf8.fix() replaces the bad bytes
+utf8.char: -1 is no Unicode code point; they go from 0 to 1114111 (0x10FFFF)
+utf8.char: 1114112 is no Unicode code point; they go from 0 to 1114111 (0x10FFFF)
+utf8.char: 55296 (0xD800) is a surrogate, which UTF-8 can't hold
+utf8.char: 57343 (0xDFFF) is a surrogate, which UTF-8 can't hold
+utf8.codes: the text isn't valid UTF-8 at byte 1; utf8.fix() replaces the bad bytes
+utf8.from_codes: item 1: 57343 (0xDFFF) is a surrogate, which UTF-8 can't hold
+utf8.from_codes: item 0: -5 is no Unicode code point; they go from 0 to 1114111 (0x10FFFF)

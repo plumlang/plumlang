@@ -1,0 +1,33 @@
+aGVsbG8= hello cGx1bSDwn42R plum 🍑
+[] [] good good
+[Zg==] [Zg] good good
+[Zm8=] [Zm8] good good
+[Zm9v] [Zm9v] good good
+[Zm9vYg==] [Zm9vYg] good good
+[Zm9vYmE=] [Zm9vYmE] good good
+[Zm9vYmFy] [Zm9vYmFy] good good
+Pz8+ Pz8- ??> ??>
+fo fo f f
+256 good good
+AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w==
+AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn-AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq-wsbKztLW2t7i5uru8vb6_wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t_g4eLj5OXm5-jp6uvs7e7v8PHy8_T19vf4-fr7_P3-_w
+00ff00 ffef
+base64.decode: ' ' at position 4 isn't a Base64 digit (A-Z a-z 0-9 + /)
+base64.decode: byte 0x0A at position 4 isn't a Base64 digit
+base64.decode: '!' at position 4 isn't a Base64 digit (A-Z a-z 0-9 + /)
+base64.decode: '-' at position 3 isn't a Base64 digit (A-Z a-z 0-9 + /)
+base64.decode: wrong padding: 1 '=' after 2 digits
+base64.decode: the padding is missing: 2 digits need 2 '='; base64.decode_url accepts text without it
+base64.decode: the padding is missing: 3 digits need 1 '='; base64.decode_url accepts text without it
+base64.decode: '=' at position 2; padding goes only at the end, at most two
+base64.decode: wrong padding: 1 '=' after 4 digits
+base64.decode: the last group has one digit; Base64 needs two or more
+base64.decode: '=' at position 2; padding goes only at the end, at most two
+base64.decode: '=' at position 0; padding goes only at the end, at most two
+base64.decode: byte 0xC3 at position 4 isn't a Base64 digit
+base64.decode_url: '+' at position 3 isn't a Base64 digit of the URL alphabet (A-Z a-z 0-9 - _)
+base64.decode_url: '/' at position 3 isn't a Base64 digit of the URL alphabet (A-Z a-z 0-9 - _)
+base64.decode_url: the last group has one digit; Base64 needs two or more
+base64.decode_url: wrong padding: 1 '=' after 2 digits
+base64.decode_url: wrong padding: 1 '=' after 4 digits
+base64.decode_url: ' ' at position 2 isn't a Base64 digit of the URL alphabet (A-Z a-z 0-9 - _)

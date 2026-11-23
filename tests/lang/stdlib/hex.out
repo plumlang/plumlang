@@ -1,0 +1,12 @@
+686921 hi! 7A7E 7a7e
+[] [] c3a9 f09f8d91 é
+JKLm good 610062
+256 good good
+good
+hex.decode: the text has an odd number of digits (3); each byte takes two
+hex.decode: the text has an odd number of digits (1); each byte takes two
+hex.decode: 'z' at position 0 isn't a hex digit
+hex.decode: ' ' at position 2 isn't a hex digit
+hex.decode: 'x' at position 1 isn't a hex digit
+hex.decode: byte 0x0A at position 2 isn't a hex digit
+hex.decode: byte 0xC3 at position 4 isn't a hex digit

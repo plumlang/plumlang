@@ -1,0 +1,26 @@
+# path: taking paths apart and joining them. The output is the same on
+# every OS: join's separator is checked against path.SEPARATOR, and the
+# backslash cases differ only on Windows.
+seed path
+seed path { SEPARATOR }
+
+plant sep = path.SEPARATOR
+drop(sep == "/" or sep == "\\", SEPARATOR == sep, len(sep))
+drop(path.join(["a", "b", "c.txt"]) == "a{sep}b{sep}c.txt")
+drop(path.join(["a/", "b"]) == "a/b", path.join(["a", "/b"]) == "a{sep}b", path.join(["a/", "/b/"]) == "a/b/")
+drop(path.join(["/", "etc", "hosts"]) == "/etc{sep}hosts", path.join(["", "a", "", "b"]) == "a{sep}b")
+plant no_parts: list[str] = []
+drop("[{path.join(no_parts)}]", "[{path.join([""])}]", path.join(["only"]))
+
+for p in ["a/b/c.txt", "c.txt", "/etc/hosts", "/etc/", "/", "", "a/b/", "a//b", "archive.tar.gz", ".bashrc", "notes.", "dir.d/file", "..", "../up.md", "./x"] {
+    drop("[{p}] parent=[{path.parent(p)}] name=[{path.name(p)}] stem=[{path.stem(p)}] extension=[{path.extension(p)}] absolute={path.is_absolute(p)}")
+}
+
+# On Windows a backslash is a separator too, and a drive (C:\) a root;
+# elsewhere a backslash is an ordinary character. Each branch prints the same.
+plant windows = sep == "\\"
+if windows {
+    drop(path.name("a\\b.txt") == "b.txt", path.parent("C:\\Users\\ada") == "C:\\Users", path.parent("C:\\") == "C:\\", path.is_absolute("C:\\x"), not path.is_absolute("C:x"), path.join(["C:\\", "x"]) == "C:\\x")
+} else {
+    drop(path.name("a\\b.txt") == "a\\b.txt", path.parent("C:\\Users\\ada") == "", path.parent("a\\b/c") == "a\\b", not path.is_absolute("C:\\x"), not path.is_absolute("C:x"), path.join(["C:\\", "x"]) == "C:\\/x")
+}

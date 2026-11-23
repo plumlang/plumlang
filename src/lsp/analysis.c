@@ -842,7 +842,8 @@ static void native_function_doc(Buf *b, const char *name, const PlumNativeFuncti
 static void native_constant_doc(Buf *b, const PlumNativeConstant *k) {
     Buf code = {0};
     buf_str(&code, k->name);
-    buf_str(&code, k->kind == PLUM_NATIVE_INT ? ": int" : ": float");
+    buf_str(&code, ": ");
+    buf_str(&code, plum_native_constant_type(k));
     code_block(b, buf_text(&code));
     plum_array_free(&code);
     if (k->doc != NULL && k->doc[0] != '\0') {
@@ -1514,8 +1515,7 @@ static void add_seed(Items *items, const PlumLspAnalysis *a, const PlumStmt *s) 
         } else if (fn != NULL) {
             add_item(items, name, CK_FUNCTION, fn->signature, fn->doc);
         } else if (k != NULL) {
-            add_item(items, name, CK_CONSTANT, k->kind == PLUM_NATIVE_INT ? "int" : "float",
-                     k->doc);
+            add_item(items, name, CK_CONSTANT, plum_native_constant_type(k), k->doc);
         }
     }
 }
@@ -1736,7 +1736,7 @@ static void add_native_members(Items *items, const PlumNativeModule *m) {
     }
     for (size_t i = 0; i < m->constant_count; i++) {
         add_item(items, m->constants[i].name, CK_CONSTANT,
-                 m->constants[i].kind == PLUM_NATIVE_INT ? "int" : "float", m->constants[i].doc);
+                 plum_native_constant_type(&m->constants[i]), m->constants[i].doc);
     }
 }
 

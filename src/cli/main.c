@@ -299,8 +299,8 @@ static void print_module(const PlumNativeModule *m, bool markdown) {
         }
         for (size_t i = 0; i < m->constant_count; i++) {
             const PlumNativeConstant *k = &m->constants[i];
-            printf("| `%s` | `%s: %s` | %s |\n", k->name, k->name,
-                   k->kind == PLUM_NATIVE_INT ? "int" : "float", k->doc);
+            printf("| `%s` | `%s: %s` | %s |\n", k->name, k->name, plum_native_constant_type(k),
+                   k->doc);
         }
         return;
     }
@@ -314,7 +314,7 @@ static void print_module(const PlumNativeModule *m, bool markdown) {
     for (size_t i = 0; i < m->constant_count; i++) {
         const PlumNativeConstant *k = &m->constants[i];
         char sig[96];
-        snprintf(sig, sizeof sig, "%s: %s", k->name, k->kind == PLUM_NATIVE_INT ? "int" : "float");
+        snprintf(sig, sizeof sig, "%s: %s", k->name, plum_native_constant_type(k));
         printf("  %-48s %s\n", sig, k->doc);
     }
 }

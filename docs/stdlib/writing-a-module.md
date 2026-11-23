@@ -57,7 +57,8 @@ const PlumNativeModule plum_module_colour = {
   sees `none` in its place and applies the default itself.
 - **Methods of a type** (like those of `str`) are a module whose functions
   take `self` first: see `src/stdlib/string.c`.
-- **Constants** go in a `PlumNativeConstant` table (see `math.c`).
+- **Constants** go in a `PlumNativeConstant` table: an `int`, a `float`
+  or a `str` (see `math.c`, and `path.c` for a `str`).
 
 ## 2. What a native function can use
 
