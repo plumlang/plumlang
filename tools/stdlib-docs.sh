@@ -14,7 +14,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 status=0
 count=0
-for module in $("$plum" stdlib | sed -n 's/^\([a-z_.]*\): .*/\1/p'); do
+for module in $("$plum" stdlib | sed -n 's/^\([a-z0-9_.]*\): .*/\1/p'); do
     page="$root/docs/stdlib/$module.md"
     count=$((count + 1))
     if [ ! -f "$page" ]; then

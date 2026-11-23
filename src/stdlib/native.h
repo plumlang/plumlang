@@ -44,6 +44,7 @@ typedef enum PlumNativeConstKind {
     PLUM_NATIVE_INT,
     PLUM_NATIVE_FLOAT,
     PLUM_NATIVE_INFINITY, /* not a constant expression everywhere (MSVC) */
+    PLUM_NATIVE_STR,
 } PlumNativeConstKind;
 
 typedef struct PlumNativeConstant {
@@ -51,6 +52,7 @@ typedef struct PlumNativeConstant {
     PlumNativeConstKind kind;
     int64_t i;
     double f;
+    const char *s; /* PLUM_NATIVE_STR's text; NULL for the others */
     const char *doc;
 } PlumNativeConstant;
 
@@ -84,6 +86,8 @@ const PlumNativeModule *plum_native_module(const char *name);
 const PlumNativeModule *plum_native_module_at(size_t i);
 const PlumNativeFunction *plum_native_function(const PlumNativeModule *m, const char *name);
 const PlumNativeConstant *plum_native_constant(const PlumNativeModule *m, const char *name);
+/* A constant's type as Plumlang writes it: "int", "float" or "str". */
+const char *plum_native_constant_type(const PlumNativeConstant *k);
 
 /* A function's number for CALL_NATIVE, and back. */
 int plum_native_id(const PlumNativeFunction *fn);
@@ -173,5 +177,10 @@ extern const PlumNativeModule plum_module_connection; /* the methods of Connecti
 extern const PlumNativeModule plum_module_udp;        /* the methods of UdpSocket */
 extern const PlumNativeModule plum_module_hash;
 extern const PlumNativeModule plum_module_pkg; /* plum.pkg, internal (src/orchard/native.c) */
+extern const PlumNativeModule plum_module_path;
+extern const PlumNativeModule plum_module_base64;
+extern const PlumNativeModule plum_module_hex;
+extern const PlumNativeModule plum_module_utf8;
+extern const PlumNativeModule plum_module_csv;
 
 #endif /* PLUM_STDLIB_NATIVE_H */

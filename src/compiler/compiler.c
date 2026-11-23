@@ -637,6 +637,7 @@ static void compile_native_call(Compiler *c, const PlumExpr *e, const PlumNative
 static void compile_native_constant(Compiler *c, const PlumNativeConstant *k, PlumSpan span) {
     PlumValue v = k->kind == PLUM_NATIVE_INT     ? plum_int(k->i)
                   : k->kind == PLUM_NATIVE_FLOAT ? plum_float(k->f)
+                  : k->kind == PLUM_NATIVE_STR   ? plum_str_value(k->s, strlen(k->s))
                                                  : plum_float(HUGE_VAL);
     emit_const(c, v, span);
 }

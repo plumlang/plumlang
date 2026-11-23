@@ -260,13 +260,13 @@ static const PlumNativeFunction functions[] = {
 };
 
 static const PlumNativeConstant constants[] = {
-    {"PI", PLUM_NATIVE_FLOAT, 0, 3.14159265358979323846,
+    {"PI", PLUM_NATIVE_FLOAT, 0, 3.14159265358979323846, NULL,
      "the ratio of a circle's circumference to its diameter"},
-    {"TAU", PLUM_NATIVE_FLOAT, 0, 6.28318530717958647692, "2 * PI, a full turn in radians"},
-    {"E", PLUM_NATIVE_FLOAT, 0, 2.71828182845904523536, "the base of natural logarithms"},
-    {"INF", PLUM_NATIVE_INFINITY, 0, 0, "positive infinity"},
-    {"MAX_INT", PLUM_NATIVE_INT, INT64_MAX, 0, "the largest int"},
-    {"MIN_INT", PLUM_NATIVE_INT, INT64_MIN, 0, "the smallest int"},
+    {"TAU", PLUM_NATIVE_FLOAT, 0, 6.28318530717958647692, NULL, "2 * PI, a full turn in radians"},
+    {"E", PLUM_NATIVE_FLOAT, 0, 2.71828182845904523536, NULL, "the base of natural logarithms"},
+    {"INF", PLUM_NATIVE_INFINITY, 0, 0, NULL, "positive infinity"},
+    {"MAX_INT", PLUM_NATIVE_INT, INT64_MAX, 0, NULL, "the largest int"},
+    {"MIN_INT", PLUM_NATIVE_INT, INT64_MIN, 0, NULL, "the smallest int"},
 };
 
 const PlumNativeModule plum_module_math = {

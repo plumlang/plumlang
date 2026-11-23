@@ -591,7 +591,9 @@ static PlumTy *native_type(Checker *c, const PlumNativeFunction *fn, bool method
 }
 
 static PlumTy *native_constant_type(Checker *c, const PlumNativeConstant *k) {
-    return k->kind == PLUM_NATIVE_INT ? c->t.integer : c->t.floating;
+    return k->kind == PLUM_NATIVE_INT   ? c->t.integer
+           : k->kind == PLUM_NATIVE_STR ? c->t.str
+                                        : c->t.floating;
 }
 
 /* math.x: a function or constant of a module, or E0415. */
