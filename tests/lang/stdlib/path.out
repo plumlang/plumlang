@@ -1,0 +1,21 @@
+good good 1
+good
+good good good
+good good
+[] [] only
+[a/b/c.txt] parent=[a/b] name=[c.txt] stem=[c] extension=[txt] absolute=bad
+[c.txt] parent=[] name=[c.txt] stem=[c] extension=[txt] absolute=bad
+[/etc/hosts] parent=[/etc] name=[hosts] stem=[hosts] extension=[] absolute=good
+[/etc/] parent=[/] name=[etc] stem=[etc] extension=[] absolute=good
+[/] parent=[/] name=[] stem=[] extension=[] absolute=good
+[] parent=[] name=[] stem=[] extension=[] absolute=bad
+[a/b/] parent=[a] name=[b] stem=[b] extension=[] absolute=bad
+[a//b] parent=[a] name=[b] stem=[b] extension=[] absolute=bad
+[archive.tar.gz] parent=[] name=[archive.tar.gz] stem=[archive.tar] extension=[gz] absolute=bad
+[.bashrc] parent=[] name=[.bashrc] stem=[.bashrc] extension=[] absolute=bad
+[notes.] parent=[] name=[notes.] stem=[notes.] extension=[] absolute=bad
+[dir.d/file] parent=[dir.d] name=[file] stem=[file] extension=[] absolute=bad
+[..] parent=[] name=[..] stem=[..] extension=[] absolute=bad
+[../up.md] parent=[..] name=[up.md] stem=[up] extension=[md] absolute=bad
+[./x] parent=[.] name=[x] stem=[x] extension=[] absolute=bad
+good good good good good good

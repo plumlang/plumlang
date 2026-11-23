@@ -1,0 +1,40 @@
+# base64: the RFC 4648 vectors (every padding case), the URL alphabet,
+# every byte value round-tripping, and what decode rejects.
+seed base64
+seed hex
+seed base64 { encode, decode }
+
+drop(base64.encode("hello"), base64.decode("aGVsbG8="), encode("plum 🍑"), decode("cGx1bSDwn42R"))
+for s in ["", "f", "fo", "foo", "foob", "fooba", "foobar"] {
+    drop("[{base64.encode(s)}] [{base64.encode_url(s)}] {base64.decode(base64.encode(s)) == s} {base64.decode_url(base64.encode_url(s)) == s}")
+}
+drop(base64.encode("??>"), base64.encode_url("??>"), base64.decode_url("Pz8-"), base64.decode("Pz8+"))
+drop(base64.decode_url("Zm8="), base64.decode_url("Zm8"), base64.decode_url("Zg=="), base64.decode_url("Zg"))
+
+# every byte value, 0 to 255
+plant digits = "0123456789abcdef"
+plant all_hex = ""
+for i in 0..256 {
+    all_hex += digits[i // 16] + digits[i % 16]
+}
+plant bytes = hex.decode(all_hex)
+drop(bytes.byte_len(), base64.decode(base64.encode(bytes)) == bytes, base64.decode_url(base64.encode_url(bytes)) == bytes)
+drop(base64.encode(bytes))
+drop(base64.encode_url(bytes))
+drop(hex.encode(base64.decode("AP8A")), hex.encode(base64.decode_url("_-8")))
+
+# decode is strict: whitespace, foreign characters and wrong padding are errors
+for broken in ["Zm9v Zg==", "Zm9v\nYmFy", "Zm9v!", "Zm9-", "Zg=", "Zg", "Zm8", "Zg===", "Zm9v=", "Z", "Zg==Zg==", "=Zg=", "Zm9v\u{E9}"] {
+    try {
+        drop(base64.decode(broken))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+for broken in ["Zm8+", "Zm8/", "Z", "Zg=", "Zm9v=", "Zm 8"] {
+    try {
+        drop(base64.decode_url(broken))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}

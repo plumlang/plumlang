@@ -1,0 +1,63 @@
+# csv: quoted fields (the separator, "" and line breaks inside), \r\n and
+# \n line ends, a last line without one, empty fields and lines, other
+# separators, records, round trips and the errors.
+seed csv
+
+plant rows = csv.parse("name,age\nAda,36\n\"Bo, Jr.\",7\n")
+drop(rows)
+plant people = csv.parse_records("name,age\nAda,36\n")
+drop(people[0]["name"], people)
+drop(csv.stringify([["a", "b,c"], ["1", "say \"hi\""]]))
+
+drop(csv.parse("a,b\r\nc,d\r\n"), csv.parse("a,b\nc,d"), csv.parse("a,b\rc,d\r"))
+drop(csv.parse("\"say \"\"hi\"\"\",\"two\nlines\",\"\"\n"))
+drop(csv.parse("a,,c\n,\n,,\n"), csv.parse("a\n\n\nb\r\n\r\n"), csv.parse(""), csv.parse("\n\n"))
+drop(csv.parse("x,\"\"\ny,\"\"\"\"\n"), csv.parse("a\"b,c\n"), csv.parse("\"a\nb\"\nc"))
+drop(csv.parse("a;b;\"c;d\"\n1;2;3\n", separator: ";"), csv.parse("a\tb\t\"c\td\"\n", separator: "\t"))
+drop(csv.parse("a,b|c\n", "|"), csv.parse("é,🍑\n"))
+
+drop(csv.parse_records("name;age;city\nAda;36;London\nBo;7\n", separator: ";"))
+drop(csv.parse_records(""), csv.parse_records("only,a,header\n"), csv.parse_records("h\n\nx\n\ny\n"))
+
+plant tricky = [["plain", "with,comma", "with \"quote\"", "two\nlines", ""], [""], ["", ""], ["é", "🍑", " spaced"]]
+plant text = csv.stringify(tricky)
+drop(text)
+drop(csv.parse(text) == tricky)
+plant semi = csv.stringify(tricky, separator: ";")
+drop(semi.contains("with,comma;"), csv.parse(semi, separator: ";") == tricky)
+plant cr = [["cr\rhere", "x"]]
+drop(csv.stringify(cr) == "\"cr\rhere\",x\n", csv.parse(csv.stringify(cr)) == cr)
+plant tabs = csv.stringify([["a\tb", "c"]], separator: "\t")
+drop(tabs == "\"a\tb\"\tc\n", csv.parse(tabs, separator: "\t"))
+plant no_rows: list[list[str]] = []
+drop("[{csv.stringify(no_rows)}]")
+
+for broken in ["a,\"b\n", "\"never closed", "x\ny\n\"z,w\n1,2\n", "\"a\"b,c\n", "ok\n\"a\" ,b\n"] {
+    try {
+        drop(csv.parse(broken))
+    } catch e: ParseError {
+        drop(e.message)
+    }
+}
+for sep in ["", ";;", "\"", "\n", "é"] {
+    try {
+        drop(csv.parse("a,b", separator: sep))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+try {
+    drop(csv.parse_records("a,b\n1,2,3\n"))
+} catch e: ValueError {
+    drop(e.message)
+}
+try {
+    drop(csv.parse_records("id,name,id\n1,2,3\n"))
+} catch e: ValueError {
+    drop(e.message)
+}
+try {
+    drop(csv.parse_records("a,b\n\"x\n"))
+} catch e: ParseError {
+    drop(e.message)
+}

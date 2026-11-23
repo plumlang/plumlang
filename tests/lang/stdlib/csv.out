@@ -1,0 +1,37 @@
+[["name", "age"], ["Ada", "36"], ["Bo, Jr.", "7"]]
+Ada [{"name": "Ada", "age": "36"}]
+a,"b,c"
+1,"say ""hi"""
+
+[["a", "b"], ["c", "d"]] [["a", "b"], ["c", "d"]] [["a", "b"], ["c", "d"]]
+[["say \"hi\"", "two\nlines", ""]]
+[["a", "", "c"], ["", ""], ["", "", ""]] [["a"], ["b"]] [] []
+[["x", ""], ["y", "\""]] [["a\"b", "c"]] [["a\nb"], ["c"]]
+[["a", "b", "c;d"], ["1", "2", "3"]] [["a", "b", "c\td"]]
+[["a,b", "c"]] [["é", "🍑"]]
+[{"name": "Ada", "age": "36", "city": "London"}, {"name": "Bo", "age": "7", "city": ""}]
+[] [] [{"h": "x"}, {"h": "y"}]
+plain,"with,comma","with ""quote""","two
+lines",
+""
+,
+é,🍑, spaced
+
+good
+good good
+good good
+good [["a\tb", "c"]]
+[]
+csv.parse: line 1: the quoted field has no closing quote
+csv.parse: line 1: the quoted field has no closing quote
+csv.parse: line 3: the quoted field has no closing quote
+csv.parse: line 1: expected the separator or the end of the line after the closing quote
+csv.parse: line 2: expected the separator or the end of the line after the closing quote
+csv.parse: the separator must be one character, not a quote or a line break: ",", ";" or "\t", say
+csv.parse: the separator must be one character, not a quote or a line break: ",", ";" or "\t", say
+csv.parse: the separator must be one character, not a quote or a line break: ",", ";" or "\t", say
+csv.parse: the separator must be one character, not a quote or a line break: ",", ";" or "\t", say
+csv.parse: the separator must be one character, not a quote or a line break: ",", ";" or "\t", say
+csv.parse_records: line 2 has 3 fields, but the header has 2
+csv.parse_records: the header names the field "id" twice (fields 1 and 3)
+csv.parse_records: line 2: the quoted field has no closing quote
