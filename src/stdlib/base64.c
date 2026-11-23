@@ -99,11 +99,9 @@ static bool decode(PlumNative *n, const PlumString *s, bool url, PlumValue *resu
                                          "%s: byte 0x%02X at position %zu isn't a Base64 digit",
                                          name, c, i);
             }
-            return plum_native_throw(n, PLUM_ERROR_VALUE,
-                                     "%s: '%c' at position %zu isn't a Base64 digit%s", name,
-                                     (char)c, i,
-                                     url ? " of the URL alphabet (A-Z a-z 0-9 - _)"
-                                         : " (A-Z a-z 0-9 + /)");
+            return plum_native_throw(
+                n, PLUM_ERROR_VALUE, "%s: '%c' at position %zu isn't a Base64 digit%s", name,
+                (char)c, i, url ? " of the URL alphabet (A-Z a-z 0-9 - _)" : " (A-Z a-z 0-9 + /)");
         }
     }
     if (len % 4 == 1) {
@@ -113,8 +111,8 @@ static bool decode(PlumNative *n, const PlumString *s, bool url, PlumValue *resu
     }
     /* With padding, the text comes in whole groups of four. */
     if (pad > 0 && (len + pad) % 4 != 0) {
-        return plum_native_throw(n, PLUM_ERROR_VALUE,
-                                 "%s: wrong padding: %zu '=' after %zu digits", name, pad, len);
+        return plum_native_throw(n, PLUM_ERROR_VALUE, "%s: wrong padding: %zu '=' after %zu digits",
+                                 name, pad, len);
     }
     if (!url && pad == 0 && len % 4 != 0) {
         return plum_native_throw(n, PLUM_ERROR_VALUE,

@@ -277,8 +277,7 @@ static const PlumNativeFunction functions[] = {
     {"from_codes", "(codes: list[int]) -> str", u_from_codes, "the text of those code points"},
     {"is_valid", "(text: str) -> bool", u_is_valid,
      "is the text strict UTF-8 (no overlong forms, surrogates or code points past 0x10FFFF)?"},
-    {"fix", "(text: str) -> str", u_fix,
-     "valid UTF-8: each invalid sequence replaced with U+FFFD"},
+    {"fix", "(text: str) -> str", u_fix, "valid UTF-8: each invalid sequence replaced with U+FFFD"},
 };
 
 const PlumNativeModule plum_module_utf8 = {

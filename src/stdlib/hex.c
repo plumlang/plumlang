@@ -67,8 +67,7 @@ static bool hex_decode(ARGS) {
 static const PlumNativeFunction functions[] = {
     {"encode", "(data: str, upper: bool = bad) -> str", hex_encode,
      "two hex digits for each byte, small letters unless upper"},
-    {"decode", "(text: str) -> str", hex_decode,
-     "pairs of hex digits (either case) back to bytes"},
+    {"decode", "(text: str) -> str", hex_decode, "pairs of hex digits (either case) back to bytes"},
 };
 
 const PlumNativeModule plum_module_hex = {
