@@ -1,6 +1,6 @@
-# Checks that plum.elixpo, branding and registry carry the same shared .github files
+# Checks that plum.elixpo, branding, registry, tree-sitter-plum and setup-plum carry the same shared .github files
 # as this repository (tools/sync-github.sh). Fix drift with:
-#   sh tools/sync-github.sh ../plum.elixpo ../branding ../registry
+#   sh tools/sync-github.sh ../plum.elixpo ../branding ../registry ../tree-sitter-plum ../setup-plum
 name: GitHub sync
 
 on:
@@ -39,4 +39,15 @@ jobs:
           repository: plumlang/registry
           path: siblings/registry
           persist-credentials: false
-      - run: sh tools/sync-github.sh --check siblings/plum.elixpo siblings/branding siblings/registry
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: plumlang/tree-sitter-plum
+          path: siblings/tree-sitter-plum
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: plumlang/setup-plum
+          path: siblings/setup-plum
+          persist-credentials: false
+      - run: sh tools/sync-github.sh --check siblings/plum.elixpo siblings/branding siblings/registry \
+          siblings/tree-sitter-plum siblings/setup-plum
