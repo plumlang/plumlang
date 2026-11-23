@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* Turning values into text the way Plumlang prints them (spec 3.2.1). */
 #ifndef PLUM_UTIL_FMT_H
 #define PLUM_UTIL_FMT_H

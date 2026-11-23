@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # A stand-in for `plum run FILE` and `plum tokens FILE`, used to test the
 # golden-file runner itself. For `run`, lines starting with "#> " go to

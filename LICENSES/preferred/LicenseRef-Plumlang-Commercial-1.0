@@ -1,3 +1,14 @@
+Valid-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+Usage-Guide:
+  This licence is the optional alternative to the Apache License 2.0.
+  Plumlang is licensed under "Apache-2.0 OR
+  LicenseRef-Plumlang-Commercial-1.0": everyone may use it under
+  Apache-2.0 (the top-level LICENSE). This licence is for those who hold
+  a written commercial agreement with Elixpo (hello@elixpo.com), for
+  example for warranty, support, indemnity or trademark terms that
+  Apache-2.0 does not give. Its terms are unchanged below.
+License-Text:
+
 Plumlang Commercial License
 Version 1.0
 

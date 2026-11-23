@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * `plum lsp`: a Language Server Protocol server on standard input and
  * output (docs/lsp.md). Messages are JSON-RPC 2.0, each after a

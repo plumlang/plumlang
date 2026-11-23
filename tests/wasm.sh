@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Smoke-test the WebAssembly build (make wasm) under Node: programs run in
 # the browser's plum print what the native `plum run` prints, and an

@@ -1,27 +1,34 @@
 # Plumlang: preamble
 
 <p>
-  <a href="LICENSE"><img alt="Licence: Plumlang Commercial 1.0" src="https://img.shields.io/badge/licence-Plumlang%20Commercial%201.0-6b3fa0?style=flat-square"></a>
+  <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-6b3fa0?style=flat-square"></a>
   <a href="TRADEMARKS.md"><img alt="Trademarks: Elixpo" src="https://img.shields.io/badge/trademarks-Elixpo-333333?style=flat-square"></a>
 </p>
 
 Plumlang, its compiler, virtual machine, standard library and tools, is
 provided under:
 
-    SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+    SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 
-being under the terms of the Plumlang Commercial License, version 1.0,
-according with:
+being under the terms of the Apache License, version 2.0, according with:
 
     LICENSE
+    LICENSES/preferred/Apache-2.0
+
+or, alternatively, under the terms of the Plumlang Commercial License,
+version 1.0, according with:
+
     LICENSES/preferred/LicenseRef-Plumlang-Commercial-1.0
 
-The source is published so that anyone can read it, learn from it and
-evaluate it. Non-commercial use is free. Commercial use, redistribution and
-hosted services need a commercial licence from Elixpo (hello@elixpo.com).
-Programs written in the Plumlang language belong to their authors.
+Anyone may use, modify and redistribute Plumlang under Apache-2.0,
+commercially or not. The Plumlang Commercial License is an option for those
+who hold a written commercial agreement with Elixpo (hello@elixpo.com), for
+example for warranty, support, indemnity or trademark terms that Apache-2.0
+does not give. Programs written in the Plumlang language belong to their
+authors.
 
-The Elixpo and Plumlang names and logos are not licensed by the above; see:
+The Elixpo and Plumlang names and logos are not licensed by either of the
+above (Apache-2.0 section 6 grants no trademark rights); see:
 
     TRADEMARKS.md
     LICENSES/NOTICE
@@ -33,15 +40,15 @@ below.
 
 ## 1. Licensing rules
 
-1.1. **One licence for the tree.** Unless a file states otherwise, every file
-in this repository (source code, build files, scripts, tests, documentation,
-examples and brand assets) is licensed under
-`LicenseRef-Plumlang-Commercial-1.0`.
+1.1. **One licence expression for the tree.** Unless a file states
+otherwise, every file in this repository (source code, build files, scripts,
+tests, documentation, examples and brand assets) is licensed under
+`Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0`.
 
 1.2. **New source files say so on their first line.** A new C source or
 header file starts with:
 
-    /* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+    /* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 
 Other files may carry the same line as a comment in their own syntax. No file
 may name a different licence, except under rule 1.3.
@@ -52,10 +59,13 @@ lines, is listed in `LICENSES/notices/notice-board`, and needs maintainer
 approval before it is merged. Only permissive licences (MIT, BSD, Apache-2.0,
 zlib, ISC) are accepted: nothing copyleft is linked into the `plum` binary.
 
-1.4. **Inbound grant.** By submitting a contribution you grant Elixpo the
-licence in section 6 of [`LICENSE`](LICENSE): the right to use, modify and
-relicense it, including commercially. You confirm you have the right to
-submit it. There is no separate CLA.
+1.4. **Inbound licence and grant.** A contribution is submitted under
+Apache-2.0 (section 5 of [`LICENSE`](LICENSE)). In addition, by submitting a
+contribution (including code, documentation, or issues) you grant Elixpo a
+perpetual, worldwide, irrevocable, royalty-free license to use, modify,
+sublicense, and relicense your contribution under any terms, including
+commercial terms, such as the Plumlang Commercial License. You represent
+that you have the right to grant this license. There is no separate CLA.
 
 1.5. **Every commit is signed off.** The
 [Developer Certificate of Origin](https://developercertificate.org) applies to

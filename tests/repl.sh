@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # REPL tests: every tests/repl/NAME.in is piped into `plum repl`, run
 # from tests/repl (so `seed ./file` finds the modules there), and what it

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The WebAssembly build's exports (make wasm; built only by Emscripten).
  * JavaScript calls these through src/wasm/api.js, which is the API

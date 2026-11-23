@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Maps and sets at run time (spec 3.4): a hash table that remembers
  * insertion order. Entries sit in an array in the order they were added;

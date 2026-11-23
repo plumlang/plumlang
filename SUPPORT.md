@@ -9,7 +9,7 @@ A quick map of where to take what:
 | Propose a standard library module | [New library proposal](https://github.com/plumlang/plumlang/issues/new?template=stdlib_proposal.yml) |
 | Read the docs | [README](README.md) → [PREAMBLE.md](PREAMBLE.md) → [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Disclose a security issue | [Security policy](docs/SECURITY.md) |
-| Ask about a commercial licence | Email **hello@elixpo.com** |
+| Ask about the optional commercial licence (warranty, support, indemnity) | Email **hello@elixpo.com** |
 | Ask a general question | [Discussions](https://github.com/plumlang/plumlang/discussions) or **hello@elixpo.com** |
 | Read the rules | [Code of Conduct](CODE_OF_CONDUCT.md) |
 

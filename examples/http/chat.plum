@@ -1,0 +1,139 @@
+# A TCP chat server: every line one client sends goes to all the others.
+# `plum run examples/http/chat.plum 9000` serves on port 9000; try it with
+# `nc 127.0.0.1 9000` from two terminals. The first line a client sends
+# is its name. Without a port it serves on a free one, has two clients
+# talk, and stops, as a self-test.
+#
+# Tasks share nothing, so one task, the hub, keeps the list of clients.
+# The others tell it what happens through a channel, and it hands each
+# message to every other client's outbox, a channel of its own that a
+# writer task empties into the connection.
+seed io
+seed net
+seed os
+seed time
+
+kind Event {
+    Joined(id: int, name: str, outbox: Channel[str])
+    Said(id: int, text: str)
+    Left(id: int)
+}
+
+tree Member {
+    name: str
+    outbox: Channel[str]
+}
+
+branch hub(events: Channel[Event], log: bool) {
+    plant members: map[int, Member] = {:}
+    for event in events {
+        match event {
+            Joined(id, name, outbox) => {
+                for _, m in members {
+                    m.outbox.send("* {name} joined")
+                }
+                members[id] = Member(name, outbox)
+                outbox.send("welcome, {name}: {len(members)} here")
+                if log {
+                    drop("{name} joined")
+                    io.flush()
+                }
+            }
+            Said(id, text) => {
+                plant from = members[id].name
+                for other, m in members {
+                    if other != id {
+                        m.outbox.send("{from}: {text}")
+                    }
+                }
+            }
+            Left(id) => {
+                plant gone = members[id]
+                gone.outbox.close()
+                members.remove(id)
+                for _, m in members {
+                    m.outbox.send("* {gone.name} left")
+                }
+                if log {
+                    drop("{gone.name} left")
+                    io.flush()
+                }
+            }
+        }
+    }
+}
+
+# Sends what arrives in the outbox until the hub closes it.
+branch writer(conn: Connection, outbox: Channel[str]) {
+    for line in outbox {
+        conn.write("{line}\n")
+    }
+    conn.close()
+}
+
+# Reads the client's name, then its lines, and tells the hub.
+branch client(id: int, conn: Connection, events: Channel[Event]) {
+    plant name = (conn.read_line() ?? "").trim()
+    if name == "" {
+        conn.close()
+        return
+    }
+    plant outbox = Channel[str]()
+    spawn writer(conn, outbox)
+    events.send(Event.Joined(id, name, outbox))
+    plant line = conn.read_line()
+    while line != none {
+        plant text = (line ?? "").trim()
+        if text != "" {
+            events.send(Event.Said(id, text))
+        }
+        line = conn.read_line()
+    }
+    events.send(Event.Left(id))
+}
+
+branch serve(server: Listener, log: bool) {
+    plant events = Channel[Event]()
+    spawn hub(events, log)
+    plant next_id = 1
+    while good {
+        plant conn = server.accept()
+        spawn client(next_id, conn, events)
+        next_id += 1
+    }
+}
+
+# The self-test: two clients join, talk, and leave.
+branch self_test() {
+    plant server = net.listen(0, host: "127.0.0.1")
+    spawn serve(server, bad)
+    plant ada = join("ada", server.port())
+    plant bob = join("bob", server.port())
+    drop("ada sees: {ada.read_line() ?? "nothing"}")
+    ada.write("hello, bob\n")
+    drop("bob sees: {bob.read_line() ?? "nothing"}")
+    bob.write("hi ada, bye ada\n")
+    drop("ada sees: {ada.read_line() ?? "nothing"}")
+    bob.close()
+    drop("ada sees: {ada.read_line() ?? "nothing"}")
+    ada.close()
+    server.close()
+}
+
+# Connects, sends the name, and shows the welcome.
+branch join(name: str, port: int) -> Connection {
+    plant conn = net.connect("127.0.0.1", port)
+    conn.write("{name}\n")
+    drop("{name} sees: {conn.read_line() ?? "nothing"}")
+    return conn
+}
+
+plant args = os.args()
+if len(args) > 0 {
+    plant server = net.listen(int(args[0]))
+    drop("chat on port {server.port()}")
+    io.flush()
+    serve(server, good)
+} else {
+    self_test()
+}

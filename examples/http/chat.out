@@ -1,0 +1,6 @@
+ada sees: welcome, ada: 1 here
+bob sees: welcome, bob: 2 here
+ada sees: * bob joined
+bob sees: ada: hello, bob
+ada sees: bob: hi ada, bye ada
+ada sees: * bob left

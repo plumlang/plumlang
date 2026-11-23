@@ -56,11 +56,11 @@ gh attestation verify plum-X.Y.Z-linux-x86_64.tar.gz --repo plumlang/plumlang
 ## Installing
 
 ```sh
-curl -fsSL https://github.com/plumlang/plumlang/releases/latest/download/install.sh | sh
+curl -fsSL https://plum.elixpo.com/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/plumlang/plumlang/releases/latest/download/install.ps1 | iex
+irm https://plum.elixpo.com/install.ps1 | iex
 ```
 
 The installers pick the build for the machine, check it against

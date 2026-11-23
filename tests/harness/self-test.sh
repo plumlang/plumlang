@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Tests the golden-file runner against tests/harness/cases with a fake
 # plum: 6 cases must pass (one through `# command: tokens`, one a

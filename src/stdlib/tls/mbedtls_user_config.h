@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The Mbed TLS (TLS and X.509) options plum builds with: the defaults of
  * vendor/mbedtls/include/mbedtls/mbedtls_config.h, less what a TLS 1.2/1.3

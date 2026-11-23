@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The package commands: plum add, remove, install, package, publish, search. */
 #ifndef PLUM_CLI_ORCHARD_H
 #define PLUM_CLI_ORCHARD_H

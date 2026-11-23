@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # docs/bytecode.md's instruction table must match src/compiler/opcodes.h.
 # Regenerate it with `make bytecode-doc`.

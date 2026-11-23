@@ -16,6 +16,8 @@ Format for a new entry:
 
 ## Unreleased
 
+- **Licence**: Plumlang is now Apache-2.0, with the Plumlang Commercial License as an option
+  (`Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0`). v2.1.4 and earlier stay as released.
 - **Stdlib**: five new modules, written in C. `path` (#91): `join`, `parent`, `name`, `stem`, `extension`, `is_absolute` and `path.SEPARATOR`, taking `\` as a separator too on Windows. `base64` (#72): `encode` / `decode` (RFC 4648, with padding) and `encode_url` / `decode_url` (URL-safe alphabet, no padding); decoding is strict and rejects whitespace. `hex` (#73): `encode` (optionally `upper`) and `decode`, either case. `utf8` (#74): `code`, `char`, `codes`, `from_codes`, strict `is_valid` (no overlong forms, surrogates or code points past U+10FFFF) and `fix`, which replaces each invalid sequence with U+FFFD. `csv` (#75): `parse`, `parse_records` and `stringify` (RFC 4180), with a choice of separator; an unclosed quote is a ParseError with its line. Each has a page in `docs/stdlib/` and golden tests (#25).
 - **Stdlib**: a module constant can be a `str` (`PLUM_NATIVE_STR`), as `path.SEPARATOR` is.
 

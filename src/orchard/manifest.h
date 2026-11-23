@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Packages (spec 9.3, docs/orchard.md): the manifest plum.toml, the lock
  * file plum.lock, package names, versions and version ranges, the

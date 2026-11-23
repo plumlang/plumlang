@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Tests of packages (docs/orchard.md), offline: the packages in
 # tests/orchard/packages are packed with `plum package` into an Orchard

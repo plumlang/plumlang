@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Fuzz target: any bytes, as what arrives from the network, through the
  * net.http module (written in Plumlang, src/stdlib/plum/net_http.plum):

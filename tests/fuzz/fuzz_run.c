@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* Fuzz target: any bytes, as a program, checked, compiled and run in the
  * sandbox with a step and memory budget (fuzz_run_options). */
 #include "fuzz.h"

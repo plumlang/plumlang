@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Fuzz plum (tests/fuzz, issue #86): a minute per target on every pull
 # request, an hour per target every night. A crash, hang, leak or

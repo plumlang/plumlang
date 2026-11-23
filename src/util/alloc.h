@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * Checked allocation (PREAMBLE 3.4). These never return NULL: running out
  * of memory, or asking for a size that overflows size_t, prints a fatal

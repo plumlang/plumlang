@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0 */
+/* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
  * The TF-PSA-Crypto options plum builds with: the defaults of
  * vendor/mbedtls/tf-psa-crypto/include/psa/crypto_config.h, less what the

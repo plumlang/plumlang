@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: LicenseRef-Plumlang-Commercial-1.0
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 """Load-test bench/net/http_server.plum: requests per second and latency.
 
 Starts the server, then runs N client processes, each keeping one HTTP/1.1
