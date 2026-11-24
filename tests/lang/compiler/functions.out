@@ -25,20 +25,16 @@
 
 == connect (3 parameters, 3 slots) ==
 0000    6  GET_LOCAL 2
-0003    |  JUMP_IF_FALSE 22  ; -> 0028
-0006    7  GET_LOCAL 0
-0009    |  TO_STRING -
-0012    |  CONST 0  ; ":"
-0015    |  GET_LOCAL 1
-0018    |  TO_STRING -
-0021    |  CONST 1  ; " (secure)"
-0024    |  BUILD_STRING 4
-0027    |  RETURN
-0028    9  GET_LOCAL 0
-0031    |  TO_STRING -
-0034    |  CONST 0  ; ":"
-0037    |  GET_LOCAL 1
-0040    |  TO_STRING -
-0043    |  BUILD_STRING 3
-0046    |  RETURN
-0047    5  RETURN_NONE
+0003    |  JUMP_IF_FALSE 18  ; -> 0024
+0006    7  MOVE_LOCAL 0
+0009    |  CONST 0  ; ":"
+0012    |  GET_LOCAL 1
+0015    |  CONST 1  ; " (secure)"
+0018    |  BUILD_TEXT 4 2  ; "ssis"
+0023    |  RETURN
+0024    9  MOVE_LOCAL 0
+0027    |  CONST 0  ; ":"
+0030    |  GET_LOCAL 1
+0033    |  BUILD_TEXT 3 3  ; "ssi"
+0038    |  RETURN
+0039    5  RETURN_NONE

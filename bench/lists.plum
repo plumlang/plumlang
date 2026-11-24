@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+# Collections passed around: lists and maps handed to functions that read
+# them, a grid indexed by row and column, words grouped in a map of lists,
+# and a list built up by a helper that returns it.
+
+branch total(xs: list[int]) -> int {
+    plant s = 0
+    for x in xs {
+        s += x
+    }
+    return s
+}
+
+branch dot(a: list[int], b: list[int]) -> int {
+    plant s = 0
+    for i in 0..len(a) {
+        s += a[i] * b[i]
+    }
+    return s
+}
+
+branch column(grid: list[list[int]], c: int) -> int {
+    plant s = 0
+    for r in 0..len(grid) {
+        s += grid[r][c]
+    }
+    return s
+}
+
+branch longest(words: list[str]) -> str {
+    plant best = ""
+    for w in words {
+        if len(w) > len(best) {
+            best = w
+        }
+    }
+    return best
+}
+
+branch with_square(xs: list[int], x: int) -> list[int] {
+    xs.push(x * x % 1000)
+    return xs
+}
+
+# numbers: a list of 200,000 ints, summed and multiplied
+plant xs: list[int] = []
+plant x = 7
+for i in 0..200000 {
+    x = (x * 75 + 74) % 65537
+    xs.push(x % 1000)
+}
+plant sums = 0
+for k in 0..40 {
+    sums += total(xs) + dot(xs, xs) % 1000
+}
+
+# a 300 x 300 grid, read by column
+plant grid: list[list[int]] = []
+for r in 0..300 {
+    plant row: list[int] = []
+    for c in 0..300 {
+        row.push((r * 31 + c * 17) % 101)
+    }
+    grid.push(row)
+}
+plant cols = 0
+for k in 0..40 {
+    for c in 0..300 {
+        cols += column(grid, c)
+    }
+}
+
+# words grouped by their first syllable
+plant syllables = ["ka", "lo", "mi", "nu", "pe", "ra", "si", "to"]
+plant groups: map[str, list[str]] = {:}
+for i in 0..100000 {
+    x = (x * 75 + 74) % 65537
+    plant word = syllables[x % 8] + syllables[x // 8 % 8] + syllables[x // 64 % 8]
+    plant key = syllables[x % 8]
+    if key in groups {
+        groups[key].push(word)
+    } else {
+        groups[key] = [word]
+    }
+}
+plant letters = 0
+plant champion = ""
+for key, words in groups {
+    for k in 0..20 {
+        plant w = longest(words)
+        letters += len(w)
+        if w > champion {
+            champion = w
+        }
+    }
+}
+
+# a list built by a helper that returns it
+plant built: list[int] = []
+for i in 0..3000 {
+    built = with_square(built, i)
+}
+
+drop(sums, cols, len(groups), letters, champion, total(built))

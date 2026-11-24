@@ -1,0 +1,248 @@
+# A local moves on its last read instead of being copied (#122), and a
+# list or str in a local is read without counting a reference. None of it
+# may change what a program sees: every value stays a value.
+
+branch pushed(xs: list[int], x: int) -> list[int] {
+    xs.push(x)
+    return xs
+}
+
+# passed on its last use: the callee changes it in place, nobody sees
+branch last_use() -> list[int] {
+    plant xs = [1, 2]
+    plant ys = pushed(xs, 3)
+    return ys
+}
+drop("last use", last_use())
+
+# passed, then read again: the caller's copy stays as it was
+branch read_after() {
+    plant xs = [1, 2]
+    plant ys = pushed(xs, 3)
+    drop("read after", xs, ys)
+}
+read_after()
+
+# copied to another variable on the last use, then changed
+branch copy_then_change() {
+    plant a = ["x"]
+    plant b = a
+    b.push("y")
+    drop("copy", b)
+    plant c = ["p"]
+    plant d = c
+    d.push("q")
+    drop("both", c, d)
+}
+copy_then_change()
+
+# read again on the next time round a loop: not the last use
+branch in_a_loop() {
+    plant xs = [0]
+    for i in 1..4 {
+        plant ys = pushed(xs, i)
+        drop("loop", i, xs, ys)
+    }
+    plant n = 0
+    plant acc: list[int] = []
+    while n < 3 {
+        acc = pushed(acc, n)
+        n += 1
+        if n == 2 {
+            continue
+        }
+        drop("while", acc)
+    }
+}
+in_a_loop()
+
+# a closure captured it: its cell is shared, never moved
+branch captured() {
+    plant xs = [1]
+    plant size = () => len(xs)
+    plant ys = pushed(xs, 2)
+    xs.push(5)
+    drop("captured", ys, size(), xs)
+}
+captured()
+
+# a closure made after the last read sees what the variable holds
+branch closure_after() {
+    plant xs = [1, 2, 3]
+    plant first = xs[0]
+    plant f = () => first
+    drop("closure after", f(), xs)
+}
+closure_after()
+
+# into a field, a list and a map, then changed
+tree Box {
+    items: list[int] = []
+}
+branch into_containers() {
+    plant xs = [1]
+    plant box = Box(items: xs)
+    plant outer = [xs]
+    plant m = {"k": xs}
+    xs.push(2)
+    box.items.push(3)
+    drop("containers", xs, box.items, outer, m)
+    plant ys = [7]
+    plant last = Box(items: ys)
+    last.items.push(8)
+    drop("field last use", last.items)
+}
+into_containers()
+
+# a method changing its own copy of an argument, called again and again
+tree Counter {
+    seen: list[str] = []
+    branch add(words: list[str], w: str) -> int {
+        words.push(w)
+        self.seen.push(w)
+        return len(words)
+    }
+}
+branch methods() {
+    plant c = Counter()
+    plant words = ["a"]
+    plant n = c.add(words, "b")
+    plant m = c.add(words, "c")
+    drop("methods", n, m, words, c.seen)
+}
+methods()
+
+# a task and a channel get their own copies
+branch work(xs: list[int]) -> int {
+    xs.push(100)
+    return len(xs)
+}
+branch tasks() {
+    plant xs = [1, 2]
+    plant t = spawn work(xs)
+    xs.push(3)
+    drop("task", t.wait(), xs)
+    plant ch = Channel[list[int]](capacity: 2)
+    plant ys = [9]
+    ch.send(ys)
+    ys.push(10)
+    plant zs = [4]
+    ch.send(zs)
+    drop("channel", ch.receive(), ys, ch.receive())
+}
+tasks()
+
+# the last read in a try, then read again in its catch or finally
+branch fails(xs: list[int]) -> int {
+    if len(xs) > 1 {
+        throw ValueError("too long: {len(xs)}")
+    }
+    return 0
+}
+branch errors() {
+    plant xs = [1, 2]
+    try {
+        fails(xs)
+    } catch e: ValueError {
+        drop("caught", e.message, xs)
+    }
+    plant ys = [3, 4]
+    try {
+        try {
+            fails(ys)
+        } catch e: IndexError {
+            drop("not this one")
+        }
+    } catch e: ValueError {
+        drop("outer catch", ys)
+    }
+    plant zs = [5, 6]
+    try {
+        fails(zs)
+    } catch e: ValueError {
+        drop("caught again")
+    } finally {
+        drop("finally", zs)
+    }
+}
+errors()
+
+# index errors from a list in a local, with an index in a local or not
+branch index_errors() {
+    plant xs = [10, 20, 30]
+    plant i = 3
+    try {
+        drop(xs[i])
+    } catch e: IndexError {
+        drop("index", e.message)
+    }
+    try {
+        drop(xs[i - 4])
+    } catch e: IndexError {
+        drop("index", e.message)
+    }
+    plant empty: list[int] = []
+    plant j = 0
+    try {
+        drop(empty[j])
+    } catch e: IndexError {
+        drop("index", e.message)
+    }
+    drop("len", len(xs), len("héllo"), len({"a": 1}), len(set([1, 2])))
+}
+index_errors()
+
+# the loop variable of a for over a list, kept past its time round
+branch longest(words: list[str]) -> str {
+    plant best = ""
+    for w in words {
+        if len(w) > len(best) {
+            best = w
+        }
+    }
+    return best
+}
+drop("longest", longest(["ab", "abcd", "abc", "wxyz"]), longest([]))
+
+# an object's variable still holds it after its last read: a weak
+# reference to it reads the object until the variable goes
+tree Node {
+    v: int = 1
+}
+tree Holder {
+    n: weak Node? = none
+}
+branch take(n: Node) -> int => n.v
+branch weak_after_last_use() {
+    plant n = Node(v: 7)
+    plant h = Holder()
+    h.n = n
+    take(n)
+    drop("weak", h.n?.v)
+}
+weak_after_last_use()
+
+# interpolation writes ints and bools itself; the rest keep their order
+tree Loud {
+    name: str
+    branch to_str() -> str {
+        drop("  to_str of", self.name)
+        return self.name
+    }
+}
+branch said(s: str) -> str {
+    drop("  said", s)
+    return s
+}
+branch text() {
+    plant n = -9223372036854775807 - 1
+    plant big = 1 << 60
+    plant ok = good
+    drop("{n} {big} {ok} {bad} {0} {-5} {said("a")} {Loud("b")} {said("c")} {12:>4}|")
+    plant parts: list[str] = []
+    for i in 0..3 {
+        parts.push("{i}:{i * i}/{i % 2 == 0}")
+    }
+    drop(parts)
+}
+text()

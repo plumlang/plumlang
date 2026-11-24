@@ -13,7 +13,7 @@
 0029    |  IS_NONE
 0030    |  NOT
 0031    |  JUMP_IF_FALSE 12  ; -> 0046
-0034    6  GET_LOCAL 0
+0034    6  MOVE_LOCAL 0
 0037    |  CALL_BUILTIN drop 1
 0042    |  POP
 0043    5  JUMP 9  ; -> 0055

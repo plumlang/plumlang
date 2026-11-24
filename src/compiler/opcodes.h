@@ -17,6 +17,9 @@
  * method in the object's tree's table; CALL_METHOD calls one the compiler
  * resolved. Code never changes once compiled: no inline caches.
  *
+ * An instruction that reads a local slot must be listed in slot_uses()
+ * in compiler/moves.c, which moves a local on its last use.
+ *
  * X(name, operand count, what it does)
  */
 #ifndef PLUM_COMPILER_OPCODES_H
@@ -32,6 +35,7 @@
     X(DUP, 0, "push a copy of the top value")                                                      \
     /* Variables */                                                                                \
     X(GET_LOCAL, 1, "push local slot [a]")                                                         \
+    X(MOVE_LOCAL, 1, "push local slot [a] on its last use, leaving none there (#122)")             \
     X(SET_LOCAL, 1, "pop into local slot [a]")                                                     \
     X(BOX_LOCAL, 1, "put local [a] in a cell, for closures to share")                              \
     X(GET_CELL, 1, "push the value in local [a]'s cell")                                           \
@@ -118,6 +122,8 @@
     X(GE_STR, 0, "a >= b by code point")                                                           \
     X(TO_STRING, 1, "text of the top value, with format constant [a] (0xFFFF: none)")              \
     X(BUILD_STRING, 1, "join the top [a] strings")                                                 \
+    X(BUILD_TEXT, 2,                                                                               \
+      "join the top [a] values as text: constant [b] says each one's type (s str, i int, b bool)") \
     X(APPEND_LOCAL, 2, "str local [a] += the top [b] strings, in place if it has one owner")       \
     X(APPEND_GLOBAL, 2, "str global [a] += the top [b] strings, in place if it has one owner")     \
     /* Lists */                                                                                    \
@@ -126,6 +132,9 @@
     X(INDEX_MAP, 0, "map[key], or a missing-key error")                                            \
     X(BUILD_LIST, 1, "a list of the top [a] values")                                               \
     X(INDEX_LIST, 0, "list[index], or an index error")                                             \
+    X(INDEX_LIST_L, 1, "local [a][index] for a list in a local, which isn't pushed or counted")    \
+    X(INDEX_LIST_LL, 2, "local [a][local [b]] for a list and an int in locals, nothing counted")   \
+    X(LEN_L, 1, "len() of the str, list, map or set in local [a], which isn't pushed or counted")  \
     X(SLICE, 1, "list or str [low..high] (..= if [a]) as a new one")                               \
     X(CONTAINS, 0, "item in collection")                                                           \
     X(CONCAT_LIST, 0, "a + b for lists")                                                           \

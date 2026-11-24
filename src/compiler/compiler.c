@@ -52,6 +52,9 @@ typedef struct FnState {
     PlumSymbol *self;             /* a nested function's own name: GET_SELF, not a capture */
     const PlumBranch *decl;       /* a declared function's own declaration; NULL otherwise */
     size_t last_op;               /* where the last instruction written starts */
+    /* Per slot: 1 if every variable kept in it has a type whose freeing
+     * no program can see, 2 if not (moves.c moves only the first). */
+    PLUM_ARRAY(uint8_t) movable;
 } FnState;
 
 typedef struct TreeEntry {
@@ -175,7 +178,71 @@ static void emit_loop(Compiler *c, size_t start, PlumSpan span) {
 /* Slots                                                               */
 /* ------------------------------------------------------------------ */
 
-static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
+/*
+ * Can no program see when a value of type `t` is freed? True for numbers,
+ * strings and collections of them. Not for objects, whose weak references
+ * read none once they go, nor for files, sockets, functions (which may
+ * hold objects) or tasks: moving such a value on its last use (moves.c)
+ * could free it before the variable goes out of scope.
+ */
+static bool freed_unseen(const PlumTy *t) {
+    if (t == NULL) {
+        return false;
+    }
+    switch (t->kind) {
+    case PLUM_TY_NONE:
+    case PLUM_TY_BOOL:
+    case PLUM_TY_INT:
+    case PLUM_TY_FLOAT:
+    case PLUM_TY_STR:
+    case PLUM_TY_BYTE:
+    case PLUM_TY_JSON:
+        return true;
+    case PLUM_TY_LIST:
+    case PLUM_TY_SET:
+    case PLUM_TY_OPTIONAL:
+        return freed_unseen(t->as.elem);
+    case PLUM_TY_MAP:
+        return freed_unseen(t->as.map.key) && freed_unseen(t->as.map.value);
+    default:
+        return false;
+    }
+}
+
+/* Move a local on its last use where its slot only ever holds values
+ * whose freeing can't be seen (moves.c), then forget the slots. */
+static void finish_moves(FnState *fs) {
+    plum_chunk_moves(fs->fn->chunk, fs->fn->slot_count, fs->movable.items, fs->movable.len);
+    plum_array_free(&fs->movable);
+}
+
+/* What a slot holds, for finish_moves: a number or bool (no reference to
+ * move, and no change to the slot's state), a value whose freeing no one
+ * can see (moved on its last read), or anything else (never moved). */
+enum { SLOT_NUMBER, SLOT_MOVABLE, SLOT_OTHER };
+
+static int slot_holds(const PlumTy *t) {
+    if (t != NULL && (t->kind == PLUM_TY_INT || t->kind == PLUM_TY_FLOAT ||
+                      t->kind == PLUM_TY_BOOL || t->kind == PLUM_TY_BYTE)) {
+        return SLOT_NUMBER;
+    }
+    return freed_unseen(t) ? SLOT_MOVABLE : SLOT_OTHER;
+}
+
+/* Record what a slot holds, for finish_moves. */
+static void mark_slot(FnState *fs, int slot, int holds) {
+    while (fs->movable.len <= (size_t)slot) {
+        plum_array_push(&fs->movable, 0);
+    }
+    if (holds == SLOT_OTHER) {
+        fs->movable.items[slot] = 2;
+    } else if (holds == SLOT_MOVABLE && fs->movable.items[slot] == 0) {
+        fs->movable.items[slot] = 1;
+    }
+}
+
+/* A slot for `sym` (NULL: a hidden one), which holds `holds` (SLOT_...). */
+static uint16_t new_slot(Compiler *c, PlumSymbol *sym, PlumSpan span, int holds) {
     FnState *fs = c->fs;
     if (fs->next_slot >= MAX_SLOTS) {
         plum_diag_error(c->diags, span, "E0602",
@@ -186,11 +253,16 @@ static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
     if (fs->next_slot > fs->fn->slot_count) {
         fs->fn->slot_count = fs->next_slot;
     }
+    mark_slot(fs, slot, holds);
     if (sym != NULL) {
         sym->slot = slot;
         sym->has_slot = true;
     }
     return (uint16_t)slot;
+}
+
+static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
+    return new_slot(c, sym, span, sym != NULL ? slot_holds(sym->ty) : SLOT_OTHER);
 }
 
 /*
@@ -780,29 +852,56 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
 }
 
 /* Push the text of each part of an interpolated string. */
-static void compile_interp_parts(Compiler *c, const PlumExpr *e) {
+/*
+ * Push the parts of an interpolated string, each as its text. With
+ * `kinds`, an int or bool part with no format, and a str part with none,
+ * is pushed as it is, and kinds[i] says which ('i', 'b', 's'): BUILD_TEXT
+ * writes its text straight into the result, with no string made for it
+ * (#122). Making the text of an int or bool can't fail or run any code, so
+ * doing it at the end changes nothing a program can see.
+ */
+static void compile_interp_parts(Compiler *c, const PlumExpr *e, char *kinds) {
     for (size_t i = 0; i < e->as.interp.count; i++) {
         const PlumInterpPart *part = &e->as.interp.parts[i];
+        if (kinds != NULL) {
+            kinds[i] = 's';
+        }
         if (part->expr == NULL) {
             emit_const(c, plum_obj(&plum_string_new(part->text, part->len)->obj), e->span);
-        } else {
-            compile_expr(c, part->expr);
-            uint16_t fmt = NO_FORMAT;
-            if (part->format != NULL) {
-                fmt =
-                    constant(c, plum_obj(&plum_string_new(part->format, strlen(part->format))->obj),
-                             e->span);
-            }
-            op1(c, PLUM_OP_TO_STRING, fmt, part->expr->span.line);
+            continue;
         }
+        compile_expr(c, part->expr);
+        const PlumTy *t = part->expr->ty;
+        if (kinds != NULL && part->format == NULL &&
+            (ty_is(t, PLUM_TY_INT) || ty_is(t, PLUM_TY_BOOL) || ty_is(t, PLUM_TY_STR))) {
+            kinds[i] = ty_is(t, PLUM_TY_INT) ? 'i' : ty_is(t, PLUM_TY_BOOL) ? 'b' : 's';
+            continue;
+        }
+        uint16_t fmt = NO_FORMAT;
+        if (part->format != NULL) {
+            fmt = constant(c, plum_obj(&plum_string_new(part->format, strlen(part->format))->obj),
+                           e->span);
+        }
+        op1(c, PLUM_OP_TO_STRING, fmt, part->expr->span.line);
     }
 }
 
 static void compile_interp(Compiler *c, const PlumExpr *e) {
-    compile_interp_parts(c, e);
-    if (e->as.interp.count != 1) {
-        op1(c, PLUM_OP_BUILD_STRING, (uint16_t)e->as.interp.count, e->span.line);
+    size_t n = e->as.interp.count;
+    if (n == 1) {
+        compile_interp_parts(c, e, NULL);
+        return;
     }
+    char *kinds = plum_alloc(n + 1);
+    compile_interp_parts(c, e, kinds);
+    kinds[n] = '\0';
+    if (strspn(kinds, "s") == n) {
+        op1(c, PLUM_OP_BUILD_STRING, (uint16_t)n, e->span.line);
+    } else {
+        uint16_t k = constant(c, plum_obj(&plum_string_new(kinds, n)->obj), e->span);
+        op2(c, PLUM_OP_BUILD_TEXT, (uint16_t)n, k, e->span.line);
+    }
+    plum_free(kinds);
 }
 
 /* ------------------------------------------------------------------ */
@@ -843,7 +942,7 @@ static size_t emit_text_pieces(Compiler *c, const PlumExpr *e, const PlumExpr *s
         return n + emit_text_pieces(c, e->as.binary.right, skip);
     }
     if (e->kind == PLUM_EXPR_INTERP && e->as.interp.count > 1) {
-        compile_interp_parts(c, e);
+        compile_interp_parts(c, e, NULL);
         return e->as.interp.count;
     }
     compile_expr(c, e);
@@ -1922,6 +2021,21 @@ static void compile_index(Compiler *c, const PlumExpr *e) {
         op(c, PLUM_OP_INDEX_MAP, e->span.line);
         return;
     }
+    uint16_t slot;
+    if (idx->kind != PLUM_EXPR_RANGE && ty_is(obj->ty, PLUM_TY_LIST) &&
+        plain_local(c, obj, &slot)) {
+        /* Borrowed from its local (#122): only this function can assign to
+         * the local, and computing the index doesn't, so reading it after
+         * the index reads the same list. */
+        uint16_t at;
+        if (ty_is(idx->ty, PLUM_TY_INT) && plain_local(c, idx, &at)) {
+            op2(c, PLUM_OP_INDEX_LIST_LL, slot, at, e->span.line);
+            return;
+        }
+        compile_expr(c, idx);
+        op1(c, PLUM_OP_INDEX_LIST_L, slot, e->span.line);
+        return;
+    }
     compile_expr(c, obj);
     if (idx->kind == PLUM_EXPR_RANGE) {
         compile_expr(c, idx->as.range.low);
@@ -2314,6 +2428,12 @@ static void compile_call_as(Compiler *c, const PlumExpr *e, bool tail) {
         int id = builtin_id(sym->name);
         if (id < 0) {
             unsupported(c, e->span, "this built-in", 36);
+            return;
+        }
+        uint16_t slot;
+        if (id == PLUM_BUILTIN_LEN && e->as.call.arg_count == 1 &&
+            plain_local(c, e->as.call.args[0].value, &slot)) {
+            op1(c, PLUM_OP_LEN_L, slot, line); /* the local isn't pushed or counted (#122) */
             return;
         }
         for (size_t i = 0; i < e->as.call.arg_count; i++) {
@@ -2768,7 +2888,7 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
     uint32_t line = s->span.line;
     int saved = c->fs->next_slot;
     uint16_t list = new_local(c, NULL, s->span);
-    new_local(c, NULL, s->span); /* list + 1: the position */
+    new_slot(c, NULL, s->span, SLOT_NUMBER); /* list + 1: the position */
     uint16_t var = new_local(c, s->symbol, s->span);
     if (two) {
         new_local(c, s->symbol2, s->span); /* var + 1: the item, or the value */
@@ -2816,7 +2936,7 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
      * loop counts in a hidden slot and copies the count into it. */
     bool boxed = s->symbol != NULL && s->symbol->captured;
     uint16_t var = new_local(c, boxed ? NULL : s->symbol, s->span); /* `for _ in`: no symbol */
-    new_local(c, NULL, s->span);                                    /* var + 1: the end */
+    new_slot(c, NULL, s->span, SLOT_NUMBER);                        /* var + 1: the end */
     uint16_t user = boxed ? new_local(c, s->symbol, s->span) : var;
     bool inclusive = it->as.range.inclusive;
 
@@ -3383,6 +3503,7 @@ static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam
         }
         op(c, PLUM_OP_RETURN_NONE, body->span.line);
     }
+    finish_moves(&fs);
 
     /* What a closure of this function captures, in order. */
     fn->capture_count = (int)fs.captures.len;
@@ -3577,6 +3698,7 @@ static PlumFunction *compile_program(Compiler *c, const PlumCompileModule *modul
         }
         uint32_t end = program->count > 0 ? program->stmts[program->count - 1]->span.line : 1;
         op(c, PLUM_OP_RETURN_NONE, end);
+        finish_moves(c->fs);
         if (!last) {
             c->fs = &fs;
             c->path = NULL;

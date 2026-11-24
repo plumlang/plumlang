@@ -34,17 +34,14 @@
 0078    |  TO_STRING 11  ; ".1"
 0081    |  CONST 12  ; " "
 0084    |  GET_GLOBAL 2
-0087    |  TO_STRING -
-0090    |  CONST 13  ; "/"
-0093    |  GET_GLOBAL 3
-0096    |  TO_STRING -
-0099    |  CONST 12  ; " "
-0102    |  GET_GLOBAL 4
-0105    |  TO_STRING -
-0108    |  CONST 12  ; " "
-0111    |  GET_GLOBAL 5
-0114    |  TO_STRING -
-0117    |  BUILD_STRING 9
-0120    |  CALL_BUILTIN drop 1
-0125    |  POP
-0126    |  RETURN_NONE
+0087    |  CONST 13  ; "/"
+0090    |  GET_GLOBAL 3
+0093    |  TO_STRING -
+0096    |  CONST 12  ; " "
+0099    |  GET_GLOBAL 4
+0102    |  CONST 12  ; " "
+0105    |  GET_GLOBAL 5
+0108    |  BUILD_TEXT 9 14  ; "ssisssbss"
+0113    |  CALL_BUILTIN drop 1
+0118    |  POP
+0119    |  RETURN_NONE

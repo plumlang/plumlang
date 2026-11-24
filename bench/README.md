@@ -18,6 +18,7 @@ prints, and only then times it: fastest of three runs, or `--runs N`.
 | `textbuild` | building text: `+=` a line at a time (20,000 lines), and `join` of 600,000 pieces |
 | `words` | a hash-map workload: counting the words of a 1,000,000-word text in a `map[str, int]` |
 | `cart` | method dispatch over a collection: 4 million calls through a trait on 2,000 objects of four trees |
+| `lists` | collections handed to functions: a 200,000-int list summed and multiplied by index, a 300 x 300 grid read by column, 100,000 words grouped in a `map[str, list[str]]`, and a list built by a helper that returns it |
 
 Lua has no JSON in its standard library, so `jsondoc` has no Lua version.
 `+=` on a string copies it in CPython and Lua, so the `textbuild` loop is
@@ -715,4 +716,124 @@ changes where GCC puts `vm.c`'s functions, which is why the normal and
 harness builds can land on different offsets. Clang has `aligned` on
 functions too (the macOS release builds use it); MSVC has no equivalent,
 and its builds are unchanged.
+
+## Reference counts (#122)
+
+Every copy of a heap value counts a reference and every drop releases
+one. #122 asked to skip the counting that is provably unnecessary, with
+`strings` and a collection-heavy benchmark at least 1.5 times as fast.
+`lists` is that benchmark (committed, with its Python, Lua and Node.js
+twins, before any of the changes): lists and maps handed to functions
+that read them, a list indexed in a loop, a grid read by column, words
+grouped in a `map[str, list[str]]`.
+
+**Profile first** (`perf record`, `make` with `-g`, main):
+
+- `lists`: 77% in the run loop, 10% in `plum_release`, 4.5% in
+  `call_builtin` (`len`). Counting the dynamic instructions (a
+  throw-away counter in the run loop) showed what pushes references:
+  24.4 M of its 165 M instructions pushed an object, 19.6 M of them a
+  local list just to index it (`GET_LOCAL xs`, `GET_LOCAL i`,
+  `INDEX_LIST`: a count up, then a call to `plum_release` to count it
+  down) and 4 M a local string for `len()`.
+- `strings`: 8% in `plum_release`, but about 25% in `snprintf` and its
+  helpers, 10% in `malloc` and `free` and 10% in `plum_value_text_with`.
+  Each `{i}` made a temporary string (`TO_STRING`: a growable buffer,
+  `snprintf`, a count of its characters, a copy into a new string) that
+  `BUILD_STRING` copied and freed at once.
+
+So for `lists` the counting is the cost, and for `strings` it is the
+temporaries: counted, but mostly allocated and formatted.
+
+**What changed:**
+
+| Step | What | `lists` cycles | `strings` cycles | instructions |
+|---|---|---|---|---|
+| main | | 1304 M | 676 M | 6.17 G / 2.69 G |
+| borrowed locals | `xs[i]`, `len(s)` read the list or string in its slot: `INDEX_LIST_L`, `LEN_L`, nothing counted | 964 M | 653 M | 4.46 G / 2.64 G |
+| no temporaries in text | an int, bool or str part of an interpolation goes into the result as it is (`BUILD_TEXT`); `BUILD_STRING` drops its parts inline | 991 M | 393 M | 4.45 G / 1.56 G |
+| moves | a local moves on its last read (`MOVE_LOCAL`), `RETURN_LOCAL` moves, `xs[i]` with both in locals is one instruction (`INDEX_LIST_LL`) | 882 M | 402 M | 4.00 G / 1.56 G |
+| inline drops | an index, `in` or string comparison drops its operands inline while something else holds them | 865 M | 393 M | 3.94 G / 1.57 G |
+
+(`make`, GCC 15, medians of 7 interleaved rounds of `perf stat` pinned to
+one core, measured before rebasing onto the run loop alignment; the
+"no temporaries" step's `lists` cycles moved up with the same
+instructions, which is code placement.) `jsondoc` gained 8% from the text
+step (its keys are interpolated) and `words` 3% from the drops; nothing
+else changed by more than placement noise.
+
+**Results**, against main with the run loop aligned (#186), medians of
+11 interleaved rounds pinned to one P-core. Cycles and instructions from
+`perf stat`; times from `bench/run.py --baseline --pairs 11 --plum-only`:
+
+| Benchmark | `make`: cycles main | #122 | | time main | #122 | | PGO: cycles main | #122 | | time main | #122 | | `NANBOX=1`: cycles main | #122 | |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cart | 544 M | 547 M | 0.99x | 0.123 s | 0.124 s | 0.99x | 528 M | 532 M | 0.99x | 0.114 s | 0.116 s | 0.99x | 589 M | 586 M | 1.01x |
+| collatz | 1940 M | 1936 M | 1.00x | 0.446 s | 0.444 s | 1.00x | 1923 M | 1986 M | 0.97x | 0.422 s | 0.434 s | 0.97x | 2232 M | 2169 M | 1.03x |
+| dispatch | 399 M | 396 M | 1.01x | 0.088 s | 0.087 s | 1.01x | 371 M | 354 M | 1.05x | 0.080 s | 0.078 s | 1.02x | 377 M | 373 M | 1.01x |
+| fib | 90 M | 92 M | 0.98x | 0.019 s | 0.020 s | 0.97x | 87 M | 93 M | 0.94x | 0.019 s | 0.020 s | 0.95x | 97 M | 101 M | 0.96x |
+| jsondoc | 1140 M | 1083 M | 1.05x | 0.237 s | 0.215 s | 1.10x | 919 M | 855 M | 1.07x | 0.191 s | 0.177 s | 1.08x | 1070 M | 995 M | 1.08x |
+| **lists** | 1315 M | 880 M | **1.49x** | 0.297 s | 0.190 s | **1.56x** | 1239 M | 835 M | **1.48x** | 0.269 s | 0.178 s | **1.51x** | 1263 M | 803 M | **1.57x** |
+| loop | 911 M | 910 M | 1.00x | 0.199 s | 0.200 s | 1.00x | 742 M | 743 M | 1.00x | 0.162 s | 0.162 s | 1.00x | 1021 M | 1020 M | 1.00x |
+| mandelbrot | 647 M | 655 M | 0.99x | 0.142 s | 0.142 s | 1.00x | 746 M | 710 M | 1.05x | 0.162 s | 0.154 s | 1.05x | 615 M | 622 M | 0.99x |
+| **strings** | 673 M | 388 M | **1.73x** | 0.152 s | 0.087 s | **1.75x** | 549 M | 349 M | **1.57x** | 0.117 s | 0.075 s | **1.56x** | 663 M | 394 M | **1.68x** |
+| textbuild | 222 M | 217 M | 1.02x | 0.048 s | 0.047 s | 1.04x | 185 M | 199 M | 0.93x | 0.037 s | 0.040 s | 0.93x | 200 M | 199 M | 1.00x |
+| words | 1279 M | 1266 M | 1.01x | 0.264 s | 0.260 s | 1.02x | 1116 M | 1105 M | 1.01x | 0.233 s | 0.233 s | 1.00x | 1197 M | 1187 M | 1.01x |
+
+Instructions: `lists` 6.17 G → 3.92 G, `strings` 2.68 G → 1.56 G,
+`jsondoc` 3.99 G → 3.76 G with `make`; the rest within 0.5% in all
+three builds, except PGO's `textbuild` (+2.7%): `lists` is now part of
+the PGO training (tools/pgo-train.sh runs every benchmark), which shifts
+the profile, and `textbuild` loses 7% there. `fib`'s 2–6% in cycles comes
+with the same instructions: placement of code outside the run loop.
+
+**Verdict.** `strings` is 1.56–1.75 times as fast in every build.
+`lists` reaches 1.5 by time (1.51–1.56x) and in the NaN-boxed build
+(1.57x), but in cycles with the 16-byte layout it sits just under it
+(1.48–1.49x). What `lists` still spends is no longer counting: after
+these changes under 1 M of its 141 M instructions push a reference. It is
+the dispatch and the stack traffic of int arithmetic (`s += a[i] * b[i]`
+is still `GET_LOCAL`, two `INDEX_LIST_LL`, `MUL_INT`, `ADD_INT`,
+`SET_LOCAL`), which fewer reference counts can't remove; a register VM
+(#123) can. Against the other interpreters on the same machine, `lists`
+takes 0.179 s, CPython 3.14 0.482 s (2.70x), Lua 5.3 0.307 s (1.72x),
+Node.js 0.101 s; `strings` 0.084 s, CPython 0.164 s (1.94x), Lua 0.127 s
+(1.50x).
+
+**Value semantics.** A move empties a slot that no path reads again
+before writing it, and the analysis is conservative: every instruction
+that reads a local is listed in `compiler/moves.c` (and
+`tests/bytecode-documented.sh` fails if an instruction whose
+description names a local isn't), a closure's variables live in cells
+and are never moved, `MAKE_CLOSURE` counts as reading every slot, and
+inside a `try` the handler counts as following every instruction.
+`tests/lang/memory/moves.plum` checks what a wrong move or borrow would
+break: a list passed then read, copied then changed, read again next
+time round a loop, captured by a closure, put in a field, a list or a
+map, sent to a task or over a channel, changed by a method, read in a
+`catch` or `finally` (nested too), index errors with locals, and the
+order of `to_str()` calls in an interpolation; it prints the same with
+main's binary. The whole suite passes in both layouts, and
+`--check-leaks` and `--mem-stats` report the same as main's for every
+test, example and benchmark (141 programs; memory at exit is 0 for all
+of them), apart from the counts of strings and lists made: fewer, since
+the temporaries and the copies a move avoids are no longer made
+(`moves.plum`: 37 lists instead of 43).
+
+**What was tried, or not:**
+
+| Change | Result | Kept |
+|---|---|---|
+| Moving any local on its last read | an object can then be freed before its variable goes out of scope, which a program can see: its weak references read none (`weak_after_last_use` in the test), a file closes. Moves are limited to slots that only ever hold numbers, strings and collections of them | limited |
+| Moving a module variable | not done: a function called in between can read it | no |
+| `MOVE_LOCAL` for slots of numbers | nothing to save (no reference), so a number slot keeps `GET_LOCAL` | no |
+| `BUILD_TEXT` inline in the run loop | 2–4% more instructions on `collatz`, `fib` and `mandelbrot` in the NaN-boxed build, which never run it; out of line, level | no |
+| Parts with a format, floats and objects in `BUILD_TEXT` | not done: a format can fail and `to_str()` runs code, which must happen in order (the test checks it); floats need their own buffer per part. They keep `TO_STRING` | no |
+| Borrowed parameters (the callee doesn't own its arguments) | not done: every return, unwind and tail call would have to know which slots it may not release, and a move out of such a slot would give away a reference it doesn't hold. The profile shows a call's arguments cost one count each per call, not per iteration | no |
+| Borrowing an indexed temporary (`grid[r][c]`'s row) | not done: the row's count goes up and down inline now; the rest is a new instruction per shape | no |
+| Fewer instructions for int arithmetic on list items | out of #122's scope (it is not counting); #123 | — |
+
+`--mem-stats` reports fewer strings made by programs that interpolate
+ints and bools (`tests/lang/memory/mem_stats.plum`: 17 instead of 27),
+since those temporaries are no longer made.
 

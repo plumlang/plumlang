@@ -1943,6 +1943,15 @@ static inline void drop_ref(const PlumValue *v) {
     }
 }
 
+/* Let go of a value popped off the stack: inline while something else
+ * still holds its object (a list read from a variable, a constant), the
+ * function call only when it may go (#122). */
+static inline void drop_value(PlumValue v) {
+    if (plum_is_ref(v)) {
+        drop_ref(&v);
+    }
+}
+
 /* Release the objects among [from, to): the scan makes no calls, so a
  * return whose slots hold only numbers doesn't spill registers. */
 #if defined(__GNUC__)
@@ -2114,6 +2123,82 @@ static inline void push_copy(VM *vm, const PlumValue *from) {
     if (plum_is_ref(*to)) {
         plum_as_obj(*to)->refcount++;
     }
+}
+
+/* Let go of the top n values, inline while something else still holds
+ * each one (#122): a part of a text being joined is often a constant. */
+static inline void drop_top(VM *vm, size_t n) {
+    PlumValue *v = &vm->stack[vm->top - n];
+    vm->top -= n;
+    for (size_t i = 0; i < n; i++) {
+        if (plum_is_ref(v[i])) {
+            drop_ref(&v[i]);
+        }
+    }
+}
+
+/* How many characters the decimal text of `i` takes. */
+static size_t int_text_length(int64_t i) {
+    uint64_t u = i < 0 ? (uint64_t)0 - (uint64_t)i : (uint64_t)i;
+    size_t n = i < 0 ? 2 : 1;
+    while (u >= 10) {
+        u /= 10;
+        n++;
+    }
+    return n;
+}
+
+/* Write the decimal text of `i` (as "%lld" would) at `to`, with no '\0';
+ * returns its length. */
+static size_t int_text(char *to, int64_t i) {
+    size_t n = int_text_length(i);
+    uint64_t u = i < 0 ? (uint64_t)0 - (uint64_t)i : (uint64_t)i;
+    char *at = to + n;
+    do {
+        *--at = (char)('0' + u % 10);
+        u /= 10;
+    } while (u != 0);
+    if (i < 0) {
+        *--at = '-';
+    }
+    return n;
+}
+
+/* BUILD_TEXT: join the top n values, as text, into one string in their
+ * place. kinds[i] says what each one is: 's' a str, 'i' an int, 'b' a
+ * bool. False, with nothing changed, if the text would be too long. Out
+ * of the run loop, which it would otherwise make larger for every
+ * instruction. */
+VM_NOINLINE static bool build_text(VM *vm, uint16_t n, const char *kinds) {
+    PlumValue *parts = &vm->stack[vm->top - n];
+    size_t total = 0;
+    for (uint16_t i = 0; i < n; i++) {
+        size_t len = kinds[i] == 'i'   ? int_text_length(plum_as_int(parts[i]))
+                     : kinds[i] == 'b' ? (plum_as_bool(parts[i]) ? 4 : 3)
+                                       : plum_as_string(parts[i])->len;
+        total = plum_add_size(total, len);
+    }
+    if (total > PLUM_MAX_STRING) {
+        return false;
+    }
+    PlumString *s = plum_string_alloc(total);
+    char *to = s->chars;
+    for (uint16_t i = 0; i < n; i++) {
+        if (kinds[i] == 'i') {
+            to += int_text(to, plum_as_int(parts[i]));
+        } else if (kinds[i] == 'b') {
+            bool b = plum_as_bool(parts[i]);
+            memcpy(to, b ? "good" : "bad", b ? 4 : 3);
+            to += b ? 4 : 3;
+        } else {
+            const PlumString *part = plum_as_string(parts[i]);
+            memcpy(to, part->chars, part->len);
+            to += part->len;
+        }
+    }
+    drop_top(vm, n);
+    push(vm, plum_obj(&s->obj));
+    return true;
 }
 
 /* Read a 16-bit operand and move past it. */
@@ -2434,8 +2519,8 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
         PlumValue b = pop(vm);                                         \
         PlumValue a = pop(vm);                                         \
         int c = compare_strings(plum_as_string(a), plum_as_string(b)); \
-        plum_release(a);                                               \
-        plum_release(b);                                               \
+        drop_value(a);                                                 \
+        drop_value(b);                                                 \
         push(vm, plum_bool(test));                                     \
     } while (0)
 
@@ -2465,6 +2550,17 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             uint16_t n = READ_U16();
             reserve_one(vm);
             push_copy(vm, &SLOT(n));
+            break;
+        }
+        case PLUM_OP_MOVE_LOCAL: {
+            /* the last read of the slot: its reference moves to the stack */
+            uint16_t n = READ_U16();
+            reserve_one(vm);
+            PlumValue *slot = &SLOT(n);
+            copy_value(&vm->stack[vm->top++], slot);
+            if (plum_is_ref(*slot)) {
+                *slot = plum_none();
+            }
             break;
         }
         case PLUM_OP_SET_LOCAL: {
@@ -2869,8 +2965,19 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 at -= part->len;
                 memcpy(s->chars + at, part->chars, part->len);
             }
-            unwind_to(vm, vm->top - n);
+            drop_top(vm, n);
             push(vm, plum_obj(&s->obj));
+            break;
+        }
+        case PLUM_OP_BUILD_TEXT: {
+            uint16_t n = READ_U16();
+            const char *kinds = plum_as_string(KONST(READ_U16()))->chars;
+            if (!build_text(vm, n, kinds)) {
+                FAIL(PLUM_ERROR_VALUE,
+                     "the text would be longer than %zu bytes, the most a "
+                     "str can hold",
+                     PLUM_MAX_STRING);
+            }
             break;
         }
 
@@ -2927,7 +3034,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             size_t from = plum_string_offset(s, (size_t)i);
             size_t to = plum_string_offset(s, (size_t)i + 1);
             PlumString *ch = plum_string_new(s->chars + from, to - from);
-            plum_release(v);
+            drop_value(v);
             push(vm, plum_obj(&ch->obj));
             break;
         }
@@ -2950,8 +3057,8 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 goto thrown;
             }
             push(vm, plum_retain(*found));
-            plum_release(m);
-            plum_release(key);
+            drop_value(m);
+            drop_value(key);
             break;
         }
         case PLUM_OP_BUILD_LIST: {
@@ -2975,7 +3082,44 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 goto thrown;
             }
             push(vm, plum_retain(list->items[i]));
-            plum_release(v);
+            drop_value(v);
+            break;
+        }
+        case PLUM_OP_INDEX_LIST_L: {
+            /* the list stays in its local: no reference counted (#122) */
+            const PlumList *list = plum_as_list(SLOT(READ_U16()));
+            int64_t i = pop_int(vm);
+            if ((uint64_t)i >= list->len) {
+                SAVE_IP(); /* so the error names this line */
+                check_index(vm, i, list->len);
+                goto thrown;
+            }
+            push(vm, plum_retain(list->items[i]));
+            break;
+        }
+        case PLUM_OP_INDEX_LIST_LL: {
+            const PlumList *list = plum_as_list(SLOT(READ_U16()));
+            int64_t i = plum_as_int(SLOT(READ_U16()));
+            if ((uint64_t)i >= list->len) {
+                SAVE_IP(); /* so the error names this line */
+                check_index(vm, i, list->len);
+                goto thrown;
+            }
+            reserve_one(vm);
+            push_copy(vm, &list->items[i]);
+            break;
+        }
+        case PLUM_OP_LEN_L: {
+            PlumValue v = SLOT(READ_U16());
+            int64_t n;
+            if (plum_is_obj(v, PLUM_OBJ_LIST)) {
+                n = (int64_t)plum_as_list(v)->len;
+            } else if (plum_is_obj(v, PLUM_OBJ_MAP)) {
+                n = (int64_t)plum_as_table(v)->count;
+            } else {
+                n = (int64_t)plum_string_length(plum_as_string(v));
+            }
+            push(vm, plum_int(n));
             break;
         }
         case PLUM_OP_SLICE: {
@@ -3023,8 +3167,8 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                     found = plum_values_equal(list->items[i], item);
                 }
             }
-            plum_release(coll);
-            plum_release(item);
+            drop_value(coll);
+            drop_value(item);
             push(vm, plum_bool(found));
             break;
         }
@@ -3820,10 +3964,11 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             throw_error(vm, pop(vm));
             goto thrown;
         case PLUM_OP_RETURN_LOCAL: {
-            const PlumValue *v = &SLOT(READ_U16());
+            /* the slot goes with the frame: its reference moves (#122) */
+            PlumValue *v = &SLOT(READ_U16());
             copy_value(&ret, v);
             if (plum_is_ref(ret)) {
-                plum_as_obj(ret)->refcount++;
+                *v = plum_none();
             }
             goto do_return;
         }

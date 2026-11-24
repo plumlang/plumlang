@@ -71,7 +71,14 @@ closure captured (which lives in a cell) uses the plain instructions.
 
 An interpolated string pushes the text of each part and joins them with
 one `BUILD_STRING`; so does a chain of `+` on strings (`a + b + "{c}"`),
-rather than making a new string for every `+`.
+rather than making a new string for every `+`. A part that is an int or
+a bool with no format, or a str with none, is pushed as it is, and
+`BUILD_TEXT` joins the parts instead: a constant string, one letter per
+part (`s` str, `i` int, `b` bool), says what each one is, and it writes
+the text of the ints and bools straight into the result, with no string
+made for each (#122). Their text can't fail or run code, so making it at
+the end changes nothing a program sees; a part with a format, or of any
+other type, still gets its own `TO_STRING`, in order.
 
 `s += text` and `s = s + text`, on a str local or module variable, push
 the pieces of `text` the same way and then `APPEND_LOCAL` or
@@ -84,6 +91,34 @@ The compiler freezes its constant strings. A module variable uses
 `APPEND_GLOBAL` only when computing `text` makes no call, which could
 change the variable before it is read; a captured variable (in a cell)
 and a field use the plain instructions.
+
+## References
+
+Every value on the stack or in a slot holds a reference to its object
+(spec 11.2), so pushing a local's copy counts one and popping it lets
+it go. Some instructions avoid that (#122):
+
+| Form | Example | Instead of |
+|---|---|---|
+| A list, str or map read in its local slot, not pushed | `xs[i]`: `INDEX_LIST_LL`; `xs[i + 1]`: `INDEX_LIST_L`; `len(s)`: `LEN_L` | `GET_LOCAL`, ..., `INDEX_LIST` or `CALL_BUILTIN len` |
+| A local's last read moves it | `f(xs)` where `xs` isn't read again: `MOVE_LOCAL` | `GET_LOCAL` |
+
+Only the running function can assign to its locals (a closure's
+variable lives in a cell, and uses the plain instructions), so a local
+read after its index is computed is still the same list.
+
+`MOVE_LOCAL` pushes the value and leaves none in the slot. After a
+function is compiled, a liveness analysis of its bytecode
+(`src/compiler/moves.c`) turns into `MOVE_LOCAL` each `GET_LOCAL` after
+which no path reads that slot before writing it; inside a `try`, the
+handler counts as a path from every instruction. A list passed on its
+last use then reaches the function with one owner, which changes it in
+place instead of copying it first, and nothing is counted or released
+for the copy. It is done only for slots that hold numbers, strings and
+collections of them: freeing an object can be seen (its weak references
+read none, a file closes), and the program must not see it happen before
+the variable goes. `RETURN_LOCAL` always moves: the slot goes with the
+frame.
 
 ## Range loops
 
@@ -148,185 +183,189 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 4 | `POP` | 0 | drop the top value |
 | 5 | `DUP` | 0 | push a copy of the top value |
 | 6 | `GET_LOCAL` | 1 | push local slot [a] |
-| 7 | `SET_LOCAL` | 1 | pop into local slot [a] |
-| 8 | `BOX_LOCAL` | 1 | put local [a] in a cell, for closures to share |
-| 9 | `GET_CELL` | 1 | push the value in local [a]'s cell |
-| 10 | `SET_CELL` | 1 | pop into local [a]'s cell |
-| 11 | `GET_CAPTURE` | 1 | push captured variable [a] of the running closure |
-| 12 | `SET_CAPTURE` | 1 | pop into captured variable [a] of the running closure |
-| 13 | `GET_SELF` | 0 | push the running function itself (a nested function calling itself) |
-| 14 | `MAKE_CLOSURE` | 1 | a closure of function constant [a], capturing what it lists |
-| 15 | `GET_GLOBAL` | 1 | push global slot [a] |
-| 16 | `SET_GLOBAL` | 1 | pop into global slot [a] |
-| 17 | `ADD_INT` | 0 | a + b |
-| 18 | `SUB_INT` | 0 | a - b |
-| 19 | `MUL_INT` | 0 | a * b |
-| 20 | `FLOORDIV_INT` | 0 | a // b |
-| 21 | `MOD_INT` | 0 | a % b, with the sign of b |
-| 22 | `POW_INT` | 0 | a ** b, b >= 0 |
-| 23 | `NEG_INT` | 0 | -a |
-| 24 | `BAND` | 0 | a & b |
-| 25 | `BOR` | 0 | a  |
-| 26 | `BXOR` | 0 | a ^ b |
-| 27 | `BNOT` | 0 | ~a |
-| 28 | `SHL` | 0 | a << b, 0 <= b <= 63 |
-| 29 | `SHR` | 0 | a >> b (arithmetic), 0 <= b <= 63 |
-| 30 | `LT_INT` | 0 | a < b |
-| 31 | `LE_INT` | 0 | a <= b |
-| 32 | `GT_INT` | 0 | a > b |
-| 33 | `GE_INT` | 0 | a >= b |
-| 34 | `EQ_INT` | 0 | a == b |
-| 35 | `NE_INT` | 0 | a != b |
-| 36 | `ADD_INT_K` | 1 | a + int constant [a] |
-| 37 | `SUB_INT_K` | 1 | a - int constant [a] |
-| 38 | `MUL_INT_K` | 1 | a * int constant [a] |
-| 39 | `FLOORDIV_INT_K` | 1 | a // int constant [a], which is above 0 |
-| 40 | `MOD_INT_K` | 1 | a % int constant [a], which is above 0 |
-| 41 | `ADD_INT_L` | 1 | a + int local [a] |
-| 42 | `SUB_INT_L` | 1 | a - int local [a] |
-| 43 | `MUL_INT_L` | 1 | a * int local [a] |
-| 44 | `ADD_INT_LK` | 2 | push int local [a] + [b] |
-| 45 | `SUB_INT_LK` | 2 | push int local [a] - [b] |
-| 46 | `MUL_INT_LK` | 2 | push int local [a] * [b] |
-| 47 | `FLOORDIV_INT_LK` | 2 | push int local [a] // [b], which is above 0 |
-| 48 | `MOD_INT_LK` | 2 | push int local [a] % [b], which is above 0 |
-| 49 | `LOCAL_ADD_INT_K` | 2 | int local [a] += int constant [b] |
-| 50 | `LOCAL_SUB_INT_K` | 2 | int local [a] -= int constant [b] |
-| 51 | `LOCAL_MUL_INT_K` | 2 | int local [a] *= int constant [b] |
-| 52 | `LOCAL_FLOORDIV_INT_K` | 2 | int local [a] //= int constant [b], which is above 0 |
-| 53 | `LOCAL_MOD_INT_K` | 2 | int local [a] %= int constant [b], which is above 0 |
-| 54 | `LOCAL_ADD_INT_L` | 2 | int local [a] += int local [b] |
-| 55 | `LOCAL_SUB_INT_L` | 2 | int local [a] -= int local [b] |
-| 56 | `GLOBAL_ADD_INT_K` | 2 | int global [a] += int constant [b] |
-| 57 | `GLOBAL_SUB_INT_K` | 2 | int global [a] -= int constant [b] |
-| 58 | `GLOBAL_ADD_INT_L` | 2 | int global [a] += int local [b] |
-| 59 | `GLOBAL_SUB_INT_L` | 2 | int global [a] -= int local [b] |
-| 60 | `ADD_FLOAT` | 0 | a + b |
-| 61 | `SUB_FLOAT` | 0 | a - b |
-| 62 | `MUL_FLOAT` | 0 | a * b |
-| 63 | `DIV_FLOAT` | 0 | a / b |
-| 64 | `FLOORDIV_FLOAT` | 0 | floor(a / b) |
-| 65 | `MOD_FLOAT` | 0 | a % b, with the sign of b |
-| 66 | `POW_FLOAT` | 0 | a ** b |
-| 67 | `NEG_FLOAT` | 0 | -a |
-| 68 | `LT_FLOAT` | 0 | a < b |
-| 69 | `LE_FLOAT` | 0 | a <= b |
-| 70 | `GT_FLOAT` | 0 | a > b |
-| 71 | `GE_FLOAT` | 0 | a >= b |
-| 72 | `EQ_FLOAT` | 0 | a == b |
-| 73 | `NE_FLOAT` | 0 | a != b |
-| 74 | `ADD_FLOAT_K` | 1 | a + float constant [a] |
-| 75 | `SUB_FLOAT_K` | 1 | a - float constant [a] |
-| 76 | `MUL_FLOAT_K` | 1 | a * float constant [a] |
-| 77 | `DIV_FLOAT_K` | 1 | a / float constant [a] |
-| 78 | `ADD_FLOAT_L` | 1 | a + float local [a] |
-| 79 | `SUB_FLOAT_L` | 1 | a - float local [a] |
-| 80 | `MUL_FLOAT_L` | 1 | a * float local [a] |
-| 81 | `DIV_FLOAT_L` | 1 | a / float local [a] |
-| 82 | `INT_TO_FLOAT` | 0 | convert the top value |
-| 83 | `CONCAT` | 0 | a + b for strings |
-| 84 | `LT_STR` | 0 | a < b by code point |
-| 85 | `LE_STR` | 0 | a <= b by code point |
-| 86 | `GT_STR` | 0 | a > b by code point |
-| 87 | `GE_STR` | 0 | a >= b by code point |
-| 88 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
-| 89 | `BUILD_STRING` | 1 | join the top [a] strings |
-| 90 | `APPEND_LOCAL` | 2 | str local [a] += the top [b] strings, in place if it has one owner |
-| 91 | `APPEND_GLOBAL` | 2 | str global [a] += the top [b] strings, in place if it has one owner |
-| 92 | `BUILD_MAP` | 1 | a map of the top [a] key, value pairs |
-| 93 | `INDEX_STR` | 0 | the character at str[index], or an index error |
-| 94 | `INDEX_MAP` | 0 | map[key], or a missing-key error |
-| 95 | `BUILD_LIST` | 1 | a list of the top [a] values |
-| 96 | `INDEX_LIST` | 0 | list[index], or an index error |
-| 97 | `SLICE` | 1 | list or str [low..high] (..= if [a]) as a new one |
-| 98 | `CONTAINS` | 0 | item in collection |
-| 99 | `CONCAT_LIST` | 0 | a + b for lists |
-| 100 | `METHOD` | 2 | call method [a] with [b] arguments on the value under them |
-| 101 | `METHOD_LOCAL` | 3 | call method [b] with [c] arguments on local [a] in place |
-| 102 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
-| 103 | `METHOD_CAPTURE` | 3 | call method [b] with [c] arguments on captured variable [a] in place |
-| 104 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
-| 105 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
-| 106 | `SET_INDEX_CAPTURE` | 1 | captured variable [a][index] = value, in place |
-| 107 | `SET_PATH_LOCAL` | 2 | local [a], [b] keys down: set the item, copying shared levels |
-| 108 | `SET_PATH_GLOBAL` | 2 | global [a], [b] keys down: set the item, copying shared levels |
-| 109 | `SET_PATH_CAPTURE` | 2 | captured variable [a], [b] keys down: set the item |
-| 110 | `SET_PATH_FIELD` | 2 | object.field [a], [b] keys down: set the item, copying shared levels |
-| 111 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
-| 112 | `NEW_OBJECT` | 2 | an object of tree constant [a] from its [b] fields on the stack |
-| 113 | `GET_FIELD` | 1 | field [a] of the object on top |
-| 114 | `SET_FIELD` | 1 | object.field [a] = value (shared: every holder sees it) |
-| 115 | `GET_FIELD_L` | 2 | field [b] of the object in local [a] |
-| 116 | `SET_FIELD_L` | 2 | pop into field [b] of the object in local [a] |
-| 117 | `FIELD_ADD_INT_K` | 3 | int field [b] of the object in local [a] += int constant [c] |
-| 118 | `FIELD_SUB_INT_K` | 3 | int field [b] of the object in local [a] -= int constant [c] |
-| 119 | `FIELD_ADD_INT_L` | 3 | int field [b] of the object in local [a] += int local [c] |
-| 120 | `FIELD_SUB_INT_L` | 3 | int field [b] of the object in local [a] -= int local [c] |
-| 121 | `FIELD_ADD_FLOAT_K` | 3 | float field [b] of the object in local [a] += float constant [c] |
-| 122 | `FIELD_SUB_FLOAT_K` | 3 | float field [b] of the object in local [a] -= float constant [c] |
-| 123 | `FIELD_ADD_FLOAT_L` | 3 | float field [b] of the object in local [a] += float local [c] |
-| 124 | `FIELD_SUB_FLOAT_L` | 3 | float field [b] of the object in local [a] -= float local [c] |
-| 125 | `IS_TREE` | 1 | is the top value an object of tree constant [a] or one extending it |
-| 126 | `WEAK` | 0 | the top value as a weak reference (an object's weak box; none stays none) |
-| 127 | `UNWEAK` | 0 | a weak reference's object, or none if it is gone |
-| 128 | `IS_TRAIT` | 1 | does the top value's tree have the trait named by constant [a] |
-| 129 | `INVOKE` | 2 | call method [a] of the object under [b] arguments, the object as self |
-| 130 | `INVOKE_FROM` | 3 | call tree constant [a]'s method [b] (super, init) with [c] arguments |
-| 131 | `CALL_METHOD` | 2 | call program method [a], found when compiling, the object under [b] args |
-| 132 | `EQ` | 0 | a == b, for any two values |
-| 133 | `NE` | 0 | a != b, for any two values |
-| 134 | `NOT` | 0 | not a |
-| 135 | `IS_NONE` | 0 | a == none |
-| 136 | `JUMP` | 1 | jump forward [a] bytes |
-| 137 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 138 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 139 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 140 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 141 | `JUMP_IF_NONE_KEEP` | 1 | jump forward [a] bytes if none, keeping the value |
-| 142 | `JUMP_IF_NOT_LT_INT` | 1 | pop two ints; jump forward [a] bytes unless a < b |
-| 143 | `JUMP_IF_NOT_LE_INT` | 1 | pop two ints; jump forward [a] bytes unless a <= b |
-| 144 | `JUMP_IF_NOT_GT_INT` | 1 | pop two ints; jump forward [a] bytes unless a > b |
-| 145 | `JUMP_IF_NOT_GE_INT` | 1 | pop two ints; jump forward [a] bytes unless a >= b |
-| 146 | `JUMP_IF_NOT_EQ_INT` | 1 | pop two ints; jump forward [a] bytes unless a == b |
-| 147 | `JUMP_IF_NOT_NE_INT` | 1 | pop two ints; jump forward [a] bytes unless a != b |
-| 148 | `JUMP_IF_NOT_LT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a < b |
-| 149 | `JUMP_IF_NOT_LE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a <= b |
-| 150 | `JUMP_IF_NOT_GT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a > b |
-| 151 | `JUMP_IF_NOT_GE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a >= b |
-| 152 | `JUMP_IF_NOT_EQ_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a == b |
-| 153 | `JUMP_IF_NOT_NE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a != b |
-| 154 | `JUMP_IF_NOT_LT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a < constant [a] |
-| 155 | `JUMP_IF_NOT_LE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a <= constant [a] |
-| 156 | `JUMP_IF_NOT_GT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a > constant [a] |
-| 157 | `JUMP_IF_NOT_GE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a >= constant [a] |
-| 158 | `JUMP_IF_NOT_EQ_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a == constant [a] |
-| 159 | `JUMP_IF_NOT_NE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a != constant [a] |
-| 160 | `JUMP_IF_NOT_LT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a < constant [a] |
-| 161 | `JUMP_IF_NOT_LE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a <= constant [a] |
-| 162 | `JUMP_IF_NOT_GT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a > constant [a] |
-| 163 | `JUMP_IF_NOT_GE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a >= constant [a] |
-| 164 | `JUMP_IF_NOT_EQ_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a == constant [a] |
-| 165 | `JUMP_IF_NOT_NE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a != constant [a] |
-| 166 | `JUMP_IF_NOT_LT_INT_LK` | 3 | jump [c] unless int local [a] < [b] |
-| 167 | `JUMP_IF_NOT_LE_INT_LK` | 3 | jump [c] unless int local [a] <= [b] |
-| 168 | `JUMP_IF_NOT_GT_INT_LK` | 3 | jump [c] unless int local [a] > [b] |
-| 169 | `JUMP_IF_NOT_GE_INT_LK` | 3 | jump [c] unless int local [a] >= [b] |
-| 170 | `JUMP_IF_NOT_EQ_INT_LK` | 3 | jump [c] unless int local [a] == [b] |
-| 171 | `JUMP_IF_NOT_NE_INT_LK` | 3 | jump [c] unless int local [a] != [b] |
-| 172 | `LOOP` | 1 | jump back [a] bytes |
-| 173 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 174 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
-| 175 | `END_TRY` | 1 | the last [a] tries are over |
-| 176 | `THROW` | 0 | throw the error on top |
-| 177 | `CALL` | 1 | call the function under [a] arguments |
-| 178 | `CALL_GLOBAL` | 2 | call the function in global [a] with the [b] arguments on top |
-| 179 | `CALL_SELF` | 1 | call the running function with the [a] arguments on top |
-| 180 | `TAIL_SELF` | 1 | return what the running function returns for the [a] arguments on top |
-| 181 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 182 | `SPAWN` | 1 | a task running the function under [a] arguments; push the task |
-| 183 | `CALL_NATIVE` | 2 | call standard-library function [a] with [b] arguments |
-| 184 | `RETURN` | 0 | return the top value |
-| 185 | `RETURN_LOCAL` | 1 | return local slot [a] |
-| 186 | `RETURN_ADD_INT` | 0 | return a + b |
-| 187 | `RETURN_NONE` | 0 | return none |
+| 7 | `MOVE_LOCAL` | 1 | push local slot [a] on its last use, leaving none there (#122) |
+| 8 | `SET_LOCAL` | 1 | pop into local slot [a] |
+| 9 | `BOX_LOCAL` | 1 | put local [a] in a cell, for closures to share |
+| 10 | `GET_CELL` | 1 | push the value in local [a]'s cell |
+| 11 | `SET_CELL` | 1 | pop into local [a]'s cell |
+| 12 | `GET_CAPTURE` | 1 | push captured variable [a] of the running closure |
+| 13 | `SET_CAPTURE` | 1 | pop into captured variable [a] of the running closure |
+| 14 | `GET_SELF` | 0 | push the running function itself (a nested function calling itself) |
+| 15 | `MAKE_CLOSURE` | 1 | a closure of function constant [a], capturing what it lists |
+| 16 | `GET_GLOBAL` | 1 | push global slot [a] |
+| 17 | `SET_GLOBAL` | 1 | pop into global slot [a] |
+| 18 | `ADD_INT` | 0 | a + b |
+| 19 | `SUB_INT` | 0 | a - b |
+| 20 | `MUL_INT` | 0 | a * b |
+| 21 | `FLOORDIV_INT` | 0 | a // b |
+| 22 | `MOD_INT` | 0 | a % b, with the sign of b |
+| 23 | `POW_INT` | 0 | a ** b, b >= 0 |
+| 24 | `NEG_INT` | 0 | -a |
+| 25 | `BAND` | 0 | a & b |
+| 26 | `BOR` | 0 | a  |
+| 27 | `BXOR` | 0 | a ^ b |
+| 28 | `BNOT` | 0 | ~a |
+| 29 | `SHL` | 0 | a << b, 0 <= b <= 63 |
+| 30 | `SHR` | 0 | a >> b (arithmetic), 0 <= b <= 63 |
+| 31 | `LT_INT` | 0 | a < b |
+| 32 | `LE_INT` | 0 | a <= b |
+| 33 | `GT_INT` | 0 | a > b |
+| 34 | `GE_INT` | 0 | a >= b |
+| 35 | `EQ_INT` | 0 | a == b |
+| 36 | `NE_INT` | 0 | a != b |
+| 37 | `ADD_INT_K` | 1 | a + int constant [a] |
+| 38 | `SUB_INT_K` | 1 | a - int constant [a] |
+| 39 | `MUL_INT_K` | 1 | a * int constant [a] |
+| 40 | `FLOORDIV_INT_K` | 1 | a // int constant [a], which is above 0 |
+| 41 | `MOD_INT_K` | 1 | a % int constant [a], which is above 0 |
+| 42 | `ADD_INT_L` | 1 | a + int local [a] |
+| 43 | `SUB_INT_L` | 1 | a - int local [a] |
+| 44 | `MUL_INT_L` | 1 | a * int local [a] |
+| 45 | `ADD_INT_LK` | 2 | push int local [a] + [b] |
+| 46 | `SUB_INT_LK` | 2 | push int local [a] - [b] |
+| 47 | `MUL_INT_LK` | 2 | push int local [a] * [b] |
+| 48 | `FLOORDIV_INT_LK` | 2 | push int local [a] // [b], which is above 0 |
+| 49 | `MOD_INT_LK` | 2 | push int local [a] % [b], which is above 0 |
+| 50 | `LOCAL_ADD_INT_K` | 2 | int local [a] += int constant [b] |
+| 51 | `LOCAL_SUB_INT_K` | 2 | int local [a] -= int constant [b] |
+| 52 | `LOCAL_MUL_INT_K` | 2 | int local [a] *= int constant [b] |
+| 53 | `LOCAL_FLOORDIV_INT_K` | 2 | int local [a] //= int constant [b], which is above 0 |
+| 54 | `LOCAL_MOD_INT_K` | 2 | int local [a] %= int constant [b], which is above 0 |
+| 55 | `LOCAL_ADD_INT_L` | 2 | int local [a] += int local [b] |
+| 56 | `LOCAL_SUB_INT_L` | 2 | int local [a] -= int local [b] |
+| 57 | `GLOBAL_ADD_INT_K` | 2 | int global [a] += int constant [b] |
+| 58 | `GLOBAL_SUB_INT_K` | 2 | int global [a] -= int constant [b] |
+| 59 | `GLOBAL_ADD_INT_L` | 2 | int global [a] += int local [b] |
+| 60 | `GLOBAL_SUB_INT_L` | 2 | int global [a] -= int local [b] |
+| 61 | `ADD_FLOAT` | 0 | a + b |
+| 62 | `SUB_FLOAT` | 0 | a - b |
+| 63 | `MUL_FLOAT` | 0 | a * b |
+| 64 | `DIV_FLOAT` | 0 | a / b |
+| 65 | `FLOORDIV_FLOAT` | 0 | floor(a / b) |
+| 66 | `MOD_FLOAT` | 0 | a % b, with the sign of b |
+| 67 | `POW_FLOAT` | 0 | a ** b |
+| 68 | `NEG_FLOAT` | 0 | -a |
+| 69 | `LT_FLOAT` | 0 | a < b |
+| 70 | `LE_FLOAT` | 0 | a <= b |
+| 71 | `GT_FLOAT` | 0 | a > b |
+| 72 | `GE_FLOAT` | 0 | a >= b |
+| 73 | `EQ_FLOAT` | 0 | a == b |
+| 74 | `NE_FLOAT` | 0 | a != b |
+| 75 | `ADD_FLOAT_K` | 1 | a + float constant [a] |
+| 76 | `SUB_FLOAT_K` | 1 | a - float constant [a] |
+| 77 | `MUL_FLOAT_K` | 1 | a * float constant [a] |
+| 78 | `DIV_FLOAT_K` | 1 | a / float constant [a] |
+| 79 | `ADD_FLOAT_L` | 1 | a + float local [a] |
+| 80 | `SUB_FLOAT_L` | 1 | a - float local [a] |
+| 81 | `MUL_FLOAT_L` | 1 | a * float local [a] |
+| 82 | `DIV_FLOAT_L` | 1 | a / float local [a] |
+| 83 | `INT_TO_FLOAT` | 0 | convert the top value |
+| 84 | `CONCAT` | 0 | a + b for strings |
+| 85 | `LT_STR` | 0 | a < b by code point |
+| 86 | `LE_STR` | 0 | a <= b by code point |
+| 87 | `GT_STR` | 0 | a > b by code point |
+| 88 | `GE_STR` | 0 | a >= b by code point |
+| 89 | `TO_STRING` | 1 | text of the top value, with format constant [a] (0xFFFF: none) |
+| 90 | `BUILD_STRING` | 1 | join the top [a] strings |
+| 91 | `APPEND_LOCAL` | 2 | str local [a] += the top [b] strings, in place if it has one owner |
+| 92 | `APPEND_GLOBAL` | 2 | str global [a] += the top [b] strings, in place if it has one owner |
+| 93 | `BUILD_MAP` | 1 | a map of the top [a] key, value pairs |
+| 94 | `INDEX_STR` | 0 | the character at str[index], or an index error |
+| 95 | `INDEX_MAP` | 0 | map[key], or a missing-key error |
+| 96 | `BUILD_LIST` | 1 | a list of the top [a] values |
+| 97 | `INDEX_LIST` | 0 | list[index], or an index error |
+| 98 | `INDEX_LIST_L` | 1 | local [a][index] for a list in a local, which isn't pushed or counted |
+| 99 | `INDEX_LIST_LL` | 2 | local [a][local [b]] for a list and an int in locals, nothing counted |
+| 100 | `LEN_L` | 1 | len() of the str, list, map or set in local [a], which isn't pushed or counted |
+| 101 | `SLICE` | 1 | list or str [low..high] (..= if [a]) as a new one |
+| 102 | `CONTAINS` | 0 | item in collection |
+| 103 | `CONCAT_LIST` | 0 | a + b for lists |
+| 104 | `METHOD` | 2 | call method [a] with [b] arguments on the value under them |
+| 105 | `METHOD_LOCAL` | 3 | call method [b] with [c] arguments on local [a] in place |
+| 106 | `METHOD_GLOBAL` | 3 | call method [b] with [c] arguments on global [a] in place |
+| 107 | `METHOD_CAPTURE` | 3 | call method [b] with [c] arguments on captured variable [a] in place |
+| 108 | `SET_INDEX_LOCAL` | 1 | local [a][index] = value, in place |
+| 109 | `SET_INDEX_GLOBAL` | 1 | global [a][index] = value, in place |
+| 110 | `SET_INDEX_CAPTURE` | 1 | captured variable [a][index] = value, in place |
+| 111 | `SET_PATH_LOCAL` | 2 | local [a], [b] keys down: set the item, copying shared levels |
+| 112 | `SET_PATH_GLOBAL` | 2 | global [a], [b] keys down: set the item, copying shared levels |
+| 113 | `SET_PATH_CAPTURE` | 2 | captured variable [a], [b] keys down: set the item |
+| 114 | `SET_PATH_FIELD` | 2 | object.field [a], [b] keys down: set the item, copying shared levels |
+| 115 | `FOR_EACH2` | 3 | next position and item of local [a] into locals [b], [b+1], or jump [c] |
+| 116 | `NEW_OBJECT` | 2 | an object of tree constant [a] from its [b] fields on the stack |
+| 117 | `GET_FIELD` | 1 | field [a] of the object on top |
+| 118 | `SET_FIELD` | 1 | object.field [a] = value (shared: every holder sees it) |
+| 119 | `GET_FIELD_L` | 2 | field [b] of the object in local [a] |
+| 120 | `SET_FIELD_L` | 2 | pop into field [b] of the object in local [a] |
+| 121 | `FIELD_ADD_INT_K` | 3 | int field [b] of the object in local [a] += int constant [c] |
+| 122 | `FIELD_SUB_INT_K` | 3 | int field [b] of the object in local [a] -= int constant [c] |
+| 123 | `FIELD_ADD_INT_L` | 3 | int field [b] of the object in local [a] += int local [c] |
+| 124 | `FIELD_SUB_INT_L` | 3 | int field [b] of the object in local [a] -= int local [c] |
+| 125 | `FIELD_ADD_FLOAT_K` | 3 | float field [b] of the object in local [a] += float constant [c] |
+| 126 | `FIELD_SUB_FLOAT_K` | 3 | float field [b] of the object in local [a] -= float constant [c] |
+| 127 | `FIELD_ADD_FLOAT_L` | 3 | float field [b] of the object in local [a] += float local [c] |
+| 128 | `FIELD_SUB_FLOAT_L` | 3 | float field [b] of the object in local [a] -= float local [c] |
+| 129 | `IS_TREE` | 1 | is the top value an object of tree constant [a] or one extending it |
+| 130 | `WEAK` | 0 | the top value as a weak reference (an object's weak box; none stays none) |
+| 131 | `UNWEAK` | 0 | a weak reference's object, or none if it is gone |
+| 132 | `IS_TRAIT` | 1 | does the top value's tree have the trait named by constant [a] |
+| 133 | `INVOKE` | 2 | call method [a] of the object under [b] arguments, the object as self |
+| 134 | `INVOKE_FROM` | 3 | call tree constant [a]'s method [b] (super, init) with [c] arguments |
+| 135 | `CALL_METHOD` | 2 | call program method [a], found when compiling, the object under [b] args |
+| 136 | `EQ` | 0 | a == b, for any two values |
+| 137 | `NE` | 0 | a != b, for any two values |
+| 138 | `NOT` | 0 | not a |
+| 139 | `IS_NONE` | 0 | a == none |
+| 140 | `JUMP` | 1 | jump forward [a] bytes |
+| 141 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 142 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 143 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 144 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 145 | `JUMP_IF_NONE_KEEP` | 1 | jump forward [a] bytes if none, keeping the value |
+| 146 | `JUMP_IF_NOT_LT_INT` | 1 | pop two ints; jump forward [a] bytes unless a < b |
+| 147 | `JUMP_IF_NOT_LE_INT` | 1 | pop two ints; jump forward [a] bytes unless a <= b |
+| 148 | `JUMP_IF_NOT_GT_INT` | 1 | pop two ints; jump forward [a] bytes unless a > b |
+| 149 | `JUMP_IF_NOT_GE_INT` | 1 | pop two ints; jump forward [a] bytes unless a >= b |
+| 150 | `JUMP_IF_NOT_EQ_INT` | 1 | pop two ints; jump forward [a] bytes unless a == b |
+| 151 | `JUMP_IF_NOT_NE_INT` | 1 | pop two ints; jump forward [a] bytes unless a != b |
+| 152 | `JUMP_IF_NOT_LT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a < b |
+| 153 | `JUMP_IF_NOT_LE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a <= b |
+| 154 | `JUMP_IF_NOT_GT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a > b |
+| 155 | `JUMP_IF_NOT_GE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a >= b |
+| 156 | `JUMP_IF_NOT_EQ_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a == b |
+| 157 | `JUMP_IF_NOT_NE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a != b |
+| 158 | `JUMP_IF_NOT_LT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a < constant [a] |
+| 159 | `JUMP_IF_NOT_LE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a <= constant [a] |
+| 160 | `JUMP_IF_NOT_GT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a > constant [a] |
+| 161 | `JUMP_IF_NOT_GE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a >= constant [a] |
+| 162 | `JUMP_IF_NOT_EQ_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a == constant [a] |
+| 163 | `JUMP_IF_NOT_NE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a != constant [a] |
+| 164 | `JUMP_IF_NOT_LT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a < constant [a] |
+| 165 | `JUMP_IF_NOT_LE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a <= constant [a] |
+| 166 | `JUMP_IF_NOT_GT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a > constant [a] |
+| 167 | `JUMP_IF_NOT_GE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a >= constant [a] |
+| 168 | `JUMP_IF_NOT_EQ_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a == constant [a] |
+| 169 | `JUMP_IF_NOT_NE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a != constant [a] |
+| 170 | `JUMP_IF_NOT_LT_INT_LK` | 3 | jump [c] unless int local [a] < [b] |
+| 171 | `JUMP_IF_NOT_LE_INT_LK` | 3 | jump [c] unless int local [a] <= [b] |
+| 172 | `JUMP_IF_NOT_GT_INT_LK` | 3 | jump [c] unless int local [a] > [b] |
+| 173 | `JUMP_IF_NOT_GE_INT_LK` | 3 | jump [c] unless int local [a] >= [b] |
+| 174 | `JUMP_IF_NOT_EQ_INT_LK` | 3 | jump [c] unless int local [a] == [b] |
+| 175 | `JUMP_IF_NOT_NE_INT_LK` | 3 | jump [c] unless int local [a] != [b] |
+| 176 | `LOOP` | 1 | jump back [a] bytes |
+| 177 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 178 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
+| 179 | `END_TRY` | 1 | the last [a] tries are over |
+| 180 | `THROW` | 0 | throw the error on top |
+| 181 | `CALL` | 1 | call the function under [a] arguments |
+| 182 | `CALL_GLOBAL` | 2 | call the function in global [a] with the [b] arguments on top |
+| 183 | `CALL_SELF` | 1 | call the running function with the [a] arguments on top |
+| 184 | `TAIL_SELF` | 1 | return what the running function returns for the [a] arguments on top |
+| 185 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 186 | `SPAWN` | 1 | a task running the function under [a] arguments; push the task |
+| 187 | `CALL_NATIVE` | 2 | call standard-library function [a] with [b] arguments |
+| 188 | `RETURN` | 0 | return the top value |
+| 189 | `RETURN_LOCAL` | 1 | return local slot [a] |
+| 190 | `RETURN_ADD_INT` | 0 | return a + b |
+| 191 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->
