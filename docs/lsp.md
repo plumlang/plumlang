@@ -225,5 +225,13 @@ way, and each name leading to that same place is a reference. A name
 spelled differently can't be one, so most names are skipped without
 looking them up.
 
+Signature help lexes the text again (tokens skip strings and comments)
+to find the innermost `(` still open before the cursor, the name before
+it and the commas since; the call itself comes from the checked tree, or,
+while it is still being typed, from checking the file once more with its
+brackets closed at the cursor. Semantic tokens walk the checked tree as
+the other answers do, and add the lexer's keywords, literals and
+comments.
+
 The tests are recorded sessions: `tests/lsp/*.in`, run by `tests/lsp.sh`
 and compared with `tests/lsp/*.out`.
