@@ -44,6 +44,11 @@ size_t plum_chunk_add_constant(PlumChunk *chunk, PlumValue value);
 /* The source line of the instruction at `offset`. */
 uint32_t plum_chunk_line(const PlumChunk *chunk, size_t offset);
 
+/* Turn each GET_LOCAL that is the last read of its slot into MOVE_LOCAL,
+ * for the slots movable[slot] is 1 for (compiler/moves.c, #122). */
+void plum_chunk_moves(PlumChunk *chunk, int slot_count, const uint8_t *movable,
+                      size_t movable_count);
+
 /* Print the instructions of `fn` and every function in its constants. */
 void plum_disassemble(FILE *out, const PlumFunction *fn);
 

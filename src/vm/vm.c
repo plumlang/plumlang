@@ -2506,6 +2506,17 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             push_copy(vm, &SLOT(n));
             break;
         }
+        case PLUM_OP_MOVE_LOCAL: {
+            /* the last read of the slot: its reference moves to the stack */
+            uint16_t n = READ_U16();
+            reserve_one(vm);
+            PlumValue *slot = &SLOT(n);
+            copy_value(&vm->stack[vm->top++], slot);
+            if (plum_is_ref(*slot)) {
+                *slot = plum_none();
+            }
+            break;
+        }
         case PLUM_OP_SET_LOCAL: {
             uint16_t n = READ_U16();
             vm->top--;
@@ -3063,6 +3074,18 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 goto thrown;
             }
             push(vm, plum_retain(list->items[i]));
+            break;
+        }
+        case PLUM_OP_INDEX_LIST_LL: {
+            const PlumList *list = plum_as_list(SLOT(READ_U16()));
+            int64_t i = plum_as_int(SLOT(READ_U16()));
+            if ((uint64_t)i >= list->len) {
+                SAVE_IP(); /* so the error names this line */
+                check_index(vm, i, list->len);
+                goto thrown;
+            }
+            reserve_one(vm);
+            push_copy(vm, &list->items[i]);
             break;
         }
         case PLUM_OP_LEN_L: {
@@ -3920,10 +3943,11 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             throw_error(vm, pop(vm));
             goto thrown;
         case PLUM_OP_RETURN_LOCAL: {
-            const PlumValue *v = &SLOT(READ_U16());
+            /* the slot goes with the frame: its reference moves (#122) */
+            PlumValue *v = &SLOT(READ_U16());
             copy_value(&ret, v);
             if (plum_is_ref(ret)) {
-                plum_as_obj(ret)->refcount++;
+                *v = plum_none();
             }
             goto do_return;
         }

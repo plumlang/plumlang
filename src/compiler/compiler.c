@@ -52,6 +52,9 @@ typedef struct FnState {
     PlumSymbol *self;             /* a nested function's own name: GET_SELF, not a capture */
     const PlumBranch *decl;       /* a declared function's own declaration; NULL otherwise */
     size_t last_op;               /* where the last instruction written starts */
+    /* Per slot: 1 if every variable kept in it has a type whose freeing
+     * no program can see, 2 if not (moves.c moves only the first). */
+    PLUM_ARRAY(uint8_t) movable;
 } FnState;
 
 typedef struct TreeEntry {
@@ -175,7 +178,59 @@ static void emit_loop(Compiler *c, size_t start, PlumSpan span) {
 /* Slots                                                               */
 /* ------------------------------------------------------------------ */
 
-static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
+/*
+ * Can no program see when a value of type `t` is freed? True for numbers,
+ * strings and collections of them. Not for objects, whose weak references
+ * read none once they go, nor for files, sockets, functions (which may
+ * hold objects) or tasks: moving such a value on its last use (moves.c)
+ * could free it before the variable goes out of scope.
+ */
+static bool freed_unseen(const PlumTy *t) {
+    if (t == NULL) {
+        return false;
+    }
+    switch (t->kind) {
+    case PLUM_TY_NONE:
+    case PLUM_TY_BOOL:
+    case PLUM_TY_INT:
+    case PLUM_TY_FLOAT:
+    case PLUM_TY_STR:
+    case PLUM_TY_BYTE:
+    case PLUM_TY_JSON:
+        return true;
+    case PLUM_TY_LIST:
+    case PLUM_TY_SET:
+    case PLUM_TY_OPTIONAL:
+        return freed_unseen(t->as.elem);
+    case PLUM_TY_MAP:
+        return freed_unseen(t->as.map.key) && freed_unseen(t->as.map.value);
+    default:
+        return false;
+    }
+}
+
+/* Move a local on its last use where its slot only ever holds values
+ * whose freeing can't be seen (moves.c), then forget the slots. */
+static void finish_moves(FnState *fs) {
+    plum_chunk_moves(fs->fn->chunk, fs->fn->slot_count, fs->movable.items, fs->movable.len);
+    plum_array_free(&fs->movable);
+}
+
+/* Record what a slot holds, for finish_moves. */
+static void mark_slot(FnState *fs, int slot, bool unseen) {
+    while (fs->movable.len <= (size_t)slot) {
+        plum_array_push(&fs->movable, 0);
+    }
+    if (!unseen) {
+        fs->movable.items[slot] = 2;
+    } else if (fs->movable.items[slot] == 0) {
+        fs->movable.items[slot] = 1;
+    }
+}
+
+/* A slot for `sym` (NULL: a hidden one); `unseen` if what it holds can be
+ * freed with no program seeing when (finish_moves). */
+static uint16_t new_slot(Compiler *c, PlumSymbol *sym, PlumSpan span, bool unseen) {
     FnState *fs = c->fs;
     if (fs->next_slot >= MAX_SLOTS) {
         plum_diag_error(c->diags, span, "E0602",
@@ -186,11 +241,16 @@ static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
     if (fs->next_slot > fs->fn->slot_count) {
         fs->fn->slot_count = fs->next_slot;
     }
+    mark_slot(fs, slot, unseen);
     if (sym != NULL) {
         sym->slot = slot;
         sym->has_slot = true;
     }
     return (uint16_t)slot;
+}
+
+static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
+    return new_slot(c, sym, span, sym != NULL && freed_unseen(sym->ty));
 }
 
 /*
@@ -1955,6 +2015,11 @@ static void compile_index(Compiler *c, const PlumExpr *e) {
         /* Borrowed from its local (#122): only this function can assign to
          * the local, and computing the index doesn't, so reading it after
          * the index reads the same list. */
+        uint16_t at;
+        if (ty_is(idx->ty, PLUM_TY_INT) && plain_local(c, idx, &at)) {
+            op2(c, PLUM_OP_INDEX_LIST_LL, slot, at, e->span.line);
+            return;
+        }
         compile_expr(c, idx);
         op1(c, PLUM_OP_INDEX_LIST_L, slot, e->span.line);
         return;
@@ -2811,7 +2876,7 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
     uint32_t line = s->span.line;
     int saved = c->fs->next_slot;
     uint16_t list = new_local(c, NULL, s->span);
-    new_local(c, NULL, s->span); /* list + 1: the position */
+    new_slot(c, NULL, s->span, true); /* list + 1: the position, an int */
     uint16_t var = new_local(c, s->symbol, s->span);
     if (two) {
         new_local(c, s->symbol2, s->span); /* var + 1: the item, or the value */
@@ -2859,7 +2924,7 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
      * loop counts in a hidden slot and copies the count into it. */
     bool boxed = s->symbol != NULL && s->symbol->captured;
     uint16_t var = new_local(c, boxed ? NULL : s->symbol, s->span); /* `for _ in`: no symbol */
-    new_local(c, NULL, s->span);                                    /* var + 1: the end */
+    new_slot(c, NULL, s->span, true);                               /* var + 1: the end, an int */
     uint16_t user = boxed ? new_local(c, s->symbol, s->span) : var;
     bool inclusive = it->as.range.inclusive;
 
@@ -3426,6 +3491,7 @@ static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam
         }
         op(c, PLUM_OP_RETURN_NONE, body->span.line);
     }
+    finish_moves(&fs);
 
     /* What a closure of this function captures, in order. */
     fn->capture_count = (int)fs.captures.len;
@@ -3620,6 +3686,7 @@ static PlumFunction *compile_program(Compiler *c, const PlumCompileModule *modul
         }
         uint32_t end = program->count > 0 ? program->stmts[program->count - 1]->span.line : 1;
         op(c, PLUM_OP_RETURN_NONE, end);
+        finish_moves(c->fs);
         if (!last) {
             c->fs = &fs;
             c->path = NULL;

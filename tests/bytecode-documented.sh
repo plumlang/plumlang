@@ -21,7 +21,7 @@ sed -n '/^#define PLUM_OPCODES(X)/,/^$/p' "$root/src/compiler/opcodes.h" |
     sed -n 's/.*X(\([A-Z_0-9]*\), [0-9], .*/\1/p' >"$tmp/names"
 status=0
 while read -r op; do
-    if ! grep -q "PLUM_OP_$op\([^A-Z_0-9]\|$\)" "$root/src/compiler/compiler.c"; then
+    if ! cat "$root"/src/compiler/*.c | grep -q "PLUM_OP_$op\([^A-Z_0-9]\|$\)"; then
         echo "bytecode: the compiler never emits $op"
         status=1
     fi
@@ -30,6 +30,19 @@ while read -r op; do
         status=1
     fi
 done <"$tmp/names"
+# Every instruction that reads a local slot (its description names a
+# local) is one compiler/moves.c knows: else a move could empty a slot it
+# still reads.
+sed -n '/^#define PLUM_OPCODES(X)/,/^$/p' "$root/src/compiler/opcodes.h" | tr -d '\\' |
+    tr '\n' ' ' | grep -o 'X([A-Z_0-9]*, [0-9], *"[^"]*"' |
+    sed -n 's/X(\([A-Z_0-9]*\), .*[Ll]ocal.*/\1/p' >"$tmp/locals"
+sed -n '/^static void slot_uses/,/^}/p' "$root/src/compiler/moves.c" >"$tmp/uses"
+while read -r op; do
+    if ! grep -q "case PLUM_OP_$op:" "$tmp/uses"; then
+        echo "bytecode: $op reads a local, but compiler/moves.c's slot_uses doesn't list it"
+        status=1
+    fi
+done <"$tmp/locals"
 # Instructions named in the text, outside the generated table.
 sed '/<!-- opcodes:begin -->/,/<!-- opcodes:end -->/d' "$root/docs/bytecode.md" |
     grep -o '`[A-Z][A-Z_0-9]*`' | tr -d '`' | sort -u >"$tmp/named"

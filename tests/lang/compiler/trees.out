@@ -43,7 +43,7 @@
 == Square.init (2 parameters, 2 slots) ==
 0000   19  GET_LOCAL 1
 0003    |  SET_FIELD_L 0 0
-0008   20  GET_LOCAL 1
+0008   20  MOVE_LOCAL 1
 0011    |  SET_FIELD_L 0 1
 0016   18  RETURN_NONE
 
