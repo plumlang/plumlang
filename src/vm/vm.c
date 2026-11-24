@@ -1808,7 +1808,7 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
             t->started = true;
             PlumValue fn = vm->stack[0];
             PlumFunction *f = plum_as_obj(fn)->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn)->fn
-                                                                  : plum_as_function(fn);
+                                                                        : plum_as_function(fn);
             ok = call(vm, f, t->start_argc, 1) && execute(vm);
         } else {
             ok = execute(vm);
@@ -2047,7 +2047,7 @@ static inline int64_t pop_int(VM *vm) {
  */
 VM_NOINLINE static bool int_arith_slow(VM *vm, int op, PlumValue *to, PlumValue y, int drop) {
     int64_t a = plum_as_int(*to), b = plum_as_int(y), r;
-    bool overflow = op == '+' ? add_overflows(a, b, &r)
+    bool overflow = op == '+'   ? add_overflows(a, b, &r)
                     : op == '-' ? sub_overflows(a, b, &r)
                                 : mul_overflows(a, b, &r);
     if (drop & DROP_Y) {
@@ -2207,8 +2207,8 @@ static bool execute(VM *vm) {
  * with plum_as_int, store with plum_set_int and let go of the boxed ints
  * they consumed. Both paths give the same results and the same errors.
  */
-#define OVERFLOW(a, symbol, b)                                                                \
-    FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int",       \
+#define OVERFLOW(a, symbol, b)                                                        \
+    FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
          (long long)(a), symbol, (long long)(b))
 /* r = x fn y, when x and y are inline ints and so is the result. Two
  * NaN-boxed inline ints are at most 50 bits, so their sum or difference
@@ -2221,187 +2221,187 @@ static bool execute(VM *vm) {
 #define sub_overflows_inline sub_overflows
 #endif
 #define mul_overflows_inline mul_overflows
-#define INT_FAST(fn, x, y, r)                                                     \
-    (plum_both_small_ints((x), (y)) &&                                            \
+#define INT_FAST(fn, x, y, r)          \
+    (plum_both_small_ints((x), (y)) && \
      !fn##_inline(plum_small_int_of(x), plum_small_int_of(y), &(r)) && plum_int_inline(r))
-#define INT_BINARY(expr)                                      \
-    do {                                                      \
-        PlumValue *s_ = &vm->stack[--vm->top];                \
-        int64_t a, b;                                         \
-        if (plum_both_small_ints(s_[-1], s_[0])) {            \
-            a = plum_small_int_of(s_[-1]);                    \
-            b = plum_small_int_of(s_[0]);                     \
-        } else {                                              \
-            ints_popped(s_[-1], s_[0], &a, &b);               \
-        }                                                     \
-        s_[-1] = (expr);                                      \
+#define INT_BINARY(expr)                           \
+    do {                                           \
+        PlumValue *s_ = &vm->stack[--vm->top];     \
+        int64_t a, b;                              \
+        if (plum_both_small_ints(s_[-1], s_[0])) { \
+            a = plum_small_int_of(s_[-1]);         \
+            b = plum_small_int_of(s_[0]);          \
+        } else {                                   \
+            ints_popped(s_[-1], s_[0], &a, &b);    \
+        }                                          \
+        s_[-1] = (expr);                           \
     } while (0)
-#define FLOAT_BINARY(expr)                                                 \
-    do {                                                                   \
-        PlumValue *s_ = &vm->stack[--vm->top];                             \
-        double a = plum_as_float(s_[-1]), b = plum_as_float(s_[0]);        \
-        s_[-1] = (expr);                                                   \
+#define FLOAT_BINARY(expr)                                          \
+    do {                                                            \
+        PlumValue *s_ = &vm->stack[--vm->top];                      \
+        double a = plum_as_float(s_[-1]), b = plum_as_float(s_[0]); \
+        s_[-1] = (expr);                                            \
     } while (0)
-#define CHECKED(fn, symbol)                                                \
-    do {                                                                   \
-        PlumValue *s_ = &vm->stack[--vm->top];                             \
-        int64_t r_;                                                        \
-        if (INT_FAST(fn, s_[-1], s_[0], r_)) {                             \
-            set_small(&s_[-1], r_);                                        \
-        } else {                                                           \
-            SAVE_IP();                                                     \
+#define CHECKED(fn, symbol)                                                        \
+    do {                                                                           \
+        PlumValue *s_ = &vm->stack[--vm->top];                                     \
+        int64_t r_;                                                                \
+        if (INT_FAST(fn, s_[-1], s_[0], r_)) {                                     \
+            set_small(&s_[-1], r_);                                                \
+        } else {                                                                   \
+            SAVE_IP();                                                             \
             if (!int_arith_slow(vm, symbol[0], &s_[-1], s_[0], DROP_X | DROP_Y)) { \
-                vm->top--;                                                 \
-                goto thrown;                                               \
-            }                                                              \
-        }                                                                  \
+                vm->top--;                                                         \
+                goto thrown;                                                       \
+            }                                                                      \
+        }                                                                          \
     } while (0)
 /* The _K and _L forms: the right operand is a constant or a local, not on
  * the stack, and the result replaces the left operand on top. */
 #define KONST(n) (chunk->constants.items[(n)])
-#define CHECKED_WITH(fn, symbol, right)                                    \
-    do {                                                                   \
-        uint16_t n_ = READ_U16();                                          \
-        PlumValue *s_ = &vm->stack[vm->top - 1];                           \
-        int64_t r_;                                                        \
-        if (INT_FAST(fn, *s_, right(n_), r_)) {                            \
-            set_small(s_, r_);                                             \
-        } else {                                                           \
-            SAVE_IP();                                                     \
-            if (!int_arith_slow(vm, symbol[0], s_, right(n_), DROP_X)) {   \
-                vm->top--;                                                 \
-                goto thrown;                                               \
-            }                                                              \
-        }                                                                  \
+#define CHECKED_WITH(fn, symbol, right)                                  \
+    do {                                                                 \
+        uint16_t n_ = READ_U16();                                        \
+        PlumValue *s_ = &vm->stack[vm->top - 1];                         \
+        int64_t r_;                                                      \
+        if (INT_FAST(fn, *s_, right(n_), r_)) {                          \
+            set_small(s_, r_);                                           \
+        } else {                                                         \
+            SAVE_IP();                                                   \
+            if (!int_arith_slow(vm, symbol[0], s_, right(n_), DROP_X)) { \
+                vm->top--;                                               \
+                goto thrown;                                             \
+            }                                                            \
+        }                                                                \
     } while (0)
 /* The LOCAL_ and GLOBAL_ forms change an int variable in place, with no
  * stack traffic; the _LK forms push local op constant. */
-#define PLACE_CHECKED(place, check, fn, symbol, right)                     \
-    do {                                                                   \
-        uint16_t n_ = READ_U16();                                          \
-        uint16_t m_ = READ_U16();                                          \
-        check(n_);                                                         \
-        PlumValue *v_ = &place(n_);                                        \
-        int64_t r_;                                                        \
-        if (INT_FAST(fn, *v_, right(m_), r_)) {                            \
-            set_small(v_, r_);                                             \
-        } else {                                                           \
-            SAVE_IP();                                                     \
-            if (!int_arith_slow(vm, symbol[0], v_, right(m_), 0)) {        \
-                goto thrown;                                               \
-            }                                                              \
-        }                                                                  \
+#define PLACE_CHECKED(place, check, fn, symbol, right)              \
+    do {                                                            \
+        uint16_t n_ = READ_U16();                                   \
+        uint16_t m_ = READ_U16();                                   \
+        check(n_);                                                  \
+        PlumValue *v_ = &place(n_);                                 \
+        int64_t r_;                                                 \
+        if (INT_FAST(fn, *v_, right(m_), r_)) {                     \
+            set_small(v_, r_);                                      \
+        } else {                                                    \
+            SAVE_IP();                                              \
+            if (!int_arith_slow(vm, symbol[0], v_, right(m_), 0)) { \
+                goto thrown;                                        \
+            }                                                       \
+        }                                                           \
     } while (0)
 /* The _FIELD forms: a field of the object in a local (self.count += 1),
  * changed in place. Objects are shared, so every holder sees it. */
 #define FIELD_OF(n, f) (plum_as_object(SLOT(n))->fields[(f)])
-#define FIELD_CHECKED(fn, symbol, right)                                   \
-    do {                                                                   \
-        uint16_t n_ = READ_U16();                                          \
-        uint16_t f_ = READ_U16();                                          \
-        uint16_t m_ = READ_U16();                                          \
-        PlumValue *v_ = &FIELD_OF(n_, f_);                                 \
-        int64_t r_;                                                        \
-        if (INT_FAST(fn, *v_, right(m_), r_)) {                            \
-            set_small(v_, r_);                                             \
-        } else {                                                           \
-            SAVE_IP();                                                     \
-            if (!int_arith_slow(vm, symbol[0], v_, right(m_), 0)) {        \
-                goto thrown;                                               \
-            }                                                              \
-        }                                                                  \
+#define FIELD_CHECKED(fn, symbol, right)                            \
+    do {                                                            \
+        uint16_t n_ = READ_U16();                                   \
+        uint16_t f_ = READ_U16();                                   \
+        uint16_t m_ = READ_U16();                                   \
+        PlumValue *v_ = &FIELD_OF(n_, f_);                          \
+        int64_t r_;                                                 \
+        if (INT_FAST(fn, *v_, right(m_), r_)) {                     \
+            set_small(v_, r_);                                      \
+        } else {                                                    \
+            SAVE_IP();                                              \
+            if (!int_arith_slow(vm, symbol[0], v_, right(m_), 0)) { \
+                goto thrown;                                        \
+            }                                                       \
+        }                                                           \
     } while (0)
-#define FIELD_FLOAT(operator, right)                                                     \
-    do {                                                                                 \
-        uint16_t n_ = READ_U16();                                                        \
-        uint16_t f_ = READ_U16();                                                        \
-        uint16_t m_ = READ_U16();                                                        \
-        PlumValue *v_ = &FIELD_OF(n_, f_);                                               \
-        plum_set_float(v_, plum_as_float(*v_) operator plum_as_float(right(m_)));        \
+#define FIELD_FLOAT(OP_, right)                                              \
+    do {                                                                     \
+        uint16_t n_ = READ_U16();                                            \
+        uint16_t f_ = READ_U16();                                            \
+        uint16_t m_ = READ_U16();                                            \
+        PlumValue *v_ = &FIELD_OF(n_, f_);                                   \
+        plum_set_float(v_, plum_as_float(*v_) OP_ plum_as_float(right(m_))); \
     } while (0)
 #define NO_CHECK(n)                       ((void)(n))
 #define GLOBAL(n)                         (vm->globals[(n)])
 #define LOCAL_CHECKED(fn, symbol, right)  PLACE_CHECKED(SLOT, NO_CHECK, fn, symbol, right)
 #define GLOBAL_CHECKED(fn, symbol, right) PLACE_CHECKED(GLOBAL, CHECK_GLOBAL, fn, symbol, right)
-#define PUSH_INT(value)                        \
-    do {                                       \
-        int64_t v_ = (value);                  \
-        reserve_one(vm);                       \
-        push_int(&vm->stack[vm->top++], v_);   \
+#define PUSH_INT(value)                      \
+    do {                                     \
+        int64_t v_ = (value);                \
+        reserve_one(vm);                     \
+        push_int(&vm->stack[vm->top++], v_); \
     } while (0)
-#define PUSH_CHECKED(fn, symbol)                         \
-    do {                                                 \
-        uint16_t n_ = READ_U16();                        \
-        uint16_t k_ = READ_U16();                        \
+#define PUSH_CHECKED(fn, symbol)                               \
+    do {                                                       \
+        uint16_t n_ = READ_U16();                              \
+        uint16_t k_ = READ_U16();                              \
         int64_t a = plum_as_int(SLOT(n_)), b = (int16_t)k_, r; \
-        if (fn(a, b, &r)) {                              \
-            OVERFLOW(a, symbol, b);                      \
-        }                                                \
-        PUSH_INT(r);                                     \
+        if (fn(a, b, &r)) {                                    \
+            OVERFLOW(a, symbol, b);                            \
+        }                                                      \
+        PUSH_INT(r);                                           \
     } while (0)
-#define FLOAT_WITH(operator, right)                                                   \
-    do {                                                                              \
-        uint16_t n_ = READ_U16();                                                     \
-        PlumValue *s_ = &vm->stack[vm->top - 1];                                      \
-        plum_set_float(s_, plum_as_float(*s_) operator plum_as_float(right(n_)));     \
+#define FLOAT_WITH(OP_, right)                                               \
+    do {                                                                     \
+        uint16_t n_ = READ_U16();                                            \
+        PlumValue *s_ = &vm->stack[vm->top - 1];                             \
+        plum_set_float(s_, plum_as_float(*s_) OP_ plum_as_float(right(n_))); \
     } while (0)
 /* Compare the top two and jump unless the comparison holds; for floats,
  * a NaN makes every comparison but != false, so it jumps. */
-#define JUMP_UNLESS_INT(operator)                                           \
+#define JUMP_UNLESS_INT(OP_)                                                \
     do {                                                                    \
         uint16_t d_ = READ_U16();                                           \
         PlumValue *s_ = &vm->stack[vm->top -= 2];                           \
         bool holds_;                                                        \
         if (plum_both_small_ints(s_[0], s_[1])) {                           \
-            holds_ = plum_small_int_of(s_[0]) operator plum_small_int_of(s_[1]); \
+            holds_ = plum_small_int_of(s_[0]) OP_ plum_small_int_of(s_[1]); \
         } else {                                                            \
-            holds_ = int_compare_slow(s_[0], s_[1], DROP_X | DROP_Y) operator 0; \
+            holds_ = int_compare_slow(s_[0], s_[1], DROP_X | DROP_Y) OP_ 0; \
         }                                                                   \
         if (!holds_) {                                                      \
             ip += d_;                                                       \
         }                                                                   \
     } while (0)
-#define JUMP_UNLESS_FLOAT(operator)                                         \
-    do {                                                                    \
-        uint16_t d_ = READ_U16();                                           \
-        PlumValue *s_ = &vm->stack[vm->top -= 2];                           \
-        if (!(plum_as_float(s_[0]) operator plum_as_float(s_[1]))) {        \
-            ip += d_;                                                       \
-        }                                                                   \
+#define JUMP_UNLESS_FLOAT(OP_)                                  \
+    do {                                                        \
+        uint16_t d_ = READ_U16();                               \
+        PlumValue *s_ = &vm->stack[vm->top -= 2];               \
+        if (!(plum_as_float(s_[0]) OP_ plum_as_float(s_[1]))) { \
+            ip += d_;                                           \
+        }                                                       \
     } while (0)
-#define JUMP_UNLESS_INT_K(operator)                                         \
-    do {                                                                    \
-        uint16_t k_ = READ_U16();                                           \
-        uint16_t d_ = READ_U16();                                           \
-        PlumValue *s_ = &vm->stack[--vm->top];                              \
-        PlumValue k_value_ = KONST(k_);                                     \
-        bool holds_;                                                        \
-        if (plum_both_small_ints(*s_, k_value_)) {                          \
-            holds_ = plum_small_int_of(*s_) operator plum_small_int_of(k_value_); \
-        } else {                                                            \
-            holds_ = int_compare_slow(*s_, k_value_, DROP_X) operator 0;    \
-        }                                                                   \
-        if (!holds_) {                                                      \
-            ip += d_;                                                       \
-        }                                                                   \
+#define JUMP_UNLESS_INT_K(OP_)                                               \
+    do {                                                                     \
+        uint16_t k_ = READ_U16();                                            \
+        uint16_t d_ = READ_U16();                                            \
+        PlumValue *s_ = &vm->stack[--vm->top];                               \
+        PlumValue k_value_ = KONST(k_);                                      \
+        bool holds_;                                                         \
+        if (plum_both_small_ints(*s_, k_value_)) {                           \
+            holds_ = plum_small_int_of(*s_) OP_ plum_small_int_of(k_value_); \
+        } else {                                                             \
+            holds_ = int_compare_slow(*s_, k_value_, DROP_X) OP_ 0;          \
+        }                                                                    \
+        if (!holds_) {                                                       \
+            ip += d_;                                                        \
+        }                                                                    \
     } while (0)
-#define JUMP_UNLESS_FLOAT_K(operator)                                       \
-    do {                                                                    \
-        uint16_t k_ = READ_U16();                                           \
-        uint16_t d_ = READ_U16();                                           \
-        PlumValue *s_ = &vm->stack[--vm->top];                              \
-        if (!(plum_as_float(*s_) operator plum_as_float(KONST(k_)))) {      \
-            ip += d_;                                                       \
-        }                                                                   \
+#define JUMP_UNLESS_FLOAT_K(OP_)                                  \
+    do {                                                          \
+        uint16_t k_ = READ_U16();                                 \
+        uint16_t d_ = READ_U16();                                 \
+        PlumValue *s_ = &vm->stack[--vm->top];                    \
+        if (!(plum_as_float(*s_) OP_ plum_as_float(KONST(k_)))) { \
+            ip += d_;                                             \
+        }                                                         \
     } while (0)
-#define JUMP_UNLESS_LK(operator)                              \
-    do {                                                      \
-        uint16_t n_ = READ_U16();                             \
-        uint16_t k_ = READ_U16();                             \
-        uint16_t d_ = READ_U16();                             \
-        if (!(plum_as_int(SLOT(n_)) operator(int16_t) k_)) {  \
-            ip += d_;                                         \
-        }                                                     \
+#define JUMP_UNLESS_LK(OP_)                             \
+    do {                                                \
+        uint16_t n_ = READ_U16();                       \
+        uint16_t k_ = READ_U16();                       \
+        uint16_t d_ = READ_U16();                       \
+        if (!(plum_as_int(SLOT(n_)) OP_(int16_t) k_)) { \
+            ip += d_;                                   \
+        }                                               \
     } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
 #define CHECK_GLOBAL(n)                                                                      \
@@ -3396,8 +3396,8 @@ static bool execute(VM *vm) {
         case PLUM_OP_IS_TREE: {
             PlumTreeInfo *tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
             PlumValue v = pop(vm);
-            bool is = plum_is_obj(v, PLUM_OBJ_OBJECT) &&
-                      plum_tree_is(plum_as_object(v)->tree, tree);
+            bool is =
+                plum_is_obj(v, PLUM_OBJ_OBJECT) && plum_tree_is(plum_as_object(v)->tree, tree);
             push(vm, plum_bool(is));
             plum_release(v);
             break;
@@ -3706,8 +3706,9 @@ static bool execute(VM *vm) {
         case PLUM_OP_CALL: {
             uint16_t argc = READ_U16();
             PlumValue callee = *peek(vm, argc);
-            PlumFunction *fn = plum_as_obj(callee)->type == PLUM_OBJ_CLOSURE ? plum_as_closure(callee)->fn
-                                                                       : plum_as_function(callee);
+            PlumFunction *fn = plum_as_obj(callee)->type == PLUM_OBJ_CLOSURE
+                                   ? plum_as_closure(callee)->fn
+                                   : plum_as_function(callee);
             SAVE_IP();
             Frame *f = call_frame(vm, fn, argc, 1);
             if (f == NULL) {

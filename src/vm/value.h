@@ -532,8 +532,8 @@ static inline PlumClosure *plum_as_closure(PlumValue v) {
 
 /* A function or closure value, either of which can be called. */
 static inline bool plum_is_callable(PlumValue v) {
-    return plum_is_ref(v) && (plum_as_obj(v)->type == PLUM_OBJ_FUNCTION ||
-                              plum_as_obj(v)->type == PLUM_OBJ_CLOSURE);
+    return plum_is_ref(v) &&
+           (plum_as_obj(v)->type == PLUM_OBJ_FUNCTION || plum_as_obj(v)->type == PLUM_OBJ_CLOSURE);
 }
 
 static inline PlumTreeInfo *plum_as_tree_info(PlumValue v) {

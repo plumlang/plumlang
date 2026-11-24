@@ -65,8 +65,8 @@ static bool broken_down(PlumNative *n, const char *what, const PlumValue *args, 
  * unknown one is a ValueError, not undefined behaviour).
  */
 static bool t_format(ARGS) {
-    const char *pattern = argc > 1 && !plum_is_none(args[1]) ? plum_as_string(args[1])->chars
-                                                                    : "%Y-%m-%d %H:%M:%S";
+    const char *pattern =
+        argc > 1 && !plum_is_none(args[1]) ? plum_as_string(args[1])->chars : "%Y-%m-%d %H:%M:%S";
     size_t plen = strlen(pattern);
     if (plen > 200) {
         return plum_native_throw(n, PLUM_ERROR_VALUE, "format: the pattern is too long");

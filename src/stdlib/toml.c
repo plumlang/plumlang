@@ -226,7 +226,8 @@ static bool put_inline(Writer *w, PlumValue v, int depth) {
         put_str(&w->out, tmp);
         return true;
     case PLUM_VAL_FLOAT:
-        put_str(&w->out, isnan(plum_as_float(v)) ? "nan" : plum_format_float(plum_as_float(v), tmp));
+        put_str(&w->out,
+                isnan(plum_as_float(v)) ? "nan" : plum_format_float(plum_as_float(v), tmp));
         return true;
     case PLUM_VAL_OBJ:
         break;

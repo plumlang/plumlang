@@ -105,7 +105,8 @@ static bool m_abs(ARGS) {
 static bool m_min(ARGS) {
     (void)n;
     if (all_ints(args, argc)) {
-        *result = plum_int(plum_as_int(args[0]) < plum_as_int(args[1]) ? plum_as_int(args[0]) : plum_as_int(args[1]));
+        *result = plum_int(plum_as_int(args[0]) < plum_as_int(args[1]) ? plum_as_int(args[0])
+                                                                       : plum_as_int(args[1]));
     } else {
         double a = plum_num(args[0]), b = plum_num(args[1]);
         *result = plum_float(a < b ? a : b);
@@ -116,7 +117,8 @@ static bool m_min(ARGS) {
 static bool m_max(ARGS) {
     (void)n;
     if (all_ints(args, argc)) {
-        *result = plum_int(plum_as_int(args[0]) > plum_as_int(args[1]) ? plum_as_int(args[0]) : plum_as_int(args[1]));
+        *result = plum_int(plum_as_int(args[0]) > plum_as_int(args[1]) ? plum_as_int(args[0])
+                                                                       : plum_as_int(args[1]));
     } else {
         double a = plum_num(args[0]), b = plum_num(args[1]);
         *result = plum_float(a > b ? a : b);

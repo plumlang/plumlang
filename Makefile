@@ -21,6 +21,8 @@
 #   make fuzz-build       only build them, into build/fuzz/fuzz-NAME
 #   make wasm             the WebAssembly build for the browser playground:
 #                         build/wasm/plum.js and plum.wasm (docs/playground.md)
+#   make NANBOX=1 ...     any of these with NaN-boxed 8-byte values instead of the
+#                         default 16-byte ones (src/vm/value.h, bench/README.md)
 #
 # The fuzz targets need clang with libFuzzer (FUZZ_CC=clang, the default)
 # on Linux or macOS; nothing else in the build depends on them. Crashes
@@ -168,7 +170,7 @@ else ifeq ($(MODE)$(LTO),release1)
   BUILD := build/release-lto$(LAYOUT)
 endif
 ifeq ($(MODE),wasm)
-  BUILD := build/wasm-obj
+  BUILD := build/wasm-obj$(LAYOUT)
 endif
 # Everything but the command-line front end is the library the unit tests
 # link against; src/wasm/bindings.c is for Emscripten only.

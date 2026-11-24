@@ -729,7 +729,8 @@ static bool v_int(ARGS) {
     *result = plum_none();
     if (plum_is_int(v)) {
         *result = plum_retain(v); /* a boxed int holds a reference */
-    } else if (plum_is_float(v) && plum_as_float(v) == floor(plum_as_float(v)) && fabs(plum_as_float(v)) < 9.2e18) {
+    } else if (plum_is_float(v) && plum_as_float(v) == floor(plum_as_float(v)) &&
+               fabs(plum_as_float(v)) < 9.2e18) {
         *result = plum_int((int64_t)plum_as_float(v)); /* 3.0 is the int 3; 3.5 isn't an int */
     }
     return true;
@@ -741,7 +742,7 @@ static bool v_float(ARGS) {
     PlumValue v = args[0];
     *result = plum_is_int(v)     ? plum_float((double)plum_as_int(v))
               : plum_is_float(v) ? v
-                                         : plum_none();
+                                 : plum_none();
     return true;
 }
 

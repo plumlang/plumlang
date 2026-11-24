@@ -52,6 +52,26 @@ jobs:
           persist-credentials: false
       - run: make CC=${{ matrix.cc }} sanitize test
 
+  # The value layout that isn't the default (src/vm/value.h, #121), so it
+  # keeps building and passing: NaN-boxed 8-byte values.
+  nanbox:
+    name: nanbox / ${{ matrix.os }} / ${{ matrix.cc }} ${{ matrix.mode }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, cc: gcc, mode: sanitize }
+          - { os: ubuntu-latest, cc: clang, mode: sanitize }
+          - { os: ubuntu-24.04-arm, cc: gcc, mode: release }
+          - { os: macos-latest, cc: clang, mode: release }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: make CC=${{ matrix.cc }} NANBOX=1 ${{ matrix.mode }} test
+
   windows-msvc:
     name: windows / msvc
     runs-on: windows-latest
@@ -96,6 +116,9 @@ jobs:
         with:
           persist-credentials: false
       - run: make -j"$(nproc)"
+      # The value layout that isn't the default (#121), on a 32-bit target
+      # too; first, since both write build/wasm
+      - run: make wasm NANBOX=1 WASM_JOBS="$(nproc)" && sh tests/wasm.sh ./plum
       - run: make wasm WASM_JOBS="$(nproc)"
       - run: test -f build/wasm/plum.wasm && sh tests/wasm.sh ./plum
       - name: Size
