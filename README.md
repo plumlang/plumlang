@@ -90,6 +90,7 @@ plum run program.plum [args...]     # run a program (or a directory with a plum.
 plum check program.plum             # report every error without running
 plum fmt .                          # format every .plum file here (--check: only list them)
 plum fmt --stdin < program.plum     # format standard input to standard output, for editors
+plum test                           # run the test_ functions in every *_test.plum, see docs/test.md
 plum stdlib [module]                # list the standard library
 plum lsp                            # the language server for editors, see docs/lsp.md
 plum run --check-leaks program.plum # report objects left alive in reference cycles
@@ -107,6 +108,7 @@ plum run --mem-stats program.plum   # report how much memory the program used
 | [Bytecode](docs/bytecode.md) | The instruction set of the virtual machine. |
 | [REPL](docs/repl.md) | The interactive prompt: entries, commands and keys. |
 | [Packages](docs/orchard.md) | Orchard: `plum add`, `plum.toml`, `plum.lock`, publishing, and the registry's formats. |
+| [Testing](docs/test.md) | `plum test`: writing tests, running them, and reading the report. |
 | [Language server](docs/lsp.md) | `plum lsp`: what editors get, and how to set it up in each. |
 | [Playground](docs/playground.md) | Plumlang in the browser: `make wasm`, the npm package [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang), and the JavaScript API for embedding it. |
 

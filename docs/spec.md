@@ -1226,7 +1226,7 @@ plum run --check-leaks program.plum # ...and report objects left in cycles (11.3
 plum run --mem-stats program.plum   # ...and print the memory it used (11.5)
 plum program.plum [args...]         # the same
 plum check program.plum             # check for errors without running
-plum test                           # run tests (Stage 5)
+plum test [paths...]                # run the tests (14.3)
 plum fmt files-or-directories...    # format source files in place (14.1)
 plum fmt --check paths...           # ...change nothing; list files that would change
 plum fmt --stdin                    # format standard input to standard output
@@ -1298,6 +1298,67 @@ one program:
 Commands start with `:`: `:help`, `:type expr` (the expression's type,
 without running it), `:load file.plum` (run a file's code as an entry),
 `:reset` (forget every declaration) and `:quit` (or `:q`).
+
+### 14.3 Testing
+
+`plum test` runs a project's tests. A **test file** is a file whose name
+ends in `_test.plum`; a **test** is a top-level function in it whose name
+starts with `test_`, with no parameters and no result. No new syntax is
+involved: a test passes when it returns, and fails when an error escapes
+it, usually the `AssertError` of a failed `assert` (section 7).
+
+```plum
+# math_test.plum
+seed test
+seed ./math_utils { average }
+
+branch test_average() {
+    assert(average([2, 4, 6]) == 4)
+}
+
+branch test_average_of_nothing() {
+    plant e = test.throws(() => {
+        average([])
+    })
+    assert(e is ZeroDivisionError)
+}
+```
+
+```
+plum test                       # every *_test.plum under the current directory
+plum test tests src/x_test.plum # those under a directory, and one file by name
+plum test --filter average      # only the tests whose name contains "average"
+plum test --json                # the report as JSON, for editors and CI
+```
+
+- **Finding tests.** Directories are searched for test files, in name
+  order, skipping hidden entries; a file named on the command line is a
+  test file whatever its name. Tests run in the order they are written.
+  A `test_` function that takes parameters or returns a value is reported
+  as a failing test.
+- **Each test on its own.** Every test runs in a fresh program: the
+  test file's modules are loaded again, their top-level code runs, then
+  the test function. Module variables, objects and tasks from one test
+  never reach another, and a failing test doesn't stop the rest. What
+  outlives the program is shared: files, the environment, the network.
+- **Errors in the file.** A test file with compile errors is reported
+  (on standard error, as by `plum check`) and none of its tests run; it
+  counts as a failure. Warnings are reported and the tests run.
+- **The report.** For each file, each test passes (`ok`) or fails
+  (`FAIL`). A failure shows the error, the file and line where it was
+  thrown (for an error thrown inside the standard library, the line of the
+  test's code that called it), the calls that led there, and what the test
+  printed; what a passing test prints is not shown. A last line counts the
+  passes and failures. `--json` writes instead one JSON object with
+  `tests` (each with `file`, `name`, `line`, `passed`, and for a failure
+  `error`: `type`, `message`, `file`, `line`, `trace`, and `output`),
+  `broken` (test files with errors), `passed` and `failed`.
+- **Exit code.** 0 when every test passed, also when there were none; 1
+  when a test failed or a test file has errors; 2 for wrong usage; 3 when
+  a path can't be read.
+- **Expected errors.** `test.throws(f)` (`seed test`) runs `f` and
+  returns the error it threw, for `is` to check its tree; if `f` throws
+  nothing, the test fails with an `AssertError`.
 
 ## 15. Changes from the Python prototype
 
