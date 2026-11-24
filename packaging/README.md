@@ -23,7 +23,8 @@ LicenseRef-Plumlang-Commercial-1.0`.
 | `aur/` | AUR `plum-bin` | Pushed by hand (below) | By hand, each release |
 | `scoop/` | Scoop | The Extras bucket, once it accepts Plumlang (below) | Scoop's `checkver` / `autoupdate` |
 | `aqua/` | aqua and mise (`aqua:plumlang/plumlang`) | In aquaproj/aqua-registry (merged, #65136) | aqua-registry's Renovate |
-| `nix/` | nixpkgs `plum` | NixOS/nixpkgs#592489 (in review) | nixpkgs' update bot |
+| `docker/` | Docker Hub `plumlang/plum`, GHCR `ghcr.io/plumlang/plum` | `.github/workflows/docker.yml`, after each release | Each release |
+| `nix/` | nixpkgs `plum` | NixOS/nixpkgs#592489 (approved, waiting for a merge) | nixpkgs' update bot |
 
 ## AUR: `plum-bin`
 
@@ -98,3 +99,19 @@ Once it is in nixpkgs: `nix profile install nixpkgs#plum`, or `plum` in
 nixpkgs copy when reviewers ask for changes. nixpkgs' contribution policy
 requires disclosing automated help in commits (an `Assisted-by:` trailer)
 and keeping pull request text and replies the author's own.
+
+## Docker
+
+`docker/Dockerfile` puts the release's static Linux binary on Alpine (a
+shell, and the CA certificates HTTPS needs). The `Docker` workflow builds it
+for amd64, arm64 and riscv64 after each tagged release, tests the amd64 image
+(`plum version`, a program, run from a mounted folder) and pushes it:
+
+```sh
+docker run --rm -v "$PWD":/src plumlang/plum run app.plum
+docker run --rm -it plumlang/plum repl
+```
+
+Tags: `2.2.0`, `2.2`, `2` and `latest`. Docker Hub needs the
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets (docs/releasing.md);
+GHCR uses the workflow's own token.
