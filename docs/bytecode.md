@@ -94,6 +94,45 @@ the body while the new `i` is still in the range, so each time round runs
 one loop instruction. It checks before adding, so a range ending at the
 largest int (`a..=b`) cannot overflow.
 
+## Fields and method calls
+
+An object stores its fields in one array, the parent tree's fields first,
+so a field's position is fixed for its tree and every tree extending it:
+`obj.x` is `GET_FIELD` with that position, never a lookup by name. When
+the object is in a local slot of the running function (`self`, a
+parameter, a variable no closure captured), the instruction names the
+slot too, and nothing is pushed or counted for the object:
+
+| Form | Example | Instead of |
+|---|---|---|
+| `GET_FIELD_L` | `self.r` | `GET_LOCAL`, `GET_FIELD` |
+| `SET_FIELD_L` | `self.w = side` | `GET_LOCAL`, value, `SET_FIELD` |
+| `FIELD_ADD_INT_K`, `FIELD_SUB_FLOAT_L`, ... | `self.count += 1`, `self.total -= x` | `GET_LOCAL`, `GET_LOCAL`, `GET_FIELD`, `ADD_INT_K`, `SET_FIELD` |
+
+The in-place forms exist for `+=` and `-=` on an int or float field, with
+an int or float literal or local on the right; they give the same results
+and errors, at the same line, as the plain instructions. Anything else
+(`?.`, a weak field, an object that isn't in a plain local) uses
+`GET_FIELD` and `SET_FIELD`.
+
+Every method name has a number, and every tree a table from those numbers
+to the functions its objects run: its own methods, then its parent's,
+then its traits' defaults. `INVOKE` takes the method from the table of
+the object's own tree, so an override or a trait's implementation is
+found with one array index, whatever the variable's type. When the
+compiler knows which function will run, the call names it directly:
+`CALL_METHOD n` calls the program's method function `n`, with no table.
+That is the case when the receiver's type is a tree and no tree in the
+whole program that extends it overrides the method, and for `super` and
+`init` calls. A trait's type, an overridden method and code typed in the
+REPL (a later entry may add a tree that overrides) keep `INVOKE`.
+
+A method's frame has the object as slot 0 (`self`) and its arguments in
+the next slots, where the caller pushed them; nothing sits under the
+object (a plain function call has the function there), and the result
+takes the object's place. Bytecode is never changed while it runs: there
+are no inline caches to write, so isolates can share it (#150).
+
 ## Instructions
 
 Jump distances are relative to the instruction after the jump. Generated

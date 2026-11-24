@@ -11,6 +11,11 @@
  * _K a constant, _L a local, _LK both; LOCAL_ and GLOBAL_ change a
  * variable in place; JUMP_IF_NOT_ compares and jumps (docs/bytecode.md).
  *
+ * Fields have fixed positions, the parent tree's first; GET_FIELD_L and
+ * the FIELD_ forms work on the object in a local (#119). INVOKE finds a
+ * method in the object's tree's table; CALL_METHOD calls one the compiler
+ * resolved. Code never changes once compiled: no inline caches.
+ *
  * X(name, operand count, what it does)
  */
 #ifndef PLUM_COMPILER_OPCODES_H
