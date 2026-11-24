@@ -107,4 +107,9 @@ void plum_lsp_completion(PlumJsonWriter *w, const PlumLspAnalysis *a, const char
 void plum_lsp_signature_help(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *text,
                              size_t len, size_t offset, PlumModuleReader read, void *read_ctx);
 
+/* Semantic tokens: the legend (a SemanticTokensLegend), and the whole
+ * file's tokens (SemanticTokens) in the legend's numbers. */
+void plum_lsp_semantic_legend(PlumJsonWriter *w);
+void plum_lsp_semantic_tokens(PlumJsonWriter *w, const PlumLspAnalysis *a);
+
 #endif /* PLUM_LSP_ANALYSIS_H */

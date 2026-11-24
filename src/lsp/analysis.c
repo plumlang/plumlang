@@ -2908,3 +2908,319 @@ void plum_lsp_signature_help(PlumJsonWriter *w, const PlumLspAnalysis *a, const 
     plum_lsp_analysis_free(patched);
     lexed_free(&l);
 }
+
+/* ------------------------------------------------------------------ */
+/* Semantic tokens                                                     */
+/* ------------------------------------------------------------------ */
+
+/* The legend: the protocol's standard token types and modifiers, in the
+ * order their numbers refer to. */
+enum {
+    ST_NAMESPACE,   /* modules: seed math, seed ./shapes as sh */
+    ST_TYPE,        /* built-in types: int, str, list */
+    ST_CLASS,       /* trees, the built-in errors */
+    ST_ENUM,        /* kinds */
+    ST_INTERFACE,   /* traits */
+    ST_PARAMETER,   /* parameters, keyword arguments */
+    ST_VARIABLE,    /* plant, root, loop names, pattern names */
+    ST_PROPERTY,    /* fields */
+    ST_ENUM_MEMBER, /* cases */
+    ST_FUNCTION,    /* branch, built-in and standard-library functions */
+    ST_METHOD,      /* methods */
+    ST_KEYWORD,
+    ST_STRING,
+    ST_NUMBER,
+    ST_COMMENT,
+    ST_NONE = -1,
+};
+
+enum {
+    SM_DECLARATION = 1 << 0,
+    SM_READONLY = 1 << 1,        /* root constants, standard-library constants */
+    SM_DEFAULT_LIBRARY = 1 << 2, /* built into Plumlang */
+};
+
+static const char *const token_types[] = {
+    "namespace",  "type",     "class",  "enum",    "interface", "parameter", "variable", "property",
+    "enumMember", "function", "method", "keyword", "string",    "number",    "comment",
+};
+
+static const char *const token_modifiers[] = {"declaration", "readonly", "defaultLibrary"};
+
+void plum_lsp_semantic_legend(PlumJsonWriter *w) {
+    plum_jw_object(w);
+    plum_jw_key(w, "tokenTypes");
+    plum_jw_array(w);
+    for (size_t i = 0; i < sizeof token_types / sizeof token_types[0]; i++) {
+        plum_jw_string(w, token_types[i]);
+    }
+    plum_jw_array_end(w);
+    plum_jw_key(w, "tokenModifiers");
+    plum_jw_array(w);
+    for (size_t i = 0; i < sizeof token_modifiers / sizeof token_modifiers[0]; i++) {
+        plum_jw_string(w, token_modifiers[i]);
+    }
+    plum_jw_array_end(w);
+    plum_jw_object_end(w);
+}
+
+typedef struct SemToken {
+    size_t start, end;
+    int type, mods;
+} SemToken;
+
+typedef PLUM_ARRAY(SemToken) SemTokens;
+
+/* A token, cut at line ends (a token may not span lines). */
+static void add_sem(SemTokens *out, const char *text, size_t start, size_t end, int type,
+                    int mods) {
+    while (start < end) {
+        size_t stop = start;
+        while (stop < end && text[stop] != '\n' && text[stop] != '\r') {
+            stop++;
+        }
+        if (stop > start) {
+            SemToken t = {start, stop, type, mods};
+            plum_array_push(out, t);
+        }
+        start = stop + 1;
+    }
+}
+
+static int symbol_token(const PlumSymbol *sym, int *mods) {
+    switch (sym->kind) {
+    case PLUM_SYM_VAR:
+    case PLUM_SYM_LOOP:
+    case PLUM_SYM_BINDING:
+        return ST_VARIABLE;
+    case PLUM_SYM_CONST:
+        *mods |= SM_READONLY;
+        return ST_VARIABLE;
+    case PLUM_SYM_PARAM:
+        return ST_PARAMETER;
+    case PLUM_SYM_FUNC:
+        return ST_FUNCTION;
+    case PLUM_SYM_TREE:
+        if (sym->decl == NULL) {
+            *mods |= SM_DEFAULT_LIBRARY;
+        }
+        return ST_CLASS;
+    case PLUM_SYM_TRAIT:
+        return ST_INTERFACE;
+    case PLUM_SYM_KIND:
+        return ST_ENUM;
+    case PLUM_SYM_CASE:
+        return ST_ENUM_MEMBER;
+    case PLUM_SYM_BUILTIN_FUNC:
+        *mods |= SM_DEFAULT_LIBRARY;
+        return ST_FUNCTION;
+    case PLUM_SYM_BUILTIN_TYPE:
+        *mods |= SM_DEFAULT_LIBRARY;
+        return ST_TYPE;
+    case PLUM_SYM_MODULE:
+        if (native_module_of(sym) != NULL) {
+            *mods |= SM_DEFAULT_LIBRARY;
+        }
+        return ST_NAMESPACE;
+    case PLUM_SYM_NATIVE: {
+        const PlumNativeModule *nm = native_module_of(sym);
+        *mods |= SM_DEFAULT_LIBRARY;
+        if (nm != NULL && plum_native_constant(nm, sym->name) != NULL) {
+            *mods |= SM_READONLY;
+            return ST_VARIABLE;
+        }
+        return ST_FUNCTION;
+    }
+    }
+    return ST_NONE;
+}
+
+/* A standard module's function or constant. */
+static int native_token(const PlumNativeModule *nm, const char *name, int *mods) {
+    *mods |= SM_DEFAULT_LIBRARY;
+    if (nm != NULL && plum_native_constant(nm, name) != NULL) {
+        *mods |= SM_READONLY;
+        return ST_VARIABLE;
+    }
+    return ST_FUNCTION;
+}
+
+static int member_token(const PlumExpr *e, int *mods) {
+    const PlumExpr *obj = e->as.field.object;
+    const char *name = e->as.field.name;
+    if (obj != NULL && obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL) {
+        if (obj->symbol->kind == PLUM_SYM_KIND) {
+            return ST_ENUM_MEMBER;
+        }
+        const PlumNativeModule *nm =
+            obj->symbol->kind == PLUM_SYM_MODULE ? native_module_of(obj->symbol) : NULL;
+        if (nm != NULL) {
+            return native_token(nm, name, mods);
+        }
+    }
+    const PlumSymbol *tree = tree_of(obj != NULL ? obj->ty : NULL);
+    const PlumSymbol *owner = NULL;
+    if (tree != NULL && find_field(tree, name, &owner) != NULL) {
+        return ST_PROPERTY;
+    }
+    if (tree != NULL && find_method(tree, name, &owner, 0) != NULL) {
+        return ST_METHOD;
+    }
+    if (tree != NULL && tree->decl == NULL) {
+        *mods |= SM_DEFAULT_LIBRARY; /* a built-in error's message */
+        return ST_PROPERTY;
+    }
+    bool method = false;
+    if (obj != NULL && obj->ty != NULL && plum_callee_native(e, &method) != NULL) {
+        *mods |= SM_DEFAULT_LIBRARY;
+        return ST_METHOD;
+    }
+    return e->ty != NULL && e->ty->kind == PLUM_TY_FUNC ? ST_METHOD : ST_PROPERTY;
+}
+
+typedef struct Sem {
+    const PlumLspAnalysis *a;
+    SemTokens *out;
+} Sem;
+
+static void sem_visit(Walk *w, const Occ *o) {
+    Sem *s = w->ctx;
+    int mods = 0;
+    int type = ST_NONE;
+    switch (o->kind) {
+    case OCC_SYMBOL: {
+        const PlumSymbol *sym = o->symbol;
+        if (sym == NULL) {
+            return;
+        }
+        type = symbol_token(sym, &mods);
+        /* declared here? (cheap test first: is it inside the declaration) */
+        Place p;
+        if (sym->span.offset <= o->start && o->start < span_end(sym->span, (size_t)-1) &&
+            symbol_place(s->a, sym, &p) == PLACE_OK && p.m == w->m && p.start == o->start) {
+            mods |= SM_DECLARATION;
+        }
+        break;
+    }
+    case OCC_MEMBER:
+        type = member_token(o->expr, &mods);
+        break;
+    case OCC_FIELD_DECL:
+        type = ST_PROPERTY;
+        mods = SM_DECLARATION;
+        break;
+    case OCC_METHOD_DECL:
+        type = ST_METHOD;
+        mods = SM_DECLARATION;
+        break;
+    case OCC_CASE_DECL:
+        type = ST_ENUM_MEMBER;
+        mods = SM_DECLARATION;
+        break;
+    case OCC_PARAM_DECL:
+        type = ST_PARAMETER;
+        mods = SM_DECLARATION;
+        break;
+    case OCC_SEED_PATH:
+        type = ST_NAMESPACE;
+        if (o->stmt->as.seed.exports == NULL) {
+            mods = SM_DEFAULT_LIBRARY;
+        }
+        break;
+    case OCC_SEED_NAME: {
+        void *found = NULL;
+        const PlumMap *exports = o->stmt->as.seed.exports;
+        if (exports != NULL && plum_map_get(exports, o->name, strlen(o->name), &found)) {
+            type = symbol_token(found, &mods);
+        } else if (exports == NULL) {
+            type = native_token(plum_native_module(o->stmt->as.seed.path), o->name, &mods);
+        }
+        break;
+    }
+    case OCC_ARG:
+        type = ST_PARAMETER;
+        break;
+    case OCC_EXPR:
+        return;
+    }
+    if (type != ST_NONE) {
+        add_sem(s->out, w->m->text, o->start, o->end, type, mods);
+    }
+}
+
+static int by_token(const void *x, const void *y) {
+    const SemToken *a = x, *b = y;
+    if (a->start != b->start) {
+        return a->start < b->start ? -1 : 1;
+    }
+    return a->end < b->end ? -1 : a->end > b->end;
+}
+
+void plum_lsp_semantic_tokens(PlumJsonWriter *w, const PlumLspAnalysis *a) {
+    const PlumModule *m = a->main;
+    SemTokens tokens = {0};
+    /* keywords, numbers, strings and comments, from the lexer */
+    Lexed l;
+    lex_text(&l, m->path, m->text, m->len);
+    for (size_t i = 0; i < l.tokens.len; i++) {
+        const PlumToken *t = &l.tokens.items[i];
+        size_t start = t->span.offset, end = span_end(t->span, m->len);
+        int type = ST_NONE;
+        if (t->kind >= PLUM_TOK_PLANT && t->kind <= PLUM_TOK_WEAK) {
+            type = ST_KEYWORD;
+        } else if (t->kind == PLUM_TOK_INT || t->kind == PLUM_TOK_FLOAT) {
+            type = ST_NUMBER;
+        } else if (t->kind == PLUM_TOK_STRING || t->kind == PLUM_TOK_STRING_HEAD ||
+                   t->kind == PLUM_TOK_STRING_MID || t->kind == PLUM_TOK_STRING_TAIL) {
+            type = ST_STRING;
+        }
+        if (type != ST_NONE) {
+            add_sem(&tokens, m->text, start, end, type, 0);
+        }
+    }
+    for (size_t i = 0; i < l.comments.len; i++) {
+        const PlumComment *c = &l.comments.items[i];
+        add_sem(&tokens, m->text, c->span.offset, span_end(c->span, m->len), ST_COMMENT, 0);
+    }
+    lexed_free(&l);
+    /* names, by what they stand for */
+    Sem sem = {a, &tokens};
+    Walk walk = {m, sem_visit, &sem, 0};
+    for (size_t i = 0; i < m->program.count; i++) {
+        walk_stmt(&walk, m->program.stmts[i]);
+    }
+    if (tokens.len > 1) {
+        qsort(tokens.items, tokens.len, sizeof *tokens.items, by_token);
+    }
+    PlumLspLines lines;
+    plum_lsp_lines_init(&lines, m->text, m->len);
+    plum_jw_object(w);
+    plum_jw_key(w, "data");
+    plum_jw_array(w);
+    long long prev_line = 0, prev_char = 0;
+    size_t covered = 0; /* tokens may not overlap: a later one inside an earlier is left out */
+    for (size_t i = 0; i < tokens.len; i++) {
+        const SemToken *t = &tokens.items[i];
+        if (t->start < covered || t->end > m->len) {
+            continue;
+        }
+        covered = t->end;
+        long long line, character, end_line, end_character;
+        plum_lsp_position(&lines, t->start, &line, &character);
+        plum_lsp_position(&lines, t->end, &end_line, &end_character);
+        if (end_line != line || end_character <= character) {
+            continue;
+        }
+        plum_jw_int(w, line - prev_line);
+        plum_jw_int(w, line == prev_line ? character - prev_char : character);
+        plum_jw_int(w, end_character - character);
+        plum_jw_int(w, t->type);
+        plum_jw_int(w, t->mods);
+        prev_line = line;
+        prev_char = character;
+    }
+    plum_jw_array_end(w);
+    plum_jw_object_end(w);
+    plum_lsp_lines_free(&lines);
+    plum_array_free(&tokens);
+}

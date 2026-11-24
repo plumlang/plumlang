@@ -659,6 +659,13 @@ static void initialize_result(PlumJsonWriter *w) {
     plum_jw_string(w, ")");
     plum_jw_array_end(w);
     plum_jw_object_end(w);
+    plum_jw_key(w, "semanticTokensProvider");
+    plum_jw_object(w);
+    plum_jw_key(w, "legend");
+    plum_lsp_semantic_legend(w);
+    plum_jw_key(w, "full");
+    plum_jw_bool(w, true);
+    plum_jw_object_end(w);
     plum_jw_object_end(w);
     plum_jw_key(w, "serverInfo");
     plum_jw_object(w);
@@ -909,8 +916,9 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
     bool prepare = strcmp(method, "textDocument/prepareRename") == 0;
     bool rename = strcmp(method, "textDocument/rename") == 0;
     bool signature = strcmp(method, "textDocument/signatureHelp") == 0;
+    bool tokens = strcmp(method, "textDocument/semanticTokens/full") == 0;
     if (!hover && !definition && !completion && !symbols && !format && !refs && !prepare &&
-        !rename && !signature) {
+        !rename && !signature && !tokens) {
         send_error(s, id, ERR_METHOD_NOT_FOUND, "unknown method");
         return;
     }
@@ -960,6 +968,8 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
             plum_jw_array_end(&w);
         }
         plum_lsp_target_free(&t);
+    } else if (tokens) {
+        plum_lsp_semantic_tokens(&w, d->analysis);
     } else if (signature) {
         plum_lsp_signature_help(&w, d->analysis, d->text, d->len, offset, read_module, s);
     } else if (prepare || rename) {
