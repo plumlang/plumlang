@@ -97,4 +97,28 @@ bool plum_lsp_valid_name(const char *name, size_t len, char *why, size_t size);
 void plum_lsp_completion(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *text, size_t len,
                          size_t offset, PlumModuleReader read, void *read_ctx);
 
+/*
+ * The signature of the call whose arguments the offset is in, with the
+ * argument there as its active parameter (by position, or by name for a
+ * keyword argument). The text is lexed again to find the call, so a call
+ * still being typed is found too; it is checked again with its brackets
+ * closed when the analysis doesn't have it.
+ */
+void plum_lsp_signature_help(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *text,
+                             size_t len, size_t offset, PlumModuleReader read, void *read_ctx);
+
+/* Semantic tokens: the legend (a SemanticTokensLegend), and the whole
+ * file's tokens (SemanticTokens) in the legend's numbers. */
+void plum_lsp_semantic_legend(PlumJsonWriter *w);
+void plum_lsp_semantic_tokens(PlumJsonWriter *w, const PlumLspAnalysis *a);
+
+/*
+ * Quick fixes for the file's diagnostics in text[start, end] (a
+ * CodeAction[]): "Prefix 'x' with '_'" for W0502 (never used), and "Add
+ * `seed math`" (or `seed ./name`, for a file beside it) for E0301, an
+ * unknown name that is a module. Edits name the file `uri`.
+ */
+void plum_lsp_code_actions(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *uri,
+                           size_t start, size_t end, PlumModuleReader read, void *read_ctx);
+
 #endif /* PLUM_LSP_ANALYSIS_H */

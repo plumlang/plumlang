@@ -22,6 +22,36 @@ plum lsp --stdio    # the same (some editors add the flag)
 | Formatting | The whole file in `plum fmt`'s layout (spec 14.1). A file with syntax errors is left alone. |
 | Find references | Every place in the package that names the same variable, parameter, function, tree, trait, kind, case, field, method or module alias: uses, imports (`seed ./beds { Bed }`, `beds.Bed`), keyword arguments (`Bed(plants: 4)` names the field `plants`) and, if asked, the declaration. |
 | Rename | Renames all of those at once, in every file of the package, open or not, as one edit. Built-ins (`drop`, `int`, `ValueError`), the standard library, keywords and a module's file name can't be renamed; the editor shows why. The new name must be a name and not a keyword. |
+| Signature help | While you type a call's arguments (after `(` and `,`): the signature of the function, method, constructor (`init`'s parameters, or the fields, parents' first), kind case, built-in or standard-library function, with the argument you are on highlighted; a keyword argument (`step: 2`) highlights the parameter it names. Works on a call you are still typing. |
+| Semantic tokens | Colour by meaning, for the whole file: what each name stands for (a parameter, a constant, a field, a case, a standard-library function, ...), and whether it is declared there; keywords, numbers, strings and comments too, so a file that doesn't parse is still coloured. The legend is below. |
+| Code actions | Quick fixes for diagnostics: **Add `seed math`** for an unknown name that is a standard module (E0301), or **Add `seed ./name`** when `name.plum` is beside the file, placed after the last `seed` (or after the comments the file starts with); **Prefix 'x' with '_' to keep it** for a name never used (W0502). |
+
+### Semantic token legend
+
+The server uses only the protocol's standard token types and modifiers,
+so every theme already has colours for them.
+
+| Token type | Plumlang |
+|---|---|
+| `namespace` | a module: `seed math`, `seed ./shapes as sh`, and `math` in `math.sqrt` |
+| `type` | a built-in type: `int`, `float`, `str`, `list`, ... |
+| `class` | a tree, and the built-in error trees (`Error`, `ValueError`, ...) |
+| `interface` | a trait |
+| `enum` | a kind |
+| `enumMember` | a kind's case: `Light.Off`, `Dim(level)` in a `match` |
+| `parameter` | a parameter of a function, method, lambda or case, and a keyword argument's name |
+| `variable` | `plant` and `root` names, loop names, names a pattern or `if plant` binds |
+| `property` | a tree's field |
+| `function` | a `branch`, a built-in function (`drop`, `len`) or a standard-library function |
+| `method` | a method of a tree or trait, and a method of `str`, `list`, `map`, ... |
+| `keyword` | `plant`, `branch`, `if`, `good`, `none`, `self`, ... |
+| `string`, `number`, `comment` | literals and `#` comments |
+
+| Modifier | When |
+|---|---|
+| `declaration` | where the name is declared |
+| `readonly` | a `root` constant, or a standard-library constant (`math.PI`) |
+| `defaultLibrary` | built into Plumlang: built-in functions, types and errors, and the standard library |
 
 Details:
 
@@ -56,10 +86,16 @@ Details:
 
 ## Editors
 
+Where each editor shows the features beyond diagnostics, hover,
+definition, completion, symbols and formatting (which all of them show):
+
 | Feature | VS Code | Neovim (0.11) | Helix | Zed | Emacs (eglot) |
 |---|---|---|---|---|---|
 | Find references | Shift+F12 | `grr` | `gr` | Alt+Shift+F12 | `M-?` |
 | Rename | F2 | `grn` | `Space r` | F2 | `M-x eglot-rename` |
+| Signature help | as you type | `Ctrl-S` in insert mode | as you type | as you type | in the echo area (ElDoc) |
+| Semantic tokens | with most themes (`editor.semanticHighlighting.enabled`) | on by default | not used (colours with tree-sitter) | only in versions that support them (otherwise tree-sitter) | `lsp-mode` with `lsp-semantic-tokens-enable`; eglot only in versions that support them |
+| Code actions (quick fixes) | the light bulb, Ctrl+. | `gra` | `Space a` | Ctrl+. (Cmd+. on macOS) | `M-x eglot-code-actions` |
 
 The server needs only the path of `plum`; with `plum` on your `PATH`, the
 command is `plum lsp`. Associate the `.plum` extension with a `plum`
@@ -189,6 +225,14 @@ package is then checked (open files are already) and walked the same
 way, and each name leading to that same place is a reference. A name
 spelled differently can't be one, so most names are skipped without
 looking them up.
+
+Signature help lexes the text again (tokens skip strings and comments)
+to find the innermost `(` still open before the cursor, the name before
+it and the commas since; the call itself comes from the checked tree, or,
+while it is still being typed, from checking the file once more with its
+brackets closed at the cursor. Semantic tokens walk the checked tree as
+the other answers do, and add the lexer's keywords, literals and
+comments.
 
 The tests are recorded sessions: `tests/lsp/*.in`, run by `tests/lsp.sh`
 and compared with `tests/lsp/*.out`.
