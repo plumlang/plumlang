@@ -346,15 +346,14 @@ core, before being main with #119:
 | words | 0.257 s | 0.260 s | 0.99x |
 
 Counting cycles (`perf stat`, best of five) is steadier. With GCC 15,
-`-O2`: fib −58%, collatz −25%, cart −14%, mandelbrot −9%, loop −2%,
-textbuild −2%, and `dispatch`, `words`, `strings` and `jsondoc` +1.8%,
-+1.5%, +0.3% and +0.1%: GCC laying out the large run loop differently
-(none of them but `dispatch` runs a changed instruction, and its
-`INVOKE` only lost a `memmove` its method call no longer needs). With
-GCC 13, which CI builds with: fib −50%, loop −24%, mandelbrot −18%,
-collatz −17%, cart −12%, dispatch −3%, the rest within 1.3%. With
-`make release-pgo` (GCC 15): fib −60%, cart −16%, collatz −9%, strings
-−6%, dispatch, jsondoc and loop −1%, the rest within 0.3%.
+`-O2`: fib −58%, collatz −21%, cart −17%, mandelbrot −9%, loop −2%,
+dispatch −2%, textbuild −2%; `strings`, `words` and `jsondoc` +2.1%,
++0.6% and +0.3%, which run none of the changed instructions: GCC laying
+out the large run loop differently. With GCC 13: fib −45%, loop −25%,
+cart −19%, collatz −18%, dispatch −10%, strings and words level. With
+`make release-pgo` (GCC 15, before the last change to how a return drops
+references): fib −60%, cart −16%, collatz −9%, strings −6%, dispatch,
+jsondoc and loop −1%, the rest within 0.3%.
 
 With `python3 bench/run.py --runs 7` on the same machine, pinned to one
 core, `fib` takes 0.018 s to 0.019 s against CPython 3.14's 0.057 s:
