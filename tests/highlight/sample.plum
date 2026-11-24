@@ -1,0 +1,121 @@
+# The shared highlighting sample: every keyword, every literal form and
+# the tricky corners of strings. Grammars for editors test against it
+# (tests/highlight/README.md). `plum check` accepts it.
+
+seed math
+seed json as j
+
+# Declarations
+plant count = 0
+root LIMIT = 1_000
+plant ratio: float = 2.5e-3
+plant maybe: int? = none
+plant scores: map[str, list[int]] = {:}
+
+# Numbers: decimal, hex, octal, binary, separators, floats, exponents
+plant numbers = [42, 1_000_000, 0xFF, 0xdead_BEEF, 0o755, 0b1010_0101]
+plant floats = [3.14, 0.5, 1e9, 6.022e23, 2.5e-3, 1E+3, 1_000.000_1]
+
+# Booleans and none, in both spellings
+plant flags = [good, bad, true, false]
+
+# Strings: escapes, interpolation, formats, nested braces, # inside
+plant name = "Ada"
+plant escapes = "tab\t newline\n quote\" backslash\\ braces\{\} nul\0 plum\u{1F351}"
+plant greeting = "Hello, {name}! 2 + 2 = {2 + 2}"
+plant formats = "{ratio:.2} {count:5} {name:<10}| {LIMIT:x} {LIMIT:b} {ratio:>8.3}"
+plant nested = "first: {{"a": 1, "b": 2}["a"]} inner: {"x{name}y"}"
+plant hash = "# not a comment"  # but this is
+plant poem = """
+    Roses are "red",
+    {name} is {len(name)} letters, {ratio:.1}
+    # still the string
+    """
+
+# Operators
+plant math_ops = 1 + 2 - 3 * 4 / 5 // 6 % 7 ** 2
+plant bits = (1 & 2) | (3 ^ 4) | ~5 | (1 << 2) | (8 >> 1)
+plant tests = 1 == 1 and 1 != 2 or not (1 < 2) and 1 <= 2 and 2 > 1 and 2 >= 1
+plant safe = maybe ?? 0
+count += 1
+count -= 1
+count *= 2
+count //= 2
+count %= 7
+count **= 2
+count &= 255
+count |= 1
+count ^= 2
+count <<= 1
+count >>= 1
+plant total = 0.0
+total /= 2.0
+
+# Kinds, traits and trees
+kind Shape {
+    Circle(radius: float)
+    Square(side: float)
+    Empty
+}
+
+trait Named {
+    branch name() -> str
+    branch shout() -> str => self.name() + "!"
+}
+
+tree Node : Named {
+    value: int
+    parent: weak Node? = none
+    branch name() -> str => "node {self.value}"
+}
+
+tree Leaf : Node {
+    branch name() -> str => "leaf " + super.name()
+}
+
+branch area(s: Shape) -> float {
+    return match s {
+        Circle(r) => math.PI * r ** 2
+        Square(side) => side * side
+        Empty => 0.0
+    }
+}
+
+# Control flow
+for i in 0..3 {
+    if i == 1 {
+        continue
+    } else if i in 2..=5 {
+        break
+    } else {
+        count += i
+    }
+}
+while count > 100 {
+    count = count - 1
+}
+plant label = match count {
+    0 => "zero"
+    _ => "many"
+}
+
+# Errors
+try {
+    throw ValueError("bad value")
+} catch e: ValueError {
+    drop(e.message)
+} finally {
+    drop("done")
+}
+
+# Types and conversions
+plant node = Leaf(1)
+drop(node is Named, int("42"), float(3), str(good), count as float)
+plant parent_name = node.parent?.name() ?? "orphan"
+
+# Tasks
+plant job = spawn ((n: int) => n * 2)(21)
+drop(job.wait(), j.parse("1"))
+
+drop(scores, numbers, floats, flags, escapes, greeting, formats, nested, hash, poem)
+drop(math_ops, bits, tests, safe, label, parent_name)
