@@ -15,10 +15,10 @@ Format for a new entry:
 ---
 
 ## Unreleased
-- VM: fields of an object in a local are read and changed by slot with no reference counting (`GET_FIELD_L`, `SET_FIELD_L`, in-place `FIELD_ADD_INT_K` and friends), methods no tree overrides are called directly (`CALL_METHOD`), and a method's frame no longer shifts its arguments: `dispatch` runs 3.0x and `cart` 2.2x as fast (#119). `plum dis` prints methods too.
 
 - **VM** (#148): `x += text` and `x = x + text` on a str variable (local or module) add to the string in place when the variable is its only owner, growing its buffer by half each time, so building a text a line at a time is linear: `textbuild` with 200,000 lines takes 0.46 s instead of 57 s, and the benchmark's 20,000 lines 0.05 s instead of 0.32 s. A shared string is still copied first (copy-on-write), and constant strings are frozen and never changed. A chain of `+` on strings is joined in one step (`BUILD_STRING`). New instructions `APPEND_LOCAL` and `APPEND_GLOBAL`; objects gain a flags byte with a frozen bit, which copy-on-write of strings, lists and maps checks.
 - **Performance**: macOS release binaries are built with LTO as well: arm64 with LTO + PGO (was PGO alone), x86_64 with LTO (was plain `-O2`); on arm64, method dispatch (`cart`, `dispatch`) 13–17% faster than PGO alone. Apple Clang's LTO builds crashed in the network tests because a static `send()` in the language server took the place of the socket library's; it is renamed, and `tests/symbols.sh` keeps such names out (#173).
+- **VM** (#119): a field of an object in a local (`self`, a parameter) is read and changed by its fixed slot without counting a reference (`GET_FIELD_L`, `SET_FIELD_L`; `self.count += 1` in place with `FIELD_ADD_INT_K` and friends), a method no tree overrides is called directly (`CALL_METHOD`), and a method's frame starts at the object instead of shifting it: the `dispatch` benchmark runs 3 times and `cart` 2.2 times as fast. `plum dis` prints methods too.
 
 ## v2.2.0 — 2026-11-24
 

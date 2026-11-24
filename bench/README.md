@@ -54,10 +54,13 @@ Plumlang is faster.
 | loop | 0.206 s | 0.750 s | 3.64x | 0.192 s | 0.93x | 0.050 s | 0.25x |
 | mandelbrot | 0.155 s | 0.887 s | 5.73x | 0.200 s | 1.29x | 0.035 s | 0.23x |
 | strings | 0.149 s | 0.167 s | 1.12x | 0.130 s | 0.87x | 0.050 s | 0.34x |
-| textbuild | 0.329 s | 0.317 s | 0.96x | 0.316 s | 0.96x | 0.063 s | 0.19x |
+| textbuild | 0.046 s | 0.312 s | 6.71x | 0.307 s | 6.62x | 0.057 s | 1.23x |
 | words | 0.287 s | 0.317 s | 1.10x | 0.190 s | 0.66x | 0.263 s | 0.92x |
 
-Plumlang is ahead of CPython or within 4% of it on every benchmark, and
+(`textbuild` was measured after #148, the rest after #119, fastest of
+five runs each.)
+
+Plumlang is ahead of CPython or within 1% of it on every benchmark, and
 3.5 to 5.7 times faster on integer and float arithmetic (`loop`,
 `collatz`, `mandelbrot`) and on method calls (`dispatch`, `cart`). It is
 three times as fast as Lua's interpreter on method calls (`dispatch`) and
@@ -294,26 +297,30 @@ loop that adds a line costs one `APPEND_GLOBAL` and the instructions of
 the interpolation; what is left of `textbuild` is mostly the `join` half.
 
 Before and after fixed-offset fields and static method dispatch (#119),
-Plumlang alone, `make` (`-O2`), fastest of 14 runs (`--runs 7`, twice,
-the two builds one after the other):
+on top of #148, Plumlang alone, `make` (`-O2`), fastest of 14 runs
+(`--runs 7`, twice, the two builds in turns). The machine was busy with
+other work and ran slower than for the tables above, so compare the
+ratios:
 
 | Benchmark | before | after | |
 |---|---|---|---|
-| cart | 0.308 s | 0.141 s | 2.18x |
-| collatz | 0.580 s | 0.579 s | 1.00x |
-| dispatch | 0.267 s | 0.088 s | 3.02x |
-| fib | 0.049 s | 0.044 s | 1.11x |
-| jsondoc | 0.237 s | 0.238 s | 1.00x |
-| loop | 0.200 s | 0.205 s | 0.97x |
-| mandelbrot | 0.161 s | 0.154 s | 1.04x |
-| strings | 0.141 s | 0.146 s | 0.97x |
-| textbuild | 0.324 s | 0.326 s | 0.99x |
-| words | 0.282 s | 0.284 s | 0.99x |
+| cart | 0.492 s | 0.226 s | 2.18x |
+| collatz | 0.917 s | 0.908 s | 1.01x |
+| dispatch | 0.429 s | 0.139 s | 3.09x |
+| fib | 0.077 s | 0.069 s | 1.11x |
+| jsondoc | 0.342 s | 0.347 s | 0.99x |
+| loop | 0.314 s | 0.323 s | 0.97x |
+| mandelbrot | 0.253 s | 0.244 s | 1.04x |
+| strings | 0.221 s | 0.224 s | 0.98x |
+| textbuild | 0.068 s | 0.069 s | 0.99x |
+| words | 0.391 s | 0.388 s | 1.01x |
 
 `loop` and `strings` run no method calls: the 3% is where GCC placed the
 run loop's code, which moved as it grew (their instruction counts are
-unchanged or lower). With `make release-pgo` (LTO and PGO, `--runs 7`),
-nothing is slower:
+unchanged or lower; in cycles, `perf stat -r 7`, `loop` is 2.7% and
+`strings` 1% slower, `textbuild`, `words` and `jsondoc` level). With
+`make release-pgo` (LTO and PGO, `--runs 7`, measured before #148, on a
+quieter machine), nothing is slower:
 
 | Benchmark | before | after | |
 |---|---|---|---|
@@ -332,7 +339,7 @@ PGO had already sped up the old method calls (LTO inlined the call into
 the run loop), so the gain is smaller there for `cart`; the new code runs
 as fast with or without it.
 
-#119 asked for `dispatch` at least twice as fast as 2.2.0: it is 3.0
+#119 asked for `dispatch` at least twice as fast as 2.2.0: it is 3.1
 times with `make` and 2.5 times with the release build. A method call is
 now cheaper than a function call: the object is slot 0 where the caller
 pushed it, a field of `self` is read without counting a reference, and
