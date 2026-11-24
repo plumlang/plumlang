@@ -1,0 +1,24 @@
+# Temporary: diagnostics for #173 (removed before merging).
+name: diag-173
+on:
+  push:
+    branches: [build/issue-173]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  diag:
+    name: ${{ matrix.os }} / ${{ matrix.step }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel]
+        step: [repro, asan, bisect]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: clang --version; sw_vers; xcode-select -p
+      - run: bash .github/diag173/${{ matrix.step }}.sh
