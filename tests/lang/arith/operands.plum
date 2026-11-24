@@ -1,0 +1,45 @@
+# Arithmetic whose right operand is a literal or a local variable: the
+# compiler gives it to the instruction itself (ADD_INT_K, MUL_FLOAT_L, ...).
+# The results and errors are the same as with the operand on the stack.
+branch show(e: Error) {
+    drop("{type_of(e)}: {e.message}")
+}
+
+branch ints(a: int, b: int) {
+    drop(a + 3, a - 3, a * 3, a // 3, a % 3)
+    drop(a + b, a - b, a * b, a // b, a % b)
+    drop(a // -2, a % -2)            # a negative constant: the general instruction
+    plant n = a
+    n += 1
+    n *= b
+    n -= 2
+    drop(n)
+}
+ints(-7, 2)
+ints(7, -2)
+ints(0, 5)
+
+branch floats(x: float, y: float, k: int) {
+    drop(x + 2, x - 2, x * 2, x / 4)       # int literals become float constants
+    drop(x + 0.5, x - 0.5, x * 0.5, x / 0.5)
+    drop(x + y, x - y, x * y, x / y)
+    drop(x * k, k * x, 2.0 * x, 1 / x)     # an int local is converted first
+    drop(x / 0.0, -x / 0.0, x // 2, x % 2)
+}
+floats(3.0, 1.5, 4)
+floats(-2.5, 0.25, -1)
+
+branch overflow(big: int, two: int) {
+    plant small = -big - 1
+    try { drop(big + 1) } catch e: OverflowError { show(e) }
+    try { drop(small - 1) } catch e: OverflowError { show(e) }
+    try { drop(big * 2) } catch e: OverflowError { show(e) }
+    try { drop(big + two) } catch e: OverflowError { show(e) }
+    try { drop(small - two) } catch e: OverflowError { show(e) }
+    try { drop(big * two) } catch e: OverflowError { show(e) }
+    try { drop(small // -1) } catch e: OverflowError { show(e) }
+    try { drop(big // 0) } catch e: ZeroDivisionError { show(e) }
+    try { drop(big % 0) } catch e: ZeroDivisionError { show(e) }
+    drop(small // 1, small % 1, big % 7, small % 7, small // 7)
+}
+overflow(9223372036854775807, 2)

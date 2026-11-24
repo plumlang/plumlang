@@ -1,0 +1,72 @@
+# Conditions that compare two numbers compare and jump in one instruction
+# (JUMP_IF_NOT_LT_INT, ...); `and` jumps out at its first false operand.
+branch ints(a: int, b: int) -> str {
+    plant s = ""
+    if a < b { s += "<" }
+    if a <= b { s += "<=" }
+    if a > b { s += ">" }
+    if a >= b { s += ">=" }
+    if a == b { s += "==" }
+    if a != b { s += "!=" }
+    return s
+}
+drop(ints(1, 2), ints(2, 2), ints(3, 2), ints(-9223372036854775807 - 1, 9223372036854775807))
+
+branch floats(x: float, y: float) -> str {
+    plant s = ""
+    if x < y { s += "<" }
+    if x <= y { s += "<=" }
+    if x > y { s += ">" }
+    if x >= y { s += ">=" }
+    if x == y { s += "==" }
+    if x != y { s += "!=" }
+    return s
+}
+plant nan = 0.0 / 0.0
+drop(floats(1.0, 2.0), floats(2.0, 2.0), floats(-0.0, 0.0), floats(nan, 1.0), floats(nan, nan))
+drop("[{floats(1.0 / 0.0, 1.0 / 0.0)}]")
+
+# An int and a float compare as floats.
+branch mixed(i: int, x: float) -> str => if i < x { "lt" } else if i == x { "eq" } else { "gt" }
+drop(mixed(1, 1.5), mixed(2, 2.0), mixed(3, 2.5))
+
+# and-chains, while loops, and if as an expression
+branch count(limit: int) -> int {
+    plant n = 0
+    plant i = 0
+    while i < limit and n * n <= 50 and i != 7 {
+        n += 2
+        i += 1
+    }
+    return i * 100 + n
+}
+drop(count(3), count(5), count(100))
+branch first(a: int) -> str => if a > 0 and a % 2 == 0 { "positive even" } else { "other" }
+drop(first(4), first(3), first(-2))
+
+# Conditions with side effects run once each, left to right, and stop at
+# the first false one.
+branch say(word: str, v: int) -> int {
+    drop(word)
+    return v
+}
+if say("a", 1) < say("b", 2) and say("c", 3) > say("d", 4) and say("e", 5) == 5 {
+    drop("all")
+} else {
+    drop("not all")
+}
+
+# Range loops: FOR_NEXT checks the end itself, so ends at the largest int
+# and empty ranges still work.
+for i in 9223372036854775805..9223372036854775807 { drop(i) }
+for i in 9223372036854775806..=9223372036854775807 { drop(i) }
+for i in 3..3 { drop("never", i) }
+for i in 3..=2 { drop("never", i) }
+for i in -2..=0 { drop(i) }
+plant hits = 0
+for i in 0..10 {
+    if i % 3 == 0 { continue }
+    if i == 8 { break }
+    hits += i
+}
+drop(hits)
