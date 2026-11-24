@@ -1704,7 +1704,9 @@ void plum_lsp_references(const PlumLspAnalysis *a, const PlumLspTarget *t, bool 
     for (size_t i = 0; i < a->main->program.count; i++) {
         walk_stmt(&w, a->main->program.stmts[i]);
     }
-    qsort(out->items, out->len, sizeof *out->items, by_start);
+    if (out->len > 1) {
+        qsort(out->items, out->len, sizeof *out->items, by_start);
+    }
 }
 
 bool plum_lsp_valid_name(const char *name, size_t len, char *why, size_t size) {
