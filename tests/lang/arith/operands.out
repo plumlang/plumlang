@@ -38,3 +38,15 @@ ZeroDivisionError: division by zero: 9223372036854775807 % 0
 -2 4294967295 3 7 -1073741825 0 -4294967297
 2147483647 4294967295 3 7 2305843009213693951 0 9223372036854775807
 -1152921504606846976 0 0 0 -2305843009213693952 0 -9223372036854775808
+2
+0
+1
+1
+0
+3
+OverflowError: integer overflow: 9223372036854775807 + 1 doesn't fit in an int
+OverflowError: integer overflow: 9223372036854775807 + 1 doesn't fit in an int
+OverflowError: integer overflow: 9223372036854775807 * 2 doesn't fit in an int
+OverflowError: integer overflow: -9223372036854775808 - 1 doesn't fit in an int
+OverflowError: integer overflow: -9223372036854775808 - 1 doesn't fit in an int
+-9223372036854775808

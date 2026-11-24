@@ -2490,6 +2490,45 @@ static PlumTokenKind compound_operator(PlumTokenKind tok) {
     return PLUM_TOK_PLUS;
 }
 
+/*
+ * x op= v, and x = x op v, on an int local x, with v an int literal or an
+ * int local: one instruction changes x in place (LOCAL_ADD_INT_K, ...).
+ * Emits it and returns true, or emits nothing and returns false.
+ */
+static bool local_update(Compiler *c, const PlumExpr *target, PlumTokenKind tok,
+                         const PlumExpr *right, uint32_t line) {
+    static const struct {
+        PlumTokenKind tok;
+        PlumOpcode k, l;
+    } ops[] = {
+        {PLUM_TOK_PLUS, PLUM_OP_LOCAL_ADD_INT_K, PLUM_OP_LOCAL_ADD_INT_L},
+        {PLUM_TOK_MINUS, PLUM_OP_LOCAL_SUB_INT_K, PLUM_OP_LOCAL_SUB_INT_L},
+        {PLUM_TOK_STAR, PLUM_OP_LOCAL_MUL_INT_K, PLUM_OPCODE_COUNT},
+        {PLUM_TOK_SLASH_SLASH, PLUM_OP_LOCAL_FLOORDIV_INT_K, PLUM_OPCODE_COUNT},
+        {PLUM_TOK_PERCENT, PLUM_OP_LOCAL_MOD_INT_K, PLUM_OPCODE_COUNT},
+    };
+    uint16_t slot, from;
+    if (!ty_is(target->ty, PLUM_TY_INT) || !int_like(right->ty) || !plain_local(c, target, &slot)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof ops / sizeof ops[0]; i++) {
+        if (ops[i].tok != tok) {
+            continue;
+        }
+        if (right->kind == PLUM_EXPR_INT &&
+            (i < 3 || right->as.i > 0)) { /* // and % by more than 0 can't fail */
+            op2(c, ops[i].k, slot, constant(c, plum_int(right->as.i), right->span), line);
+            return true;
+        }
+        if (ops[i].l != PLUM_OPCODE_COUNT && plain_local(c, right, &from)) {
+            op2(c, ops[i].l, slot, from, line);
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
 static void compile_assign(Compiler *c, const PlumStmt *s) {
     const PlumExpr *target = s->as.assign.target;
     if (target->kind == PLUM_EXPR_INDEX) {
@@ -2505,6 +2544,17 @@ static void compile_assign(Compiler *c, const PlumStmt *s) {
         return;
     }
     PlumTokenKind tok = s->as.assign.op;
+    const PlumExpr *value = s->as.assign.value;
+    if (tok != PLUM_TOK_EQ &&
+        local_update(c, target, compound_operator(tok), value, s->span.line)) {
+        return;
+    }
+    if (tok == PLUM_TOK_EQ && value->kind == PLUM_EXPR_BINARY &&
+        value->as.binary.left->kind == PLUM_EXPR_NAME &&
+        value->as.binary.left->symbol == target->symbol && int_like(value->as.binary.left->ty) &&
+        local_update(c, target, value->as.binary.op, value->as.binary.right, s->span.line)) {
+        return; /* x = x op v */
+    }
     if (tok == PLUM_TOK_EQ) {
         compile_as(c, s->as.assign.value, target->ty);
     } else {

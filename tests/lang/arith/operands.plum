@@ -57,3 +57,38 @@ divisions(4294967296, 3)
 divisions(-4294967297, 4294967296)
 divisions(9223372036854775807, 4294967296)
 divisions(-9223372036854775807 - 1, 8)
+
+# Updating an int local by a literal or another local, as x op= v or
+# x = x op v, changes it in place (LOCAL_ADD_INT_K, ...).
+branch updates(start: int, by: int) {
+    plant x = start
+    x += 5
+    x = x - 2
+    x *= 3
+    x = x // 4
+    x %= 7
+    drop(x)
+    x = x + by
+    x -= by
+    x = x - by
+    x = x - x
+    drop(x)
+    plant y = start
+    y //= 2
+    y = y % 4
+    drop(y)
+}
+updates(10, 3)
+updates(-10, -3)
+
+branch update_overflow(big: int, one: int) {
+    plant x = big
+    try { x += 1 } catch e: OverflowError { show(e) }
+    try { x = x + one } catch e: OverflowError { show(e) }
+    try { x *= 2 } catch e: OverflowError { show(e) }
+    x = -x - 1
+    try { x -= 1 } catch e: OverflowError { show(e) }
+    try { x = x - one } catch e: OverflowError { show(e) }
+    drop(x)                          # unchanged by the failed updates
+}
+update_overflow(9223372036854775807, 1)

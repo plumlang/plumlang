@@ -2029,6 +2029,19 @@ static bool execute(VM *vm) {
         }                                                                                     \
         s_->as.i = r;                                                                         \
     } while (0)
+/* The LOCAL_ forms change an int local in place, with no stack traffic. */
+#define LOCAL_CHECKED(fn, symbol, right)                                                      \
+    do {                                                                                      \
+        uint16_t n_ = READ_U16();                                                             \
+        uint16_t m_ = READ_U16();                                                             \
+        PlumValue *v_ = &SLOT(n_);                                                            \
+        int64_t a = v_->as.i, b = right(m_).as.i, r;                                          \
+        if (fn(a, b, &r)) {                                                                   \
+            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
+                 (long long)a, symbol, (long long)b);                                         \
+        }                                                                                     \
+        v_->as.i = r;                                                                         \
+    } while (0)
 #define FLOAT_WITH(operator, right)                  \
     do {                                             \
         uint16_t n_ = READ_U16();                    \
@@ -2273,6 +2286,33 @@ static bool execute(VM *vm) {
             s_->as.i = floor_mod(s_->as.i, KONST(READ_U16()).as.i);
             break;
         }
+        case PLUM_OP_LOCAL_ADD_INT_K:
+            LOCAL_CHECKED(add_overflows, "+", KONST);
+            break;
+        case PLUM_OP_LOCAL_SUB_INT_K:
+            LOCAL_CHECKED(sub_overflows, "-", KONST);
+            break;
+        case PLUM_OP_LOCAL_MUL_INT_K:
+            LOCAL_CHECKED(mul_overflows, "*", KONST);
+            break;
+        case PLUM_OP_LOCAL_FLOORDIV_INT_K: {
+            uint16_t n = READ_U16();
+            uint16_t k = READ_U16();
+            SLOT(n).as.i = floor_div(SLOT(n).as.i, KONST(k).as.i);
+            break;
+        }
+        case PLUM_OP_LOCAL_MOD_INT_K: {
+            uint16_t n = READ_U16();
+            uint16_t k = READ_U16();
+            SLOT(n).as.i = floor_mod(SLOT(n).as.i, KONST(k).as.i);
+            break;
+        }
+        case PLUM_OP_LOCAL_ADD_INT_L:
+            LOCAL_CHECKED(add_overflows, "+", SLOT);
+            break;
+        case PLUM_OP_LOCAL_SUB_INT_L:
+            LOCAL_CHECKED(sub_overflows, "-", SLOT);
+            break;
         case PLUM_OP_ADD_INT_L:
             CHECKED_WITH(add_overflows, "+", SLOT);
             break;

@@ -60,6 +60,13 @@
     X(ADD_INT_L, 1, "a + int local [a]")                                                           \
     X(SUB_INT_L, 1, "a - int local [a]")                                                           \
     X(MUL_INT_L, 1, "a * int local [a]")                                                           \
+    X(LOCAL_ADD_INT_K, 2, "int local [a] += int constant [b]")                                     \
+    X(LOCAL_SUB_INT_K, 2, "int local [a] -= int constant [b]")                                     \
+    X(LOCAL_MUL_INT_K, 2, "int local [a] *= int constant [b]")                                     \
+    X(LOCAL_FLOORDIV_INT_K, 2, "int local [a] //= int constant [b], which is above 0")             \
+    X(LOCAL_MOD_INT_K, 2, "int local [a] %= int constant [b], which is above 0")                   \
+    X(LOCAL_ADD_INT_L, 2, "int local [a] += int local [b]")                                        \
+    X(LOCAL_SUB_INT_L, 2, "int local [a] -= int local [b]")                                        \
     /* Floats: IEEE 754 */                                                                         \
     X(ADD_FLOAT, 0, "a + b")                                                                       \
     X(SUB_FLOAT, 0, "a - b")                                                                       \
