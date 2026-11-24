@@ -647,6 +647,32 @@ static void initialize_result(PlumJsonWriter *w) {
     plum_jw_key(w, "prepareProvider");
     plum_jw_bool(w, true);
     plum_jw_object_end(w);
+    plum_jw_key(w, "signatureHelpProvider");
+    plum_jw_object(w);
+    plum_jw_key(w, "triggerCharacters");
+    plum_jw_array(w);
+    plum_jw_string(w, "(");
+    plum_jw_string(w, ",");
+    plum_jw_array_end(w);
+    plum_jw_key(w, "retriggerCharacters");
+    plum_jw_array(w);
+    plum_jw_string(w, ")");
+    plum_jw_array_end(w);
+    plum_jw_object_end(w);
+    plum_jw_key(w, "codeActionProvider");
+    plum_jw_object(w);
+    plum_jw_key(w, "codeActionKinds");
+    plum_jw_array(w);
+    plum_jw_string(w, "quickfix");
+    plum_jw_array_end(w);
+    plum_jw_object_end(w);
+    plum_jw_key(w, "semanticTokensProvider");
+    plum_jw_object(w);
+    plum_jw_key(w, "legend");
+    plum_lsp_semantic_legend(w);
+    plum_jw_key(w, "full");
+    plum_jw_bool(w, true);
+    plum_jw_object_end(w);
     plum_jw_object_end(w);
     plum_jw_key(w, "serverInfo");
     plum_jw_object(w);
@@ -811,6 +837,28 @@ static void references(Server *s, PlumJsonWriter *w, const Doc *d, const PlumLsp
     free_paths(&paths);
 }
 
+/* Quick fixes for the diagnostics in the range asked about, unless the
+ * editor asks only for kinds of action other than quick fixes. */
+static void code_actions(Server *s, PlumJsonWriter *w, const Doc *d, const PlumJson *params) {
+    const PlumJson *only = plum_json_get(plum_json_get(params, "context"), "only");
+    bool wanted = only == NULL || only->kind != PLUM_JSON_ARRAY;
+    for (size_t i = 0; !wanted && i < only->as.arr.count; i++) {
+        const PlumJson *k = only->as.arr.items[i];
+        wanted = k->kind == PLUM_JSON_STRING && strncmp(k->as.str.chars, "quickfix", 8) == 0 &&
+                 (k->as.str.chars[8] == '\0' || k->as.str.chars[8] == '.');
+        wanted = wanted || (k->kind == PLUM_JSON_STRING && k->as.str.len == 0);
+    }
+    const PlumJson *range = plum_json_get(params, "range");
+    if (!wanted || range == NULL) {
+        plum_jw_array(w);
+        plum_jw_array_end(w);
+        return;
+    }
+    size_t start = offset_of(d, plum_json_get(range, "start"));
+    size_t end = offset_of(d, plum_json_get(range, "end"));
+    plum_lsp_code_actions(w, d->analysis, d->uri, start, end < start ? start : end, read_module, s);
+}
+
 /* prepareRename: the name and its range; rename: the edits. A name that
  * can't be renamed is an error, with the reason for the editor to show. */
 static void rename_request(Server *s, const PlumJson *id, const PlumJson *params, const Doc *d,
@@ -896,8 +944,11 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
     bool refs = strcmp(method, "textDocument/references") == 0;
     bool prepare = strcmp(method, "textDocument/prepareRename") == 0;
     bool rename = strcmp(method, "textDocument/rename") == 0;
+    bool signature = strcmp(method, "textDocument/signatureHelp") == 0;
+    bool tokens = strcmp(method, "textDocument/semanticTokens/full") == 0;
+    bool actions = strcmp(method, "textDocument/codeAction") == 0;
     if (!hover && !definition && !completion && !symbols && !format && !refs && !prepare &&
-        !rename) {
+        !rename && !signature && !tokens && !actions) {
         send_error(s, id, ERR_METHOD_NOT_FOUND, "unknown method");
         return;
     }
@@ -907,7 +958,7 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
         return;
     }
     const PlumJson *pos = plum_json_get(params, "position");
-    if ((hover || definition || completion || refs || prepare || rename) &&
+    if ((hover || definition || completion || refs || prepare || rename || signature) &&
         (pos == NULL || pos->kind != PLUM_JSON_OBJECT)) {
         send_error(s, id, ERR_INVALID_PARAMS, "missing position");
         return;
@@ -947,6 +998,12 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
             plum_jw_array_end(&w);
         }
         plum_lsp_target_free(&t);
+    } else if (actions) {
+        code_actions(s, &w, d, params);
+    } else if (tokens) {
+        plum_lsp_semantic_tokens(&w, d->analysis);
+    } else if (signature) {
+        plum_lsp_signature_help(&w, d->analysis, d->text, d->len, offset, read_module, s);
     } else if (prepare || rename) {
         plum_jw_null(&w);
     } else {
