@@ -204,6 +204,7 @@ test: all $(UNIT_BIN)
 	@sh tests/bytecode-documented.sh
 	@sh tools/stdlib-docs.sh $(PLUM) --check
 	@sh tests/stdlib-embedded.sh
+	@sh tests/highlight.sh $(PLUM)
 	@sh tests/golden.sh $(PLUM)
 	@sh tests/golden.sh $(PLUM) examples
 	@sh tests/fmt-check.sh $(PLUM)

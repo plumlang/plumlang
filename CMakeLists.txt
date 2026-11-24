@@ -124,6 +124,8 @@ if(PLUM_SH)
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME stdlib-embedded COMMAND ${PLUM_SH} tests/stdlib-embedded.sh
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  add_test(NAME highlight COMMAND ${PLUM_SH} tests/highlight.sh $<TARGET_FILE:plum>
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME stdlib-documented COMMAND ${PLUM_SH} tools/stdlib-docs.sh $<TARGET_FILE:plum> --check
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   add_test(NAME examples COMMAND ${PLUM_SH} tests/golden.sh $<TARGET_FILE:plum> examples
