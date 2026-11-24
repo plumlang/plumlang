@@ -16,6 +16,7 @@ static const struct {
     {"intern", plum_test_intern}, {"fmt", plum_test_fmt},
     {"random", plum_test_random}, {"orchard", plum_test_orchard},
     {"lsp", plum_test_lsp},       {"playground", plum_test_playground},
+    {"doc", plum_test_doc},
 };
 
 int main(void) {

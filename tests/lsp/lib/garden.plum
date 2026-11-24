@@ -1,0 +1,8 @@
+## Garden beds and what grows in them.
+##
+## Seed it with `seed ./lib/garden`.
+
+## A raised bed, *rows* long.
+tree Bed {
+    rows: int
+}

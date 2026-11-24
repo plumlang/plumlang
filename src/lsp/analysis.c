@@ -7,6 +7,7 @@
 #include "check/types.h"
 #include "lexer/lexer.h"
 #include "lsp/text.h"
+#include "parser/doc.h"
 #include "stdlib/native.h"
 #include "util/alloc.h"
 #include "util/array.h"
@@ -911,6 +912,40 @@ static void case_text(const PlumModule *m, const PlumStmt *kind, const PlumCase 
     header_text(m, c->span.offset, span_end(c->span, m->len), out);
 }
 
+/*
+ * The doc comment of what starts at `*at` in `m` (the module's own when
+ * `at` is NULL), after a blank line. The file is lexed again for its
+ * comments, which checking leaves out.
+ */
+static void doc_comment(Buf *b, const PlumModule *m, const PlumSpan *at) {
+    if (m == NULL || m->text == NULL) {
+        return;
+    }
+    PlumArena arena;
+    PlumInterner names;
+    PlumDiagList diags;
+    PlumTokenList tokens = {0};
+    PlumCommentList comments = {0};
+    plum_arena_init(&arena);
+    plum_interner_init(&names);
+    plum_diag_init(&diags, &m->source);
+    plum_lex_comments(&m->source, &arena, &names, &diags, &tokens, &comments);
+    char *doc = at != NULL ? plum_doc_before(&m->source, &comments, *at)
+                           : plum_doc_module(&m->source, &comments, &m->program);
+    if (doc != NULL && doc[0] != '\0') {
+        buf_str(b, "\n\n");
+        buf_str(b, doc);
+    }
+    plum_free(doc);
+    plum_array_free(&comments);
+    plum_array_free(&tokens);
+    plum_diag_free(&diags);
+    plum_interner_free(&names);
+    plum_arena_free(&arena);
+}
+
+static const PlumModule *seed_file(const PlumLspAnalysis *a, const PlumStmt *s);
+
 /* Where a symbol comes from, when it is another file. */
 static void from_note(Buf *b, const PlumLspAnalysis *a, const PlumModule *where) {
     if (where == NULL || where == a->main) {
@@ -930,12 +965,18 @@ static void describe_symbol(Buf *b, const PlumLspAnalysis *a, const PlumSymbol *
     const PlumModule *where = module_of(a, sym->decl, a->main);
     Buf code = {0};
     const char *note = NULL;
+    const PlumModule *doc_in = NULL; /* where its doc comment is */
+    PlumSpan doc_at = {0, 0, 0, 0};
     switch (sym->kind) {
     case PLUM_SYM_VAR:
         name_and_type(&code, "plant ", sym->name, sym->ty);
         break;
     case PLUM_SYM_CONST:
         name_and_type(&code, "root ", sym->name, sym->ty);
+        if (sym->decl != NULL) {
+            doc_in = where;
+            doc_at = sym->decl->span;
+        }
         break;
     case PLUM_SYM_PARAM:
         name_and_type(&code, "", sym->name, sym->ty);
@@ -955,6 +996,8 @@ static void describe_symbol(Buf *b, const PlumLspAnalysis *a, const PlumSymbol *
         if (sym->decl != NULL) {
             header_text(where, sym->decl->span.offset, span_end(sym->decl->span, where->len),
                         &code);
+            doc_in = where;
+            doc_at = sym->decl->span;
         } else {
             buf_str(&code, "tree ");
             buf_str(&code, sym->name);
@@ -969,6 +1012,8 @@ static void describe_symbol(Buf *b, const PlumLspAnalysis *a, const PlumSymbol *
         if (c != NULL) {
             where = module_of(a, sym->owner->decl, a->main);
             case_text(where, sym->owner->decl, c, &code);
+            doc_in = where;
+            doc_at = c->span;
         } else {
             buf_str(&code, sym->name);
         }
@@ -995,6 +1040,9 @@ static void describe_symbol(Buf *b, const PlumLspAnalysis *a, const PlumSymbol *
         const PlumNativeModule *nm = native_module_of(sym);
         note = nm != NULL ? nm->doc : NULL;
         where = NULL;
+        if (sym->decl != NULL && sym->decl->kind == PLUM_STMT_SEED) {
+            doc_in = seed_file(a, sym->decl); /* the module's own doc */
+        }
         break;
     }
     case PLUM_SYM_NATIVE: {
@@ -1014,6 +1062,9 @@ static void describe_symbol(Buf *b, const PlumLspAnalysis *a, const PlumSymbol *
     }
     code_block(b, buf_text(&code));
     plum_array_free(&code);
+    if (doc_in != NULL) {
+        doc_comment(b, doc_in, sym->kind == PLUM_SYM_MODULE ? NULL : &doc_at);
+    }
     if (note != NULL && note[0] != '\0') {
         buf_str(b, "\n\n");
         buf_str(b, note);
@@ -1028,6 +1079,7 @@ static void member_header(Buf *b, const PlumModule *where, PlumSpan span, const 
     header_text(where, span.offset, span_end(span, where->len), &code);
     code_block(b, buf_text(&code));
     plum_array_free(&code);
+    doc_comment(b, where, &span);
     buf_str(b, "\n\n");
     buf_str(b, what);
     buf_str(b, " of `");
@@ -1056,10 +1108,12 @@ static void describe_member(Buf *b, const PlumLspAnalysis *a, const PlumExpr *e)
         if (obj->symbol->kind == PLUM_SYM_KIND) {
             const PlumCase *c = find_case(obj->symbol, name);
             if (c != NULL) {
+                const PlumModule *where = module_of(a, obj->symbol->decl, a->main);
                 Buf code = {0};
-                case_text(module_of(a, obj->symbol->decl, a->main), obj->symbol->decl, c, &code);
+                case_text(where, obj->symbol->decl, c, &code);
                 code_block(b, buf_text(&code));
                 plum_array_free(&code);
+                doc_comment(b, where, &c->span);
             }
             return;
         }
@@ -1116,10 +1170,12 @@ static void describe(Buf *b, const PlumLspAnalysis *a, const Occ *o) {
         break;
     }
     case OCC_CASE_DECL: {
+        const PlumCase *c = o->item;
         Buf code = {0};
-        case_text(m, o->stmt, o->item, &code);
+        case_text(m, o->stmt, c, &code);
         code_block(b, buf_text(&code));
         plum_array_free(&code);
+        doc_comment(b, m, &c->span);
         break;
     }
     case OCC_SEED_PATH: {
@@ -1133,6 +1189,7 @@ static void describe(Buf *b, const PlumLspAnalysis *a, const Occ *o) {
             buf_str(b, "\n\n");
             buf_str(b, nm->doc);
         }
+        doc_comment(b, seed_file(a, o->stmt), NULL);
         break;
     }
     case OCC_SEED_NAME: {
