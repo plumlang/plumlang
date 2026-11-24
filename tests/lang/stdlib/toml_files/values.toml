@@ -1,0 +1,51 @@
+# Every kind of value TOML 1.0 has.
+[integers]
+plain = 42
+signed = [+17, -17, 0, +0, -0]
+underscores = 1_000_000
+hex = [0xDEADBEEF, 0xdead_beef, 0x0]
+octal = 0o755
+binary = 0b1101_0110
+max = 9223372036854775807
+min = -9223372036854775808
+
+[floats]
+fractions = [1.0, 3.1415, -0.01, 0.0, -0.0]
+exponents = [5e+22, 1e06, -2E-2, 6.626e-34, 1_000.5e1_0]
+special = [inf, +inf, -inf]
+
+[booleans]
+yes = true
+no = false
+
+[strings]
+basic = "I'm a string. \"You can quote me\". Name\tJos\u00E9\nLocation\tSF. \U0001F351"
+literal = 'C:\Users\nodejs\templates'
+empty = ""
+multi = """
+Roses are red
+Violets are blue"""
+folded = """\
+       The quick brown \
+       fox jumps over \
+       the lazy dog.\
+       """
+quotes = """Here are two quotation marks: "". Simple enough.""""
+literal_multi = '''
+The first newline is
+trimmed in raw strings.
+   All other whitespace
+   is preserved. \n stays.
+'''
+apostrophes = ''''That,' she said, 'is still pointless.''''
+nul = "a\u0000b"
+
+[dates]
+offset = 1979-05-27T07:32:00Z
+offset_fraction = 1979-05-27T00:32:00.999999-07:00
+lower = 1979-05-27t07:32:00z
+space = 1979-05-27 07:32:00+05:30
+local_datetime = 1979-05-27T07:32:00
+local_date = 1979-05-27
+local_time = 00:32:00.5
+leap_day = 2024-02-29

@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+#
+# For tools/toml-test/run.py: the TOML file named on the command line, as
+# toml-test's tagged JSON ({"type": "integer", "value": "42"}). Dates and
+# times come back from toml.parse as strings and are tagged as strings;
+# run.py compares them with the expected dates.
+seed toml
+seed fs
+seed os
+seed json
+
+branch joined(parts: list[str]) -> str {
+    plant out = ""
+    for i in 0..len(parts) {
+        if i > 0 {
+            out += ", "
+        }
+        out += parts[i]
+    }
+    return out
+}
+
+branch tagged(type: str, value: str) -> str {
+    return "\{\"type\": \"{type}\", \"value\": {json.stringify(value)}\}"
+}
+
+branch encode(v: Json) -> str {
+    plant what = type_of(v)
+    if what == "map" {
+        plant parts: list[str] = []
+        plant m = v.map() ?? {:}
+        for k in m.keys() {
+            parts.push("{json.stringify(k)}: {encode(m[k])}")
+        }
+        return "\{" + joined(parts) + "\}"
+    }
+    if what == "list" {
+        plant parts: list[str] = []
+        for x in v.list() ?? [] {
+            parts.push(encode(x))
+        }
+        return "[" + joined(parts) + "]"
+    }
+    if what == "str" {
+        return tagged("string", v.str() ?? "")
+    }
+    if what == "bool" {
+        return tagged("bool", if v.bool() ?? bad { "true" } else { "false" })
+    }
+    if what == "int" {
+        return tagged("integer", "{v}")
+    }
+    return tagged("float", "{v}")
+}
+
+drop(encode(toml.parse(fs.read(os.args()[0]))))

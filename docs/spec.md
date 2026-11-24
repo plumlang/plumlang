@@ -1681,6 +1681,7 @@ Modules are imported with `seed`. The 1.0 library is planned as:
 | `uuid` | unique identifiers (RFC 9562): random v4, time-ordered v7 |
 | `semver` | semantic versions and version ranges |
 | `url` | parse, build and resolve URLs; percent-encoding and query strings |
+| `toml` | read and write TOML 1.0, mapped to maps and lists |
 | `test` | assertions and a test runner (`plum test`) |
 
 Each module is documented in `docs/stdlib/` as it lands, and `plum stdlib`

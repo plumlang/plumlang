@@ -1,0 +1,71 @@
+# toml: TOML 1.0 documents read into maps and lists (every kind of value,
+# tables, inline tables, arrays of tables), written back with stringify
+# and read again, and the errors parse reports for invalid documents.
+seed toml
+seed fs
+seed json
+
+branch show(name: str) -> Json {
+    plant doc = toml.parse(fs.read("tests/lang/stdlib/toml_files/{name}"))
+    drop("== {name}")
+    drop(json.stringify(doc, 2))
+    return doc
+}
+
+plant example = show("example.toml")
+plant values = toml.parse(fs.read("tests/lang/stdlib/toml_files/values.toml"))
+drop("== values.toml")
+for table in ["integers", "booleans", "strings", "dates"] {
+    drop(json.stringify(values.get(table), 2))
+}
+plant floats = values.get("floats")
+drop(floats.get("fractions"), floats.get("exponents"), floats.get("special"))
+drop(values.get("strings").get("nul").str()?.byte_len())
+plant tables = show("tables.toml")
+
+# stringify, and parse reads back the same
+drop("== stringify")
+drop(toml.stringify(example))
+drop(toml.stringify(tables))
+drop(toml.parse(toml.stringify(example)) == example, toml.parse(toml.stringify(tables)) == tables)
+drop(toml.parse(toml.stringify(values)) == values)
+drop(toml.stringify({"plain key": "tab\there", "quote\"d": [1.5, 1e300, -0.0, good], "empty": {:}, "list": []}))
+drop(toml.stringify({"mixed": [{"a": 1}, 2], "tables": [{"a": 1}, {"b": {"c": 2}}], "ctl": "\u{7}\u{7F}é"}))
+drop("[{toml.stringify({:})}]")
+drop(toml.parse("").len(), toml.parse("# only a comment\n\n").len())
+
+# what stringify can't write
+for value in [json.parse("\{\"a\": null\}"), json.parse("[1]"), json.parse("\"text\"")] {
+    try {
+        drop(toml.stringify(value))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+
+# invalid documents: each a ParseError with its line and column
+plant invalid = [
+    "a = 1\na = 2", "[t]\n[t]", "a = 1\n[a]", "a.b = 1\n[a]", "[a.b]\nx = 1\n[a]\nb.y = 2",
+    "a = \{b = 1\}\na.c = 2", "a = \{b = 1\}\n[a.c]", "a = []\n[[a]]", "[a]\n[[a]]",
+    "a = \{b = 1,\}", "a = \{b = 1\n\}", "a = [1 2]", "a = [1,", "a =", "= 1", "a = b",
+    "a = 01", "a = 1__0", "a = _1", "a = 1_", "a = +0x1", "a = 0X1", "a = 0o8", "a = 9223372036854775808",
+    "a = -9223372036854775809", "a = 1.", "a = .5", "a = 1e", "a = 1.e5", "a = infinity",
+    "a = 1979-02-29", "a = 1979-13-01", "a = 1979-05-27T25:00:00", "a = 07:32", "a = 1979-05-27T07:32:00+5:00",
+    "a = \"\\x41\"", "a = \"\\uD800\"", "a = \"open", "a = 'open", "a = \"\"\"open", "a = \"\"\"\"\"\"\"\"\"",
+    "a = \"tab\u{1}\"", "a = 1 # \u{7F}", "a = 1 b = 2", "[a", "[[a]", "[a.]", "[]", "a.b.c = 1\na.b = 2",
+    "\"\"\"key\"\"\" = 1", "a = true\nb = tru", "a = [[1], 2]] ", "a = \"\\ \""]
+for text in invalid {
+    try {
+        drop(toml.parse(text))
+    } catch e: ParseError {
+        drop(e.message)
+    }
+}
+
+# nesting has a limit
+plant deep = "a = " + "[".repeat(300) + "]".repeat(300)
+try {
+    drop(toml.parse(deep))
+} catch e: ParseError {
+    drop(e.message)
+}

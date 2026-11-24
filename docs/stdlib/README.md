@@ -29,6 +29,7 @@ seed math { sqrt, PI }     # sqrt(PI)
 | [`uuid`](uuid.md) | unique identifiers: random (v4) and time-ordered (v7) |
 | [`semver`](semver.md) | semantic versions and the version ranges of `plum.toml` |
 | [`url`](url.md) | parse, build and resolve URLs; percent-encoding and query strings |
+| [`toml`](toml.md) | read and write TOML 1.0 configuration files |
 | [`test`](test.md) | helpers for the tests `plum test` runs, written in Plumlang |
 
 `plum stdlib` lists every module's functions with their signatures, and

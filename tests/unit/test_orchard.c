@@ -99,6 +99,49 @@ static void test_toml(void) {
     CHECK(bad("[t.u]\n[t]\nu = \"x\"\n", "E0902", 3));
 }
 
+/* The same parser in full TOML 1.0 mode (the toml module). */
+static bool parse_full(const char *text, PlumToml *doc) {
+    PlumSource src = {"t.toml", text, strlen(text)};
+    PlumDiagList diags;
+    plum_diag_init(&diags, &src);
+    bool ok = plum_toml_parse_full(doc, &src, &diags);
+    plum_diag_free(&diags);
+    return ok;
+}
+
+static void test_toml_full(void) {
+    PlumToml doc;
+    /* what plum.toml's subset turns down, read in full */
+    REQUIRE(
+        parse_full("n = 0x1F\nf = 1.5e3\nb = true\na.b = \"x\"\nd = 1979-05-27 07:32:00z\n"
+                   "s = \"\"\"\nml\"\"\"\ni = { k = [1, 'two'] }\n[[t]]\n[[t]]\nz = \"\\u0000\"\n",
+                   &doc));
+    const PlumTomlNode *root = doc.root;
+    REQUIRE(root != NULL && root->kind == PLUM_TOML_NODE_TABLE && root->count == 8);
+    CHECK(root->items[0]->kind == PLUM_TOML_NODE_INTEGER && root->items[0]->i == 31);
+    CHECK(root->items[1]->kind == PLUM_TOML_NODE_FLOAT && root->items[1]->f == 1500.0);
+    CHECK(root->items[2]->kind == PLUM_TOML_NODE_BOOL && root->items[2]->b);
+    CHECK(root->items[3]->kind == PLUM_TOML_NODE_TABLE && root->items[3]->count == 1);
+    CHECK(root->items[4]->kind == PLUM_TOML_NODE_DATETIME);
+    CHECK_STR(root->items[4]->str, "1979-05-27T07:32:00Z");
+    CHECK_STR(root->items[5]->str, "ml");
+    CHECK(root->items[6]->kind == PLUM_TOML_NODE_TABLE && root->items[6]->items[0]->count == 2);
+    const PlumTomlNode *t = root->items[7];
+    REQUIRE(t->kind == PLUM_TOML_NODE_ARRAY && t->count == 2);
+    CHECK(t->items[1]->count == 1 && t->items[1]->items[0]->len == 1);
+    CHECK(doc.values.len == 0); /* the flat view is plum.toml's only */
+    plum_toml_free(&doc);
+
+    CHECK(!parse_full("a.b = 1\n[a]\n", &doc));
+    plum_toml_free(&doc);
+    CHECK(!parse_full("a = {b = 1}\na.c = 2\n", &doc));
+    plum_toml_free(&doc);
+    CHECK(!parse_full("a = 9223372036854775808\n", &doc));
+    plum_toml_free(&doc);
+    CHECK(parse_full("[a.b]\n[a]\n", &doc) && doc.root->count == 1);
+    plum_toml_free(&doc);
+}
+
 static PlumVersion v3(uint32_t a, uint32_t b, uint32_t c) {
     PlumVersion v = {a, b, c, NULL, 0, NULL, 0};
     return v;
@@ -232,6 +275,7 @@ static void test_utf8(void) {
 
 void plum_test_orchard(void) {
     test_toml();
+    test_toml_full();
     test_versions();
     test_names();
     test_paths();
