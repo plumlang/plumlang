@@ -22,6 +22,7 @@ Format for a new entry:
 - **Stdlib**: a module constant can be a `str` (`PLUM_NATIVE_STR`), as `path.SEPARATOR` is.
 - **Playground**: the WebAssembly build is published to npm as `@plumlang/plumlang` from each release (`packaging/npm`, with TypeScript types; `tools/release/npm.sh`, `.github/workflows/npm.yml`). The release workflow publishes it when `NPM_TOKEN` is set.
 - **Tooling**: `plum fmt --stdin` reads source from standard input and writes the formatted source to standard output, for editors that pipe a buffer through a formatter (Helix's `formatter`); syntax errors go to standard error with exit 1 and nothing on standard output (#113).
+- **Benchmarks**: every benchmark in `bench/` also has Lua and Node.js versions, and there are four new ones (`jsondoc`, `textbuild`, `words`, `cart`). `bench/run.py` runs whichever interpreters are installed, checks their output matches before timing, and writes JSON; `bench/compare.py` compares two results. A CI job (`.github/workflows/bench.yml`) runs them on every pull request and fails one that makes a benchmark more than 15% slower than `main` (#116).
 
 ## v2.1.4 — 2026-11-16
 

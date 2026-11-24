@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+# A hash-map workload: count the words of a 1,000,000-word text, then find
+# the most frequent one (ties go to the alphabetically first).
+plant syllables = ["ka", "lo", "mi", "nu", "pe", "ra", "si", "to", "va", "ze", "bo", "du", "fe", "gi", "ho", "ju"]
+plant parts: list[str] = []
+plant x = 1
+for i in 0..1000000 {
+    x = (x * 75 + 74) % 65537
+    parts.push(syllables[x % 16] + syllables[x // 16 % 16] + syllables[x // 256 % 16])
+}
+plant text = parts.join(" ")
+
+plant counts: map[str, int] = {:}
+for word in text.split(" ") {
+    counts[word] = (counts.get(word) ?? 0) + 1
+}
+plant best = ""
+plant best_count = 0
+for word, n in counts {
+    if n > best_count or (n == best_count and word < best) {
+        best = word
+        best_count = n
+    }
+}
+drop(len(counts), best, best_count)
