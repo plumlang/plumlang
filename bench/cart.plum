@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+# Method dispatch over a collection: a cart of 2,000 items of four kinds,
+# priced 2,000 times through a trait method, plus a counter object updated
+# for every item.
+trait Item {
+    branch cost(qty: int) -> int
+}
+
+tree Book : Item {
+    price: int
+    branch cost(qty: int) -> int => self.price * qty
+}
+
+tree Food : Item {
+    price: int
+    grams: int
+    branch cost(qty: int) -> int => self.price * qty + self.grams // 100
+}
+
+tree Gift : Item {
+    price: int
+    branch cost(qty: int) -> int {
+        if qty > 2 {
+            return self.price * (qty - 1)
+        }
+        return self.price * qty
+    }
+}
+
+tree Ticket : Book {
+    branch init(price: int) {
+        self.price = price + 5
+    }
+}
+
+tree Stats {
+    total: int = 0
+    big: int = 0
+    branch add(x: int) {
+        self.total += x
+        if x > 1000 {
+            self.big += 1
+        }
+    }
+}
+
+plant cart: list[Item] = []
+for i in 0..2000 {
+    plant k = i % 4
+    if k == 0 {
+        cart.push(Book(i % 50 + 1))
+    } else if k == 1 {
+        cart.push(Food(i % 30 + 2, i % 900))
+    } else if k == 2 {
+        cart.push(Gift(i % 70 + 3))
+    } else {
+        cart.push(Ticket(i % 40))
+    }
+}
+plant stats = Stats()
+for round in 0..2000 {
+    plant qty = round % 5 + 1
+    for item in cart {
+        stats.add(item.cost(qty) * (round % 13 + 1))
+    }
+}
+drop(len(cart), stats.total, stats.big)

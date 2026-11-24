@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+# String building: grow a text with `+=` a line at a time (20,000 lines),
+# and join a list of 600,000 pieces.
+plant text = ""
+for i in 0..20000 {
+    text += "row {i},{i * 3 % 101},{i % 7}\n"
+}
+plant pieces: list[str] = []
+for i in 0..200000 {
+    pieces.push("<td>")
+    pieces.push("{i % 1000}")
+    pieces.push("</td>")
+}
+plant html = pieces.join("")
+drop(len(text), text.count("\n"), len(html), html.count("<td>9"))

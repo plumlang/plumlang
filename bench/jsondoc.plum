@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+# JSON: build a document of 20,000 records, write it, read it back and
+# total a field, five times over.
+seed json
+
+plant total = 0
+plant chars = 0
+for round in 0..5 {
+    plant records: list[Json] = []
+    for i in 0..20000 {
+        records.push({"id": i, "name": "user{i}", "active": i % 3 == 0, "score": (i * 7 + round) % 1000, "tags": ["a", "b{i % 10}"], "parent": none})
+    }
+    plant doc: Json = {"round": round, "records": records}
+    plant text = json.stringify(doc)
+    chars += len(text)
+    plant back = json.parse(text)
+    for r in back.get("records").list() ?? [] {
+        if r.get("active").bool() ?? bad {
+            total += r.get("score").int() ?? 0
+        }
+    }
+    chars += len(json.stringify(back))
+}
+drop(chars, total)
