@@ -11,30 +11,15 @@
 #define PLUM_ORCHARD_MANIFEST_H
 
 #include "orchard/toml.h"
+#include "util/semver.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
-/* MAJOR.MINOR.PATCH, each a number without leading zeros. */
-typedef struct PlumVersion {
-    uint32_t major, minor, patch;
-} PlumVersion;
-
-bool plum_version_parse(const char *text, PlumVersion *out);
-int plum_version_compare(PlumVersion a, PlumVersion b);
-
-/* The versions from `low` (included) up to `high` (left out). */
-typedef struct PlumRange {
-    PlumVersion low;
-    PlumVersion high;
-    bool has_high;
-} PlumRange;
-
-/* "^1.2", "~1.2.3", "=1.0.0", ">=2.1", "*", or a bare "1.2" (as ^). */
-bool plum_range_parse(const char *text, PlumRange *out);
-bool plum_range_allows(const PlumRange *r, PlumVersion v);
+/* Versions and ranges (PlumVersion, plum_version_parse, plum_range_parse,
+ * ...) are shared with the semver module: util/semver.h. */
 
 /*
  * Is `name` a package name: 2 to 40 lowercase letters, digits and single

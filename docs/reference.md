@@ -466,6 +466,7 @@ channels) pauses only its own task.
 | `utf8` | code points; checking and repairing UTF-8 |
 | `csv` | read and write CSV |
 | `uuid` | unique identifiers: v4 (random) and v7 (time-ordered) |
+| `semver` | semantic versions: compare, sort, ranges, bump |
 
 Built-in functions, no `seed` needed: `drop`, `ask`, `len`, `int`, `float`,
 `str`, `byte`, `type_of`, `assert`, `exit`.

@@ -107,7 +107,8 @@ One requirement per dependency:
 | `*` | any version | |
 | `1.2` | the same as `^1.2` | |
 
-Parts left out are zeros: `^1.2` is `^1.2.0`.
+Parts left out are zeros: `^1.2` is `^1.2.0`. The [`semver`](stdlib/semver.md)
+module reads ranges with the same code, so a program can check them too.
 
 ### Resolution
 

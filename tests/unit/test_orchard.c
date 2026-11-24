@@ -100,7 +100,7 @@ static void test_toml(void) {
 }
 
 static PlumVersion v3(uint32_t a, uint32_t b, uint32_t c) {
-    PlumVersion v = {a, b, c};
+    PlumVersion v = {a, b, c, NULL, 0, NULL, 0};
     return v;
 }
 
@@ -145,6 +145,16 @@ static void test_versions(void) {
     CHECK(!plum_range_parse(">=1.0, <2.0", &r));
     CHECK(!plum_range_parse("^1.x", &r));
     CHECK(!plum_range_parse("latest", &r));
+    /* plum.toml's ranges name no prereleases; the semver module's may */
+    CHECK(!plum_range_parse("^1.0.0-beta", &r));
+    CHECK(plum_semver_range_parse("^1.0.0-beta", 11, true, &r) && r.low.pre != NULL);
+    CHECK(!plum_semver_range_parse("^1.0-beta", 9, true, &r));
+    CHECK(plum_semver_parse("1.0.0-rc.1+b.2", 14, &v) && v.pre_len == 4 && v.build_len == 3);
+    PlumVersion pre;
+    CHECK(plum_semver_parse("1.0.0-rc.1", 10, &pre));
+    CHECK(plum_version_compare(pre, v3(1, 0, 0)) < 0 && plum_version_compare(pre, v3(0, 9, 9)) > 0);
+    CHECK(plum_range_allows(&r, v3(1, 0, 0))); /* ^1.0.0-beta takes 1.0.0 */
+    CHECK(plum_range_parse("^1.0.0", &r) && !plum_range_allows(&r, pre));
 }
 
 static void test_names(void) {

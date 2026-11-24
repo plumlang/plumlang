@@ -27,6 +27,7 @@ seed math { sqrt, PI }     # sqrt(PI)
 | [`utf8`](utf8.md) | characters as code points; checking and repairing UTF-8 |
 | [`csv`](csv.md) | read and write comma-separated values (RFC 4180) |
 | [`uuid`](uuid.md) | unique identifiers: random (v4) and time-ordered (v7) |
+| [`semver`](semver.md) | semantic versions and the version ranges of `plum.toml` |
 | [`test`](test.md) | helpers for the tests `plum test` runs, written in Plumlang |
 
 `plum stdlib` lists every module's functions with their signatures, and
