@@ -11,31 +11,18 @@
 </p>
 
 <p align="center">
-  <a href="https://plum.elixpo.com">Website</a> ·
-  <a href="https://plum.elixpo.com/docs/">Documentation</a> ·
-  <a href="https://plum.elixpo.com/playground/">Playground</a> ·
-  <a href="https://plum.elixpo.com/docs/install/">Install</a> ·
-  <a href="docs/spec.md">Specification</a> ·
-  <a href="https://github.com/plumlang/plumlang/issues/36">Roadmap</a> ·
-  <a href="https://github.com/plumlang/plumlang/discussions">Discussions</a>
+  <a href="https://plum.elixpo.com"><img alt="Website" src="https://img.shields.io/badge/Website-plum.elixpo.com-6b3fa0?style=for-the-badge&logo=googlechrome&logoColor=white"></a>
+  <a href="https://plum.elixpo.com/docs/"><img alt="Documentation" src="https://img.shields.io/badge/Docs-read_the_guide-6b3fa0?style=for-the-badge&logo=readthedocs&logoColor=white"></a>
+  <a href="https://plum.elixpo.com/playground/"><img alt="Playground" src="https://img.shields.io/badge/Playground-try_it_now-ff7a59?style=for-the-badge&logo=webassembly&logoColor=white"></a>
+  <a href="https://plum.elixpo.com/docs/install/"><img alt="Install" src="https://img.shields.io/badge/Install-one_command-24292f?style=for-the-badge&logo=gnubash&logoColor=white"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/plumlang/plumlang/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/plumlang/plumlang/build.yml?branch=main&style=flat-square&label=build"></a>
+  <a href="https://github.com/plumlang/plumlang/actions/workflows/build.yml"><img alt="Build" src="https://github.com/plumlang/plumlang/actions/workflows/build.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/plumlang/plumlang/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/plumlang/plumlang?style=flat-square&label=release&color=6b3fa0"></a>
   <a href="https://github.com/plumlang/plumlang/blob/main/LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-6b3fa0?style=flat-square"></a>
-  <a href="https://plum.elixpo.com/docs/"><img alt="Docs" src="https://img.shields.io/badge/docs-plum.elixpo.com-6b3fa0?style=flat-square"></a>
-  <a href="https://plum.elixpo.com/playground/"><img alt="Playground" src="https://img.shields.io/badge/try_it-playground-ff7a59?style=flat-square"></a>
-</p>
-
-<p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang"><img alt="VS Code Marketplace" src="https://img.shields.io/visual-studio-marketplace/v/plum-lang.plum-lang?style=flat-square&label=VS%20Code&color=007acc"></a>
-  <a href="https://open-vsx.org/extension/plum-lang/plum-lang"><img alt="Open VSX" src="https://img.shields.io/open-vsx/v/plum-lang/plum-lang?style=flat-square&label=Open%20VSX&color=a60ee5"></a>
-  <a href="https://github.com/plumlang/homebrew-tap"><img alt="Homebrew" src="https://img.shields.io/badge/brew-plumlang%2Ftap%2Fplum-fbb040?style=flat-square"></a>
-  <a href="https://www.npmjs.com/package/@plumlang/tree-sitter-plum"><img alt="tree-sitter-plum on npm" src="https://img.shields.io/npm/v/@plumlang/tree-sitter-plum?style=flat-square&label=tree-sitter&color=cb3837"></a>
-  <a href="https://www.npmjs.com/package/@plumlang/highlightjs-plum"><img alt="highlightjs-plum on npm" src="https://img.shields.io/npm/v/@plumlang/highlightjs-plum?style=flat-square&label=highlight.js&color=cb3837"></a>
-  <a href="https://pypi.org/project/pygments-plum/"><img alt="pygments-plum on PyPI" src="https://img.shields.io/pypi/v/pygments-plum?style=flat-square&label=pygments&color=3775a9"></a>
-  <a href="https://github.com/plumlang/setup-plum"><img alt="setup-plum" src="https://img.shields.io/github/v/release/plumlang/setup-plum?style=flat-square&label=setup-plum&color=2088ff"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang"><img alt="VS Code extension" src="https://img.shields.io/badge/VS_Code-extension-007acc?style=flat-square&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xNyAyIDcgMTEgMyA4IDEgOXY2bDIgMSA0LTMgMTAgOSA0LTJWNHoiLz48L3N2Zz4="></a>
+  <a href="https://github.com/plumlang/plumlang/discussions"><img alt="Discussions" src="https://img.shields.io/badge/discussions-join-24292f?style=flat-square&logo=github"></a>
 </p>
 
 ---
@@ -141,11 +128,12 @@ requests a second on one thread, and 10,000 idle connections open in 0.16 s.
 
 ## Releases
 
-The current release is on [Releases](https://github.com/plumlang/plumlang/releases):
+The current release, **2.2.0**, is on [Releases](https://github.com/plumlang/plumlang/releases):
 eight builds for Linux, macOS and Windows, with `SHA256SUMS` and build
-attestations. The next one, 2.2.0, ships the `path`, `base64`, `hex`, `utf8`
-and `csv` modules and the Apache-2.0 licence
-([milestone](https://github.com/plumlang/plumlang/milestone/7)). Changes are
+attestations, plus the WebAssembly build on npm. It brings `plum test`, a richer
+language server, block and doc comments, nine new standard modules, a faster VM
+and the Apache-2.0 licence. The next milestone is
+[2.3: Fast VM](https://github.com/plumlang/plumlang/milestone/8). Changes are
 recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Roadmap
@@ -166,6 +154,15 @@ calling Plumlang ready for production; the whole roadmap is
 
 ## Ecosystem
 
+<p>
+  <a href="https://open-vsx.org/extension/plum-lang/plum-lang"><img alt="Open VSX" src="https://img.shields.io/open-vsx/v/plum-lang/plum-lang?style=flat-square&label=Open%20VSX&color=a60ee5"></a>
+  <a href="https://github.com/plumlang/homebrew-tap"><img alt="Homebrew" src="https://img.shields.io/badge/brew-plumlang%2Ftap%2Fplum-fbb040?style=flat-square&logo=homebrew&logoColor=white"></a>
+  <a href="https://www.npmjs.com/package/@plumlang/tree-sitter-plum"><img alt="tree-sitter-plum on npm" src="https://img.shields.io/npm/v/@plumlang/tree-sitter-plum?style=flat-square&label=tree-sitter&color=cb3837&logo=npm"></a>
+  <a href="https://www.npmjs.com/package/@plumlang/highlightjs-plum"><img alt="highlightjs-plum on npm" src="https://img.shields.io/npm/v/@plumlang/highlightjs-plum?style=flat-square&label=highlight.js&color=cb3837&logo=npm"></a>
+  <a href="https://pypi.org/project/pygments-plum/"><img alt="pygments-plum on PyPI" src="https://img.shields.io/pypi/v/pygments-plum?style=flat-square&label=pygments&color=3775a9&logo=pypi&logoColor=white"></a>
+  <a href="https://github.com/plumlang/setup-plum"><img alt="setup-plum" src="https://img.shields.io/badge/setup--plum-v1-2088ff?style=flat-square&logo=githubactions&logoColor=white"></a>
+</p>
+
 | | |
 |---|---|
 | **VS Code** | [Plumlang extension](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) on the Marketplace: highlighting, errors as you type, hover, go to definition, completion, formatting. Also on [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang) for VSCodium and Cursor. |
@@ -174,7 +171,7 @@ calling Plumlang ready for production; the whole roadmap is
 | **Other editors** | Any editor with LSP support can run `plum lsp`; see [the language server guide](https://plum.elixpo.com/docs/tools/lsp/). |
 | **Tree-sitter** | [tree-sitter-plum](https://github.com/plumlang/tree-sitter-plum): the grammar for Neovim, Helix, Zed and others; npm `@plumlang/tree-sitter-plum`. |
 | **Highlighting on the web** | [highlightjs-plum](https://github.com/plumlang/highlightjs-plum) for highlight.js (npm `@plumlang/highlightjs-plum`) and [pygments-plum](https://github.com/plumlang/pygments-plum) for Pygments, Sphinx and MkDocs (PyPI `pygments-plum`). |
-| **In JavaScript** | `@plumlang/plumlang` on npm: run, check and format Plumlang in Node or the browser (WebAssembly), from 2.2.0. |
+| **In JavaScript** | [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) on npm: run, check and format Plumlang in Node or the browser (WebAssembly). |
 | **CI** | [setup-plum](https://github.com/plumlang/setup-plum): `uses: plumlang/setup-plum@v1` installs a verified `plum` in GitHub Actions. |
 | **Packages** | [Orchard](https://plum.elixpo.com/packages/), the package index: `plum add`, `plum publish`. |
 
@@ -185,7 +182,7 @@ Published packages (the full list is at [plum.elixpo.com/docs/ecosystem](https:/
 | [`@plumlang/tree-sitter-plum`](https://www.npmjs.com/package/@plumlang/tree-sitter-plum) | npm | The Tree-sitter grammar |
 | [`@plumlang/highlightjs-plum`](https://www.npmjs.com/package/@plumlang/highlightjs-plum) | npm | highlight.js support, also on [jsDelivr](https://cdn.jsdelivr.net/npm/@plumlang/highlightjs-plum/dist/plum.min.js) |
 | [`pygments-plum`](https://pypi.org/project/pygments-plum/) | PyPI | The Pygments lexer |
-| [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) | npm | `plum` as WebAssembly for Node and the browser, from 2.2.0 |
+| [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) | npm | `plum` as WebAssembly for Node and the browser |
 | [Plumlang](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) | VS Code Marketplace, [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang) | The editor extension |
 | [`plumlang/tap/plum`](https://github.com/plumlang/homebrew-tap) | Homebrew | `brew install plumlang/tap/plum` |
 | [`plumlang/setup-plum@v1`](https://github.com/plumlang/setup-plum) | GitHub Actions | Installs `plum` in CI |
