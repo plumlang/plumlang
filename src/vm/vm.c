@@ -1205,18 +1205,20 @@ static bool object_text(void *ctx, PlumValue object, PlumString **out) {
  * methods for the whole run, and the result takes the object's place.
  * The usual case is done here, inline in the run loop; call() does the
  * rest (limits, a new segment of frames, a bigger stack, too deep).
+ * Returns the new frame, or NULL if the call failed.
  */
-static inline bool invoke(VM *vm, PlumFunction *fn, int argc) {
+static inline Frame *invoke(VM *vm, PlumFunction *fn, int argc) {
     unsigned n = (unsigned)vm->frame_count;
     size_t base = vm->top - (size_t)argc - 1;
     size_t slots = (size_t)fn->slot_count;
     if (vm->limited || n % FRAME_SEG == 0 || n >= PLUM_MAX_FRAMES ||
         base + slots + 1 > vm->capacity) {
         if (!call(vm, fn, NULL, argc + 1)) {
-            return false;
+            return NULL;
         }
-        FRAME(vm, vm->frame_count - 1)->below = 0;
-        return true;
+        Frame *f = FRAME(vm, vm->frame_count - 1);
+        f->below = 0;
+        return f;
     }
     Frame *f = &vm->segs[n / FRAME_SEG][n % FRAME_SEG];
     vm->frame_count = (int)n + 1;
@@ -1228,7 +1230,7 @@ static inline bool invoke(VM *vm, PlumFunction *fn, int argc) {
     for (size_t i = (size_t)argc + 1; i < slots; i++) {
         vm->stack[vm->top++] = plum_none();
     }
-    return true;
+    return f;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1922,6 +1924,16 @@ static inline void store_value(PlumValue *to, const PlumValue *v) {
         plum_release(old);
     } else {
         copy_value(to, v);
+    }
+}
+
+/* Give up the reference the object value at `v` holds: inline while
+ * something else still holds the object, plum_release when it may go. */
+static inline void drop_ref(const PlumValue *v) {
+    if (v->as.obj->refcount > 1) {
+        v->as.obj->refcount--;
+    } else {
+        plum_release(*v);
     }
 }
 
@@ -2975,7 +2987,28 @@ static bool execute(VM *vm) {
             uint16_t at = READ_U16();
             uint16_t var = READ_U16();
             uint16_t d = READ_U16();
-            if (plum_is_obj(SLOT(at), PLUM_OBJ_STRING)) {
+            PlumObjType kind = SLOT(at).as.obj->type;
+            if (kind != PLUM_OBJ_STRING && kind != PLUM_OBJ_MAP) { /* a list: the usual case */
+                PlumList *list = plum_as_list(SLOT(at));
+                int64_t pos = SLOT(at + 1).as.i;
+                if ((uint64_t)pos >= list->len) {
+                    ip += d;
+                    break;
+                }
+                SLOT(at + 1).as.i = pos + 1;
+                if (op == PLUM_OP_FOR_EACH2) {
+                    SLOT(var) = plum_int(pos); /* ints hold no reference */
+                    var++;
+                }
+                /* the item before is most likely still in the list */
+                PlumValue *slot = &SLOT(var);
+                if (slot->type == PLUM_VAL_OBJ) {
+                    drop_ref(slot);
+                }
+                *slot = plum_retain(list->items[pos]);
+                break;
+            }
+            if (kind == PLUM_OBJ_STRING) {
                 const PlumString *s = plum_as_string(SLOT(at));
                 size_t from = (size_t)SLOT(at + 1).as.i; /* a byte offset */
                 if (from >= s->len) {
@@ -2991,7 +3024,7 @@ static bool execute(VM *vm) {
                 SLOT(var) = plum_obj(&plum_string_new(s->chars + from, to - from)->obj);
                 break;
             }
-            if (plum_is_obj(SLOT(at), PLUM_OBJ_MAP)) {
+            {
                 /* maps give keys (and values with two names); sets give items */
                 int64_t pos = SLOT(at + 1).as.i;
                 const PlumTableEntry *e = plum_table_next(plum_as_table(SLOT(at)), &pos);
@@ -3008,19 +3041,6 @@ static bool execute(VM *vm) {
                 }
                 break;
             }
-            PlumList *list = plum_as_list(SLOT(at));
-            int64_t pos = SLOT(at + 1).as.i;
-            if ((uint64_t)pos >= list->len) {
-                ip += d;
-                break;
-            }
-            SLOT(at + 1).as.i = pos + 1;
-            if (op == PLUM_OP_FOR_EACH2) {
-                SLOT(var) = plum_int(pos); /* ints hold no reference */
-                var++;
-            }
-            plum_release(SLOT(var));
-            SLOT(var) = plum_retain(list->items[pos]);
             break;
         }
 
@@ -3206,10 +3226,13 @@ static bool execute(VM *vm) {
             if (fn == NULL) {
                 FAIL(PLUM_ERROR_ERROR, "internal error: %s has no method %d", tree->name, (int)id);
             }
-            if (!invoke(vm, fn, argc)) {
+            Frame *callee = invoke(vm, fn, argc);
+            if (callee == NULL) {
                 goto thrown;
             }
-            ENTER_FRAME();
+            frame = callee;
+            ip = frame->ip;
+            chunk = fn->chunk;
             break;
         }
         case PLUM_OP_CALL_METHOD: {
@@ -3219,10 +3242,14 @@ static bool execute(VM *vm) {
             if (m >= vm->method_count) {
                 FAIL(PLUM_ERROR_ERROR, "internal error: no method function %d", (int)m);
             }
-            if (!invoke(vm, vm->methods[m], argc)) {
+            PlumFunction *fn = vm->methods[m];
+            Frame *callee = invoke(vm, fn, argc);
+            if (callee == NULL) {
                 goto thrown;
             }
-            ENTER_FRAME();
+            frame = callee;
+            ip = frame->ip;
+            chunk = fn->chunk;
             break;
         }
         case PLUM_OP_IS_NONE: {
@@ -3426,7 +3453,14 @@ static bool execute(VM *vm) {
             goto thrown;
         case PLUM_OP_RETURN:
         case PLUM_OP_RETURN_NONE: {
-            PlumValue result = op == PLUM_OP_RETURN ? pop(vm) : plum_none();
+            /* Values are read a field at a time (copy_value): the result
+             * and the locals were often just written in place. */
+            PlumValue *sp = &vm->stack[vm->top];
+            PlumValue result = plum_none();
+            if (op == PLUM_OP_RETURN) {
+                sp--;
+                copy_value(&result, sp);
+            }
             size_t to = frame->base - frame->below;
             vm->frame_count--;
             while (vm->handler_count > 0 &&
@@ -3434,15 +3468,14 @@ static bool execute(VM *vm) {
                 vm->handler_count--; /* tries the function returned out of */
             }
             /* the slots and the function itself; most still have other holders */
-            while (vm->top > to) {
-                PlumValue v = vm->stack[--vm->top];
-                if (v.type == PLUM_VAL_OBJ && v.as.obj->refcount > 1) {
-                    v.as.obj->refcount--;
-                } else {
-                    plum_release(v);
+            for (PlumValue *end = &vm->stack[to]; sp > end;) {
+                sp--;
+                if (sp->type == PLUM_VAL_OBJ) {
+                    drop_ref(sp);
                 }
             }
-            vm->stack[vm->top++] = result; /* where the function was: no room needed */
+            vm->top = to;
+            copy_value(&vm->stack[vm->top++], &result); /* where the function was */
             if (vm->frame_count == vm->stop_at) {
                 return true; /* back to whoever started this run */
             }
