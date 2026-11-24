@@ -15,7 +15,9 @@
  * run reports every problem; the token list stays usable.
  *
  * Comments produce no tokens. `plum fmt` asks for them on the side, with
- * plum_lex_comments, so it can put them back.
+ * plum_lex_comments, so it can put them back; the language server does
+ * too, for doc comments (parser/doc.h). A block comment `#[ ... ]#` nests,
+ * may span lines, and counts as a space: its line breaks end nothing.
  */
 #ifndef PLUM_LEXER_LEXER_H
 #define PLUM_LEXER_LEXER_H
@@ -28,10 +30,19 @@
 
 typedef PLUM_ARRAY(PlumToken) PlumTokenList;
 
-/* A `#` comment: its span runs from the '#' to the end of the line. */
+typedef enum PlumCommentKind {
+    PLUM_COMMENT_LINE,  /* `# ...` to the end of the line */
+    PLUM_COMMENT_DOC,   /* `## ...` to the end of the line (not `###`) */
+    PLUM_COMMENT_BLOCK, /* `#[ ... ]#`, nested ones included */
+} PlumCommentKind;
+
+/* A comment: its span runs from the '#' to the end of the line, or to the
+ * end of the closing `]#` of a block comment. */
 typedef struct PlumComment {
     PlumSpan span;
-    bool own_line; /* nothing but spaces before it on its line */
+    PlumCommentKind kind;
+    uint32_t end_line; /* the line it ends on (a block comment may span lines) */
+    bool own_line;     /* nothing but spaces before it on its line */
 } PlumComment;
 
 typedef PLUM_ARRAY(PlumComment) PlumCommentList;

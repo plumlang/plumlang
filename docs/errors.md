@@ -234,6 +234,22 @@ plant y = 3]          # error
 plant y = 3           # fix
 ```
 
+## Comments
+
+### E0140
+
+A block comment `#[` that is never closed with `]#`. The error points at
+the `#[` that opened it. Block comments nest, so every `#[` inside one
+needs its own `]#`; a `]#` inside a string within the comment counts too.
+
+```plum
+#[ commented out      # error: the comment runs to the end of the file
+plant x = 1
+
+#[ commented out ]#   # fix
+plant x = 1
+```
+
 ## Syntax
 
 ### E0201

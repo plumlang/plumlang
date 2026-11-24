@@ -1,0 +1,4 @@
+tests/lang/lexer/error_block_comment_flat.plum:3:25: error[E0140]: block comment is never closed; add ']#'
+3 | drop("#[ in a string")  #[ never closed
+  |                         ^~
+1 error

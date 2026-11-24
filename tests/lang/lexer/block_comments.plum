@@ -1,0 +1,18 @@
+# command: tokens
+# Block comments produce no tokens. They nest, span lines, and count as
+# a space: a line break inside one ends nothing.
+#[ one line ]#
+#[ several
+   lines #[ nested
+   #[ twice ]# ]#
+   "strings" mean nothing in one: this closes it, quote and all: "]#
+plant a = #[ in the middle ]# 1
+plant b = 2 #[ after the code,
+   onto the next line ]#
+plant c = 3 + #[
+]# 4
+plant s = "#[ not a comment ]#"
+plant t = "]# nor this"
+## A doc comment produces no token either.
+##[ nor ]# this
+### nor this

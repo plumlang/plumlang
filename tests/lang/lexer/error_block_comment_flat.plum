@@ -1,0 +1,4 @@
+# command: tokens
+plant a = 1
+drop("#[ in a string")  #[ never closed
+plant b = 2

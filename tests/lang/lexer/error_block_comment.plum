@@ -1,0 +1,6 @@
+# command: tokens
+plant a = 1
+#[ this comment is closed ]#
+plant b = 2  #[ this one opens here
+plant c = 3
+#[ and is still open at the end of the file ]#

@@ -72,7 +72,54 @@ A comment starts with `#` and runs to the end of the line.
 plant total = 0   # a comment after code
 ```
 
-There are no block comments.
+A **block comment** starts with `#[` and ends with `]#`. It may span lines
+and may sit anywhere a space may. Block comments nest: each `#[` inside
+one needs its own `]#`, so code that already holds a block comment can be
+commented out with another. Nothing else inside a block comment means
+anything, strings and `#` included: the first `]#` that matches closes
+it. A block comment counts as a space, so a line break inside one doesn't
+end a statement. One that is never closed is a compile error at the `#[`
+that opened it (E0140).
+
+```plum
+#[
+plant old = compute()
+#[ an earlier note ]#
+drop(old)
+]#
+plant area = width * #[ not height: ]# depth
+```
+
+`#[` and `]#` inside a string are text, and outside a block comment `]#`
+is an ordinary `]` and the start of a comment.
+
+A **doc comment** is a line comment that starts with exactly `##` (`###`
+is an ordinary comment). The `##` lines directly before a declaration
+(`branch`, `tree`, `trait`, `kind`, `root`, a field, a method or a kind
+case), with no blank line or other comment between, document it. A
+file's first `##` lines, with only blank lines and other comments before
+them, document the module, unless they are directly before a
+declaration. Each line's text, without the `##` and one space after it,
+is Markdown. The language server shows it on hover, and documentation
+tools read it. A `##` line anywhere else is an ordinary comment.
+
+```plum
+## Shapes and their areas.
+
+seed math
+
+## The area of a circle of radius `r`.
+##
+## Negative radii are treated as positive.
+branch circle_area(r: float) -> float {
+    return math.PI * r ** 2
+}
+
+tree Pot {
+    ## Litres of soil.
+    size: float
+}
+```
 
 ### 2.3 Statements and lines
 
@@ -1266,7 +1313,9 @@ The layout:
   `true`), and parentheses the source wrote are kept;
 - a comment on a line of its own stays on a line of its own, before what
   follows it; one after code stays after that code, and trailing comments
-  on neighbouring lines are lined up.
+  on neighbouring lines are lined up. A block comment keeps its text as
+  written (only its first line is indented); one inside an expression goes
+  after the code of its line. `##text` gets a space: `## text`.
 
 Formatting never changes what a program means, and formatting a formatted
 file changes nothing.
@@ -1377,7 +1426,7 @@ hard to read or unsafe:
 | `if (cond)` | `if cond` | Parentheses optional, like any expression |
 | Every number a float (`25.0`) | `int` and `float` are separate | `drop(25)` prints `25` |
 | `10 / 2` gives `5.0` | `/` gives a float, `//` an int | Kept, and made explicit |
-| Mixed `#`, `//`, `--` comments | `#` only | One comment syntax |
+| Mixed `#`, `//`, `--`, `/* */` comments | `#`, `#[ ]#` and `##` | One comment character: lines, blocks and docs |
 | Type errors while running | Type errors before running | Caught early, with a location |
 | Python exceptions leak out | Plumlang errors with a stack trace | Messages about your program, not the interpreter |
 

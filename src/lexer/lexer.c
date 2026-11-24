@@ -1003,10 +1003,12 @@ static void unexpected(Lexer *lx) {
 /* The main loop                                                       */
 /* ------------------------------------------------------------------ */
 
-/* A comment, kept for plum fmt. */
-static void keep_comment(Lexer *lx, PlumSpan start) {
+/* A comment, kept for plum fmt and the language server. */
+static void keep_comment(Lexer *lx, PlumSpan start, PlumCommentKind kind) {
     PlumComment c;
     c.span = span_from(lx, start);
+    c.kind = kind;
+    c.end_line = lx->line;
     size_t i = start.offset;
     while (i > 0 &&
            (lx->text[i - 1] == ' ' || lx->text[i - 1] == '\t' || lx->text[i - 1] == '\r')) {
@@ -1015,6 +1017,63 @@ static void keep_comment(Lexer *lx, PlumSpan start) {
     c.own_line =
         i == 0 || lx->text[i - 1] == '\n' || (i == 3 && memcmp(lx->text, "\xEF\xBB\xBF", 3) == 0);
     plum_array_push(lx->comments, c);
+}
+
+/*
+ * A line comment from the '#' at the current position to the end of the
+ * line: `##` starts a doc comment, `###` and more an ordinary one.
+ */
+static void lex_line_comment(Lexer *lx) {
+    PlumSpan start = here(lx);
+    PlumCommentKind kind =
+        peek_at(lx, 1) == '#' && peek_at(lx, 2) != '#' ? PLUM_COMMENT_DOC : PLUM_COMMENT_LINE;
+    while (!at_end(lx) && peek(lx) != '\n') {
+        advance(lx);
+    }
+    if (lx->comments != NULL) {
+        keep_comment(lx, start, kind);
+    }
+}
+
+/*
+ * A block comment from the `#[` at the current position to its `]#`. Block
+ * comments nest; nothing else inside one means anything, strings and `#`
+ * included. Its line breaks produce no NEWLINE: it counts as a space.
+ */
+static void lex_block_comment(Lexer *lx) {
+    PlumSpan start = here(lx);
+    start.length = 2;
+    size_t depth = 0;
+    bool nested = false;
+    while (!at_end(lx)) {
+        char c = peek(lx);
+        if (c == '#' && peek_at(lx, 1) == '[') {
+            depth++;
+            nested = nested || depth > 1;
+            advance(lx);
+            advance(lx);
+        } else if (c == ']' && peek_at(lx, 1) == '#') {
+            advance(lx);
+            advance(lx);
+            if (--depth == 0) {
+                break;
+            }
+        } else {
+            advance(lx);
+        }
+    }
+    if (depth > 0) {
+        if (nested) {
+            plum_diag_error(lx->diags, start, "E0140",
+                            "block comment is never closed; add ']#' (block comments nest, so each "
+                            "'#[' inside one needs its own ']#')");
+        } else {
+            plum_diag_error(lx->diags, start, "E0140", "block comment is never closed; add ']#'");
+        }
+    }
+    if (lx->comments != NULL) {
+        keep_comment(lx, start, PLUM_COMMENT_BLOCK);
+    }
 }
 
 void plum_lex(const PlumSource *source, PlumArena *arena, PlumInterner *names, PlumDiagList *diags,
@@ -1049,14 +1108,10 @@ void plum_lex_comments(const PlumSource *source, PlumArena *arena, PlumInterner 
             advance(&lx);
         } else if (c == '\n') {
             newline(&lx);
+        } else if (c == '#' && peek_at(&lx, 1) == '[') {
+            lex_block_comment(&lx);
         } else if (c == '#') {
-            PlumSpan start = here(&lx);
-            while (!at_end(&lx) && peek(&lx) != '\n') {
-                advance(&lx);
-            }
-            if (comments != NULL) {
-                keep_comment(&lx, start);
-            }
+            lex_line_comment(&lx);
         } else if (is_digit(c)) {
             lex_number(&lx);
         } else if (is_alpha(c)) {
