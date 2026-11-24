@@ -465,6 +465,7 @@ channels) pauses only its own task.
 | `base64`, `hex` | bytes as Base64 or hexadecimal text |
 | `utf8` | code points; checking and repairing UTF-8 |
 | `csv` | read and write CSV |
+| `uuid` | unique identifiers: v4 (random) and v7 (time-ordered) |
 
 Built-in functions, no `seed` needed: `drop`, `ask`, `len`, `int`, `float`,
 `str`, `byte`, `type_of`, `assert`, `exit`.

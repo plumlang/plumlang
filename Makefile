@@ -3,6 +3,10 @@
 # Build Plumlang.
 #
 #   make                  release build -> ./plum
+#   make release-lto      release build with link-time optimisation (-flto)
+#   make release-pgo      ...and profile-guided optimisation: build instrumented,
+#                         train on bench/ and examples/ (tools/pgo-train.sh), rebuild
+#                         with the profile. For release binaries (bench/README.md)
 #   make debug            debug build (-O0 -g)
 #   make sanitize         debug build under AddressSanitizer + UBSan
 #   make test             unit, smoke, harness, golden, formatter, REPL, package and language server
@@ -77,6 +81,43 @@ else
   LDSAN := -fsanitize=fuzzer,address,undefined
 endif
 
+# LTO=1: link-time optimisation. PGO=gen builds a binary that records a
+# profile as it runs; PGO=use rebuilds with it. With LTO=1 they are the
+# steps of `make release-pgo`, in a build directory of their own.
+# GCC writes one .gcda per object, next to it; Clang writes .profraw files
+# that llvm-profdata merges into one .profdata (LLVM_PROFDATA=llvm-profdata-18
+# where it has a version suffix).
+IS_CLANG := $(shell $(CC) --version 2>/dev/null | grep -q clang && echo yes)
+PGO_DIR  := build/pgo
+ifeq ($(shell uname -s 2>/dev/null),Darwin)
+  LLVM_PROFDATA ?= xcrun llvm-profdata
+else
+  LLVM_PROFDATA ?= llvm-profdata
+endif
+ifeq ($(MODE)$(LTO),release1)
+  OPT += -flto
+endif
+ifeq ($(MODE)$(PGO),releasegen)
+  ifeq ($(IS_CLANG),yes)
+    OPT += -fprofile-generate=$(CURDIR)/$(PGO_DIR)/profiles
+  else
+    OPT += -fprofile-generate
+  endif
+else ifeq ($(MODE)$(PGO),releaseuse)
+  ifeq ($(IS_CLANG),yes)
+    # The unit tests' main is not the main that was trained: a mismatch
+    # is reported (and the count dropped), not an error.
+    OPT += -fprofile-use=$(CURDIR)/$(PGO_DIR)/plum.profdata -Wno-backend-plugin
+  else
+    # Code the training never ran is optimised as usual, not for size;
+    # objects with no profile (the unit tests) are not an error.
+    OPT += -fprofile-use -fprofile-partial-training -Wno-missing-profile
+  endif
+endif
+ifeq ($(MODE),release)
+  LDOPT := $(OPT)
+endif
+
 # Mbed TLS, vendored under vendor/mbedtls (see its README.md). It is built
 # with its own, relaxed warnings; our code sees its headers as system
 # headers, so our strict warnings stay on for what we write.
@@ -103,7 +144,7 @@ else
 endif
 
 CFLAGS  += $(STD) $(WARN) $(OPT) $(INCLUDE) $(TLS_INCLUDE) $(TLS_DEFS) $(DEFS) -MMD -MP
-LDFLAGS += $(LDSAN) $(LDGC)
+LDFLAGS += $(LDSAN) $(LDGC) $(LDOPT)
 LDLIBS  += -lm
 ifeq ($(OS),Windows_NT)
 # Winsock for the net module; BCrypt (random numbers) and Crypt32 (the
@@ -114,6 +155,11 @@ LDFLAGS += -Wl,--stack,8388608
 endif
 
 BUILD   := build/$(MODE)
+ifneq ($(PGO),)
+  BUILD := $(PGO_DIR)
+else ifeq ($(MODE)$(LTO),release1)
+  BUILD := build/release-lto
+endif
 ifeq ($(MODE),wasm)
   BUILD := build/wasm-obj
 endif
@@ -139,13 +185,40 @@ PLUM      := ./plum
 
 FUZZ_BINS := $(FUZZ_TARGETS:%=$(BUILD)/fuzz-%)
 
-.PHONY: all release debug sanitize fuzz fuzz-build wasm test golden-update bytecode-doc stdlib-doc stdlib-embed format format-check clean
+.PHONY: all release release-lto release-pgo debug sanitize fuzz fuzz-build wasm test golden-update bytecode-doc stdlib-doc stdlib-embed format format-check clean
 
 # Always refresh ./plum, so it is the binary of the mode asked for even when
 # another mode's copy is newer.
 all release debug sanitize: $(BIN)
 	@cp $(BIN) $(PLUM)
 	@echo "built $(PLUM) ($(MODE))"
+
+release-lto:
+	@$(MAKE) --no-print-directory LTO=1 all
+
+# Instrument, train, rebuild: the profile is thrown away with build/pgo.
+# PGO_TRAIN is the training script, run with the instrumented ./plum.
+PGO_TRAIN ?= sh tools/pgo-train.sh
+PGO_LTO   ?= 1
+# Clang instruments before it optimises, so the profile is the same with
+# or without LTO; its instrumented build is made without, which is quicker.
+# (Apple Clang's LTO builds fail the network tests: macOS releases are
+# built with PGO_LTO=0.)
+ifeq ($(IS_CLANG),yes)
+  PGO_GEN_LTO ?= 0
+else
+  PGO_GEN_LTO ?= $(PGO_LTO)
+endif
+release-pgo:
+	rm -rf $(PGO_DIR)
+	@$(MAKE) --no-print-directory LTO=$(PGO_GEN_LTO) PGO=gen all
+	$(PGO_TRAIN) $(PLUM)
+ifeq ($(IS_CLANG),yes)
+	$(LLVM_PROFDATA) merge -o $(PGO_DIR)/plum.profdata $(PGO_DIR)/profiles/*.profraw
+endif
+	find $(PGO_DIR) -name '*.o' -exec rm -f {} +
+	rm -f $(PGO_DIR)/plum
+	@$(MAKE) --no-print-directory LTO=$(PGO_LTO) PGO=use all
 
 $(BIN): $(LIB_OBJS) $(CLI_OBJS)
 	$(CC) $^ $(LDFLAGS) $(LDLIBS) -o $@

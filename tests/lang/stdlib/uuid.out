@@ -1,0 +1,30 @@
+v4: good 500
+v7: good good 7 rfc
+time: good
+017f22e2-79b0-7cc3-98c4-dc0c0c07398f 7 1645557742000
+919108f7-52d1-4320-9bac-f847db4148a8 4
+6ba7b810-9dad-11d1-80b4-00c04fd430c8 good
+6ba7b810-9dad-11d1-80b4-00c04fd430c8 good
+6ba7b810-9dad-11d1-80b4-00c04fd430c8 good
+6ba7b810-9dad-11d1-80b4-00c04fd430c8 good
+6ba7b810-9dad-11d1-80b4-00c04fd430c8 good
+1 rfc
+00000000-0000-0000-0000-000000000000 ffffffff-ffff-ffff-ffff-ffffffffffff 0 15
+ncs future microsoft
+-1 1 0
+good
+bad
+uuid.parse: "" isn't a UUID; write 32 hex digits like "0190b6a4-5c3e-7d2a-9f1b-3c4d5e6f7a8b"
+bad
+uuid.parse: "6ba7b810-9dad-11d1-80b4-00c04fd430c" isn't a UUID; write 32 hex digits like "0190b6a4-5c3e-7d2a-9f1b-3c4d5e6f7a8b"
+bad
+uuid.parse: "6ba7b810-9dad-11d1-80b4-00c04fd430c8a" isn't a UUID; write 32 hex digits like "0190b6a4-5c3e-7d2a-9f1b-3c4d5e6f7a8b"
+bad
+uuid.parse: "6ba7b8109-dad-11d1-80b4-00c04fd430c8" isn't a UUID; write 32 hex digits like "0190b6a4-5c3e-7d2a-9f1b-3c4d5e6f7a8b"
+bad
+uuid.parse: "6ba7b810-9dad-11d1-80b4-00c04fd430cg" isn't a UUID; write 32 hex digits like "0190b6a4-5c3e-7d2a-9f1b-3c4d5e6f7a8b"
+bad
+uuid.parse: "{6ba7b810-9dad-11d1-80b4-00c04fd430c8" isn't a UUID; write 32 hex digits like "0190b6a4-5c3e-7d2a-9f1b-3c4d5e6f7a8b"
+bad
+uuid.parse: "6ba7b810 9dad 11d1 80b4 00c04fd430c8" isn't a UUID; write 32 hex digits like "0190b6a4-5c3e-7d2a-9f1b-3c4d5e6f7a8b"
+uuid.timestamp: this is a version 4 UUID; only version 7 holds a Unix time
