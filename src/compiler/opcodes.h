@@ -126,6 +126,8 @@
     X(INDEX_MAP, 0, "map[key], or a missing-key error")                                            \
     X(BUILD_LIST, 1, "a list of the top [a] values")                                               \
     X(INDEX_LIST, 0, "list[index], or an index error")                                             \
+    X(INDEX_LIST_L, 1, "local [a][index] for a list in a local, which isn't pushed or counted")    \
+    X(LEN_L, 1, "len() of the str, list, map or set in local [a], which isn't pushed or counted")  \
     X(SLICE, 1, "list or str [low..high] (..= if [a]) as a new one")                               \
     X(CONTAINS, 0, "item in collection")                                                           \
     X(CONCAT_LIST, 0, "a + b for lists")                                                           \

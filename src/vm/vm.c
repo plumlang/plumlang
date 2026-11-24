@@ -2978,6 +2978,31 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             plum_release(v);
             break;
         }
+        case PLUM_OP_INDEX_LIST_L: {
+            /* the list stays in its local: no reference counted (#122) */
+            const PlumList *list = plum_as_list(SLOT(READ_U16()));
+            int64_t i = pop_int(vm);
+            if ((uint64_t)i >= list->len) {
+                SAVE_IP(); /* so the error names this line */
+                check_index(vm, i, list->len);
+                goto thrown;
+            }
+            push(vm, plum_retain(list->items[i]));
+            break;
+        }
+        case PLUM_OP_LEN_L: {
+            PlumValue v = SLOT(READ_U16());
+            int64_t n;
+            if (plum_is_obj(v, PLUM_OBJ_LIST)) {
+                n = (int64_t)plum_as_list(v)->len;
+            } else if (plum_is_obj(v, PLUM_OBJ_MAP)) {
+                n = (int64_t)plum_as_table(v)->count;
+            } else {
+                n = (int64_t)plum_string_length(plum_as_string(v));
+            }
+            push(vm, plum_int(n));
+            break;
+        }
         case PLUM_OP_SLICE: {
             uint16_t inclusive = READ_U16();
             int64_t hi = pop_int(vm);

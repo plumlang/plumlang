@@ -1922,6 +1922,16 @@ static void compile_index(Compiler *c, const PlumExpr *e) {
         op(c, PLUM_OP_INDEX_MAP, e->span.line);
         return;
     }
+    uint16_t slot;
+    if (idx->kind != PLUM_EXPR_RANGE && ty_is(obj->ty, PLUM_TY_LIST) &&
+        plain_local(c, obj, &slot)) {
+        /* Borrowed from its local (#122): only this function can assign to
+         * the local, and computing the index doesn't, so reading it after
+         * the index reads the same list. */
+        compile_expr(c, idx);
+        op1(c, PLUM_OP_INDEX_LIST_L, slot, e->span.line);
+        return;
+    }
     compile_expr(c, obj);
     if (idx->kind == PLUM_EXPR_RANGE) {
         compile_expr(c, idx->as.range.low);
@@ -2314,6 +2324,12 @@ static void compile_call_as(Compiler *c, const PlumExpr *e, bool tail) {
         int id = builtin_id(sym->name);
         if (id < 0) {
             unsupported(c, e->span, "this built-in", 36);
+            return;
+        }
+        uint16_t slot;
+        if (id == PLUM_BUILTIN_LEN && e->as.call.arg_count == 1 &&
+            plain_local(c, e->as.call.args[0].value, &slot)) {
+            op1(c, PLUM_OP_LEN_L, slot, line); /* the local isn't pushed or counted (#122) */
             return;
         }
         for (size_t i = 0; i < e->as.call.arg_count; i++) {
