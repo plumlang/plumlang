@@ -60,8 +60,8 @@ Plumlang is faster.
 (`textbuild` was measured after #148, the rest after #119, fastest of
 five runs each.)
 
-The table predates the cheaper calls of #120: `fib`, `cart`, `dispatch`,
-`collatz` and `mandelbrot` are faster now (see "Calls (#120)" below).
+The table predates the cheaper calls of #120: `fib`, `cart`, `collatz`
+and `mandelbrot` are faster now (see "Calls (#120)" below).
 Plumlang is ahead of CPython or within 1% of it on every benchmark, and
 3.5 to 5.7 times faster on integer and float arithmetic (`loop`,
 `collatz`, `mandelbrot`) and on method calls (`dispatch`, `cart`). It is
@@ -299,57 +299,64 @@ mispredictions were negligible (0.1%): the cost was instructions, at 3.8
 per cycle.
 
 What changed, each measured with `perf stat` on `fib(32)` (cycles, best
-of five, pinned to one core):
+of five, pinned to one core). The first rows were measured on main before
+#119, the last ones after rebasing on it:
 
 | Change | fib(32) cycles | Kept |
 |---|---|---|
 | before | 579 M | |
-| Frames of 24 bytes (no closure pointer: a closure's captures are read through the function value under slot 0), `CALL_GLOBAL` for a declared function called by name (not pushed, no reference counted), methods called without moving their arguments, the rare call checks in one test, an inline return | 433 M | yes |
+| Frames without a closure pointer (a closure's captures are read through the function value under slot 0), `CALL_GLOBAL` for a declared function called by name (not pushed, no reference counted), methods called without moving their arguments, the rare call checks in one test, an inline return | 433 M | yes |
 | `JUMP_IF_NOT_*_INT_LK` (an int local against a literal) and `RETURN_LOCAL` | 292 M | yes |
 | Releasing a returning call's slots: a scan without calls first, so a frame of numbers spills no registers | 282 M | yes |
 | `CALL_SELF`: a function calling itself reads itself from its frame | 238 M | yes |
-| Threaded dispatch (computed goto) for the eight hottest instructions | 233 M; 243 M with `-fno-gcse -fno-crossjumping`, which GCC needs to keep the jumps apart | no |
+| Threaded dispatch (computed goto) for the eight hottest instructions | 233 M; 243 M with `-fno-gcse -fno-crossjumping`, which GCC needs to keep the jumps apart; tried again after #119, `collatz` got 20% slower | no |
 | A switch over all 256 byte values, to drop its range check | 243 M: GCC keeps the check | no |
-| Small int literals as instruction operands instead of constants | 2.5% fewer instructions, the same cycles | no |
 | `RETURN_ADD_INT` (`return a + b` of ints), computed without a round trip through the stack | 213 M | yes |
+| main after #119 (fixed-offset fields, static method dispatch), before this change | 513 M | |
+| this change rebased on #119: the run loop's frame pointer went back to the stack, spilled by GCC | 233 M | |
+| The slot base in a local, frames carrying their constants, one compare (`call_room`) for whether a call takes the fast way | 227 M | yes |
+| The `_LK` instructions hold their literal (-32768 to 32767) as the operand: no constant to load through the spilled frame | 219 M | yes |
+| `hot` attributes on the call and return labels | no difference | no |
 
 Tail calls (`return f(...)` of a function's own call, `TAIL_SELF`) and
 inlining small functions that can't fail don't change these benchmarks;
 they let such code run without the recursion limit, or without a call
-(spec 6.5). A call now costs about 155 instructions and 30 cycles. What
-bounds it is the stack top and the frame living in memory: each
-instruction reads and writes `vm->top`, and every argument is stored and
-read back once, which keeping the stack top in a register or a register
-VM (#123) would remove.
+(spec 6.5). A call now costs about 150 instructions and 31 cycles
+(before: 313 and 73 on main after #119). 75% of the machine's issue slots
+retire work, so what is left is instructions: each one reads and writes
+`vm->top` in memory, GCC keeps the running frame on the stack, and every
+argument is stored and read back once. Keeping the stack top in a
+register or a register VM (#123) would remove those.
 
 Before and after, Plumlang alone, `make` (`-O2`), best of three
 alternating runs of `bench/run.py --runs 5 --plum-only` pinned to one
-core (the machine above, in power-saving mode, so slower than the table
-at the top):
+core, before being main with #119:
 
 | Benchmark | before | after | |
 |---|---|---|---|
-| cart | 0.491 s | 0.391 s | 1.26x |
-| collatz | 0.917 s | 0.709 s | 1.29x |
-| dispatch | 0.425 s | 0.389 s | 1.09x |
-| fib | 0.077 s | 0.029 s | 2.66x |
-| jsondoc | 0.341 s | 0.339 s | 1.01x |
-| loop | 0.314 s | 0.322 s | 0.98x |
-| mandelbrot | 0.252 s | 0.220 s | 1.15x |
-| strings | 0.219 s | 0.225 s | 0.97x |
-| textbuild | 0.066 s | 0.065 s | 1.02x |
-| words | 0.388 s | 0.392 s | 0.99x |
+| cart | 0.142 s | 0.123 s | 1.15x |
+| collatz | 0.573 s | 0.446 s | 1.28x |
+| dispatch | 0.089 s | 0.092 s | 0.97x |
+| fib | 0.044 s | 0.019 s | 2.32x |
+| jsondoc | 0.226 s | 0.226 s | 1.00x |
+| loop | 0.203 s | 0.201 s | 1.01x |
+| mandelbrot | 0.160 s | 0.143 s | 1.12x |
+| strings | 0.143 s | 0.145 s | 0.99x |
+| textbuild | 0.044 s | 0.043 s | 1.02x |
+| words | 0.258 s | 0.259 s | 1.00x |
 
-`loop`, `strings` and `words` run none of the changed instructions;
-counting cycles, they are 2.9%, 2.0% and 0.9% slower in the `-O2` build,
-which is GCC laying out the large run loop differently. In the release
-build (`make release-pgo`) none is slower: by cycles, fib −52%, cart and
-collatz −12%, mandelbrot −5%, strings −3%, loop −1%, the others within
-0.5%.
+Counting cycles (`perf stat`, best of five), `dispatch` is level
+(+0.2%), and `strings`, `jsondoc` and `words`, which run none of the
+changed instructions, within 2% (+1.7%, +0.4%, +0.4%): GCC laying out
+the large run loop differently. With `make
+release-pgo`, by cycles: fib −57%, cart −19%, collatz −7%, mandelbrot
+−6%, strings −6%, dispatch −4%, words −2%; jsondoc, loop and textbuild
+within 2.2% either way (textbuild runs for 0.04 s).
 
 With `python3 bench/run.py --runs 7` on the same machine, pinned to one
-core, `fib` takes 0.028 s and CPython 3.14 0.091 s: 3.25 times as fast
-(1.18 times before). Node.js takes 0.039 s.
+core, `fib` takes 0.019 s to 0.020 s against CPython 3.14's 0.059 s to
+0.060 s: 3.07 to 3.2 times as fast (1.36 times before). Node.js takes
+0.024 s.
 
 Before and after appending in place (#148), Plumlang alone,
 `bench/run.py --runs 7 --plum-only`, the two builds measured one after
