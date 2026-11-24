@@ -582,11 +582,17 @@ static inline void plum_release_int(PlumValue v) {
 
 /* Store `i` in the variable at `slot`, which holds an int. The wide layout
  * writes only the number: the type is already there. */
+#if PLUM_NANBOX
+void plum_set_int_slow(PlumValue *slot, int64_t i);
+#endif
+
 static inline void plum_set_int(PlumValue *slot, int64_t i) {
 #if PLUM_NANBOX
-    PlumValue old = *slot;
-    *slot = plum_int(i);
-    plum_release_int(old);
+    if (plum_int_inline(i) && !plum_is_ref(*slot)) {
+        *slot = plum_small_int(i);
+    } else {
+        plum_set_int_slow(slot, i); /* boxing, or letting go of a box */
+    }
 #else
     slot->as.i = i;
 #endif

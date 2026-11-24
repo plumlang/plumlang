@@ -128,6 +128,12 @@ PlumValue plum_int_boxed(int64_t i) {
     b->i = i;
     return plum_obj(&b->obj);
 }
+
+void plum_set_int_slow(PlumValue *slot, int64_t i) {
+    PlumValue old = *slot;
+    *slot = plum_int(i);
+    plum_release_int(old);
+}
 #endif
 
 PlumList *plum_list_new(size_t cap) {
