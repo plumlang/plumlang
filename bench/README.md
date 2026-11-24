@@ -189,8 +189,9 @@ a name: src/lsp/server.c had a `static void send(...)`, and macOS's
 static function and the library's `send` are the same symbol, `_send`,
 and net.c's `send(fd, text, len, flags)` called the language server's
 function, which took the text for a JSON writer and freed its first
-eight bytes. Two files reproduce it with Apple Clang 17 and 21, full or
-thin LTO; Linux builds keep the two apart:
+eight bytes. Two files reproduce it with Apple Clang 17 and 21 and
+upstream LLVM 23, full or thin LTO, for arm64 and x86_64; on Linux the
+two stay apart, even when the library function has an assembler name:
 
 ```c
 /* a.c */
@@ -210,9 +211,25 @@ void call_send(int fd) { printf("libc send returned %ld\n", (long)send(fd, "GET 
 a.c b.c` crashes in the static `send`. The function is now
 `send_message`, and `tests/symbols.sh` (part of `make test`) fails if
 any function of ours, static ones included, has the name of one the
-binary imports from the system. Windows gets
-MSVC's LTCG (`-DPLUM_LTO=ON`) and no PGO, as MSVC's needs its own runtime
-DLL while training and the ARM64 build is cross-compiled.
+binary imports from the system.
+
+macOS arm64 (GitHub's macos-latest runner, Apple Clang 21), fastest of
+four rounds of `--runs 5 --plum-only`, the builds taking turns (before
+#148 made textbuild faster); a shared
+runner, so differences under about 10% are noise:
+
+| Build | cart | collatz | dispatch | fib | jsondoc | loop | mandelbrot | strings | textbuild | words |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `make` (`-O2`) | 0.530 s | 1.003 s | 0.378 s | 0.099 s | 0.325 s | 0.220 s | 0.271 s | 0.313 s | 0.154 s | 0.397 s |
+| PGO without LTO (before #173) | 0.534 s | 1.026 s | 0.432 s | 0.082 s | 0.294 s | 0.184 s | 0.327 s | 0.283 s | 0.173 s | 0.284 s |
+| `make release-pgo` (LTO + PGO) | 0.462 s | 0.960 s | 0.360 s | 0.084 s | 0.309 s | 0.193 s | 0.296 s | 0.283 s | 0.140 s | 0.312 s |
+
+Against PGO alone, LTO + PGO makes method dispatch faster here too
+(cart −13%, dispatch −17%) and textbuild −19%; the rest is within the
+noise.
+
+Windows gets MSVC's LTCG (`-DPLUM_LTO=ON`) and no PGO, as MSVC's needs
+its own runtime DLL while training and the ARM64 build is cross-compiled.
 
 Before and after the typed operands (#118), Plumlang alone:
 
