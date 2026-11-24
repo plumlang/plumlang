@@ -174,6 +174,7 @@ calling Plumlang ready for production; the whole roadmap is
 | **In JavaScript** | [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) on npm: run, check and format Plumlang in Node or the browser (WebAssembly). |
 | **CI** | [setup-plum](https://github.com/plumlang/setup-plum): `uses: plumlang/setup-plum@v1` installs a verified `plum` in GitHub Actions. |
 | **Packages** | [Orchard](https://plum.elixpo.com/packages/), the package index: `plum add`, `plum publish`. |
+| **Examples** | Plumlang on [Rosetta Code](https://rosettacode.org/wiki/Category:Plumlang), starting with [Hello world](https://rosettacode.org/wiki/Hello_world/Text#Plumlang) and [FizzBuzz](https://rosettacode.org/wiki/FizzBuzz#Plumlang); listed on [PLDB](https://pldb.io/concepts/plumlang.html). |
 
 Published packages (the full list is at [plum.elixpo.com/docs/ecosystem](https://plum.elixpo.com/docs/ecosystem/)):
 
