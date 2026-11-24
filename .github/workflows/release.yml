@@ -121,18 +121,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      # No LTO: with Apple Clang, LTO builds fail the network tests
-      # (bench/README.md). arm64 gets PGO, trained on this runner; x86_64
-      # (cross-compiled, so it can't be trained here) plain -O2.
+      # arm64: LTO + PGO, trained on this runner; x86_64 (cross-compiled,
+      # so it can't be trained here): LTO.
       - name: Build and test (arm64)
         run: |
-          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" PGO_LTO=0 release-pgo
-          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" PGO=use test
+          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" release-pgo
+          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" LTO=1 PGO=use test
           cp plum plum-arm64
       - name: Build (x86_64)
         run: |
           make clean
-          make CC="clang -arch x86_64" COMMIT="${GITHUB_SHA::7}"
+          make CC="clang -arch x86_64" COMMIT="${GITHUB_SHA::7}" release-lto
           cp plum plum-x86_64
       - name: Universal binary
         run: |

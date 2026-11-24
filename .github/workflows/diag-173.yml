@@ -15,7 +15,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, macos-15-intel]
-        step: [repro, asan, bisect, reduce]
+        step: [fulltest, reduce, bench]
+        exclude:
+          - { os: macos-15-intel, step: bench }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
