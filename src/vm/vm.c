@@ -24,8 +24,7 @@
 typedef struct Frame {
     PlumFunction *fn;
     const uint8_t *ip;
-    const PlumValue *konst; /* fn's constants, which its instructions read */
-    uint32_t base;          /* index of slot 0 in the stack */
+    uint32_t base; /* index of slot 0 in the stack */
     /* 1: the function value sits at base - 1 and goes when the call
      * returns (a closure's captured variables are read through it); 0: the
      * caller didn't push it (CALL_GLOBAL, methods). */
@@ -69,11 +68,6 @@ typedef struct PlumVM {
     size_t capacity;
     Frame *segs[FRAME_SEGS];
     int frame_count;
-    /* A call takes the fast way while frame_count is below this: its frame
-     * is in a segment already made, under the recursion limit, and there
-     * are no limits to count steps against. 0 sends every call the slow
-     * way (call_slow), which raises it again. */
-    int call_room;
     PlumValue *globals;
     int global_count;
     const PlumSource *source;
@@ -150,7 +144,6 @@ typedef struct PlumTask {
     size_t capacity;
     Frame *segs[FRAME_SEGS];
     int frame_count;
-    int call_room;
     Handler *handlers;
     int handler_count;
     int handler_cap;
@@ -1256,7 +1249,6 @@ static void save_task(VM *vm, PlumTask *t) {
     t->capacity = vm->capacity;
     memcpy(t->segs, vm->segs, sizeof t->segs);
     t->frame_count = vm->frame_count;
-    t->call_room = vm->call_room;
     t->handlers = vm->handlers;
     t->handler_count = vm->handler_count;
     t->handler_cap = vm->handler_cap;
@@ -1265,7 +1257,6 @@ static void save_task(VM *vm, PlumTask *t) {
     vm->capacity = 0;
     memset(vm->segs, 0, sizeof vm->segs);
     vm->frame_count = 0;
-    vm->call_room = 0;
     vm->handlers = NULL;
     vm->handler_count = 0;
     vm->handler_cap = 0;
@@ -1278,7 +1269,6 @@ static void load_task(VM *vm, PlumTask *t) {
     vm->capacity = t->capacity;
     memcpy(vm->segs, t->segs, sizeof vm->segs);
     vm->frame_count = t->frame_count;
-    vm->call_room = t->call_room;
     vm->handlers = t->handlers;
     vm->handler_count = t->handler_count;
     vm->handler_cap = t->handler_cap;
@@ -1287,7 +1277,6 @@ static void load_task(VM *vm, PlumTask *t) {
     t->capacity = 0;
     memset(t->segs, 0, sizeof t->segs);
     t->frame_count = 0;
-    t->call_room = 0;
     t->handlers = NULL;
     t->handler_count = 0;
     t->handler_cap = 0;
@@ -1891,13 +1880,10 @@ static bool call_slow(VM *vm) {
                       PLUM_MAX_FRAMES);
         return false;
     }
-    unsigned seg = (unsigned)vm->frame_count / FRAME_SEG;
-    if (vm->segs[seg] == NULL) {
-        vm->segs[seg] = plum_alloc_zeroed(FRAME_SEG, sizeof(Frame));
-    }
-    if (!vm->limited) {
-        int end = (int)(seg + 1) * FRAME_SEG;
-        vm->call_room = end < PLUM_MAX_FRAMES ? end : PLUM_MAX_FRAMES;
+    if ((unsigned)vm->frame_count % FRAME_SEG == 0 &&
+        vm->segs[(unsigned)vm->frame_count / FRAME_SEG] == NULL) {
+        vm->segs[(unsigned)vm->frame_count / FRAME_SEG] =
+            plum_alloc_zeroed(FRAME_SEG, sizeof(Frame));
     }
     return true;
 }
@@ -1910,7 +1896,7 @@ static bool call_slow(VM *vm) {
  */
 static inline Frame *call_frame(VM *vm, PlumFunction *fn, int argc, uint32_t callee) {
     int n = vm->frame_count;
-    if (n >= vm->call_room) {
+    if (vm->limited || (unsigned)n % FRAME_SEG == 0 || n == PLUM_MAX_FRAMES) {
         if (!call_slow(vm)) {
             return NULL;
         }
@@ -1919,7 +1905,6 @@ static inline Frame *call_frame(VM *vm, PlumFunction *fn, int argc, uint32_t cal
     Frame *f = FRAME(vm, n);
     f->fn = fn;
     f->ip = fn->chunk->code.items;
-    f->konst = fn->chunk->constants.items;
     f->base = (uint32_t)(vm->top - (size_t)argc);
     f->callee = callee & 1;
     f->tail_calls = 0;
@@ -2085,17 +2070,17 @@ static bool execute(VM *vm) {
     Frame *frame;
     PlumValue ret; /* what a RETURN returns */
     const uint8_t *ip;
-    size_t base; /* the running frame's slot 0, kept at hand for SLOT */
+    PlumChunk *chunk;
 #define ENTER_FRAME()                           \
     do {                                        \
         frame = FRAME(vm, vm->frame_count - 1); \
-        base = frame->base;                     \
         ip = frame->ip;                         \
+        chunk = frame->fn->chunk;               \
     } while (0)
     ENTER_FRAME();
 
 #define READ_U16() read_u16(&ip)
-#define SLOT(n)    (vm->stack[base + (n)])
+#define SLOT(n)    (vm->stack[frame->base + (n)])
 #define SAVE_IP()  (frame->ip = ip)
 #define FAIL(...)                       \
     do {                                \
@@ -2130,7 +2115,7 @@ static bool execute(VM *vm) {
     } while (0)
 /* The _K and _L forms: the right operand is a constant or a local, not on
  * the stack, and the result replaces the left operand on top. */
-#define KONST(n) (frame->konst[(n)])
+#define KONST(n) (chunk->constants.items[(n)])
 #define CHECKED_WITH(fn, symbol, right)                                                       \
     do {                                                                                      \
         uint16_t n_ = READ_U16();                                                             \
@@ -2264,7 +2249,7 @@ static bool execute(VM *vm) {
         PlumOpcode op = (PlumOpcode)*ip++;
         switch (op) {
         case PLUM_OP_CONST:
-            push(vm, plum_retain(frame->konst[READ_U16()]));
+            push(vm, plum_retain(chunk->constants.items[READ_U16()]));
             break;
         case PLUM_OP_NONE:
             push(vm, plum_none());
@@ -2323,7 +2308,7 @@ static bool execute(VM *vm) {
             push(vm, plum_retain(vm->stack[frame->base - 1]));
             break;
         case PLUM_OP_MAKE_CLOSURE: {
-            PlumFunction *fn = plum_as_function(frame->konst[READ_U16()]);
+            PlumFunction *fn = plum_as_function(chunk->constants.items[READ_U16()]);
             PlumClosure *closure = plum_closure_new(fn);
             for (int i = 0; i < fn->capture_count; i++) {
                 const PlumCapture *cap = &fn->captures[i];
@@ -2634,7 +2619,8 @@ static bool execute(VM *vm) {
             if (f == 0xFFFF && plum_is_obj(*v, PLUM_OBJ_STRING)) {
                 break; /* already text */
             }
-            const char *format = f == 0xFFFF ? NULL : plum_as_string(frame->konst[f])->chars;
+            const char *format =
+                f == 0xFFFF ? NULL : plum_as_string(chunk->constants.items[f])->chars;
             char error[256];
             SAVE_IP(); /* to_str() may run */
             PlumString *s = plum_value_text_with(*v, format, &vm->text_hook, error, sizeof error);
@@ -3136,7 +3122,7 @@ static bool execute(VM *vm) {
             push(vm, plum_bool(!pop(vm).as.b));
             break;
         case PLUM_OP_NEW_OBJECT: {
-            PlumTreeInfo *tree = plum_as_tree_info(frame->konst[READ_U16()]);
+            PlumTreeInfo *tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
             uint16_t n = READ_U16();
             PlumObject *o = plum_object_new(tree);
             for (uint16_t i = 0; i < n && i < tree->field_count; i++) {
@@ -3209,7 +3195,7 @@ static bool execute(VM *vm) {
             FIELD_FLOAT(-, SLOT);
             break;
         case PLUM_OP_IS_TREE: {
-            PlumTreeInfo *tree = plum_as_tree_info(frame->konst[READ_U16()]);
+            PlumTreeInfo *tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
             PlumValue v = pop(vm);
             bool is = v.type == PLUM_VAL_OBJ && v.as.obj->type == PLUM_OBJ_OBJECT &&
                       plum_tree_is(plum_as_object(v)->tree, tree);
@@ -3275,7 +3261,7 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_IS_TRAIT: {
-            const PlumString *trait = plum_as_string(frame->konst[READ_U16()]);
+            const PlumString *trait = plum_as_string(chunk->constants.items[READ_U16()]);
             PlumValue v = pop(vm);
             bool is = false;
             if (v.type == PLUM_VAL_OBJ && v.as.obj->type == PLUM_OBJ_OBJECT) {
@@ -3292,7 +3278,7 @@ static bool execute(VM *vm) {
         case PLUM_OP_INVOKE_FROM: {
             const PlumTreeInfo *tree = NULL;
             if (op == PLUM_OP_INVOKE_FROM) {
-                tree = plum_as_tree_info(frame->konst[READ_U16()]);
+                tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
             }
             uint16_t id = READ_U16();
             uint16_t argc = READ_U16();
@@ -3309,8 +3295,8 @@ static bool execute(VM *vm) {
                 goto thrown;
             }
             frame = callee;
-            base = frame->base;
             ip = frame->ip;
+            chunk = fn->chunk;
             break;
         }
         case PLUM_OP_CALL_METHOD: {
@@ -3326,8 +3312,8 @@ static bool execute(VM *vm) {
                 goto thrown;
             }
             frame = callee;
-            base = frame->base;
             ip = frame->ip;
+            chunk = fn->chunk;
             break;
         }
         case PLUM_OP_IS_NONE: {
@@ -3516,8 +3502,8 @@ static bool execute(VM *vm) {
                 goto thrown;
             }
             frame = f;
-            base = frame->base;
             ip = f->ip;
+            chunk = fn->chunk;
             break;
         }
         case PLUM_OP_CALL_GLOBAL: {
@@ -3534,8 +3520,8 @@ static bool execute(VM *vm) {
                 goto thrown;
             }
             frame = f;
-            base = frame->base;
             ip = f->ip;
+            chunk = fn->chunk;
             break;
         }
         case PLUM_OP_CALL_SELF: {
@@ -3548,7 +3534,6 @@ static bool execute(VM *vm) {
                 goto thrown;
             }
             frame = f;
-            base = frame->base;
             ip = f->ip;
             break;
         }
@@ -3572,7 +3557,7 @@ static bool execute(VM *vm) {
             if (frame->tail_calls < 0x7FFFFFFF) {
                 frame->tail_calls++;
             }
-            ip = frame->fn->chunk->code.items;
+            ip = chunk->code.items;
             break;
         }
         case PLUM_OP_CALL_BUILTIN: {
@@ -3644,8 +3629,8 @@ static bool execute(VM *vm) {
             }
             /* the caller's frame: the one before, unless a segment starts here */
             frame = (unsigned)n % FRAME_SEG != 0 ? frame - 1 : FRAME(vm, n - 1);
-            base = frame->base;
             ip = frame->ip;
+            chunk = frame->fn->chunk;
             break;
         }
         case PLUM_OPCODE_COUNT:
