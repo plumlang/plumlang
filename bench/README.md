@@ -45,22 +45,24 @@ Plumlang is faster.
 
 | Benchmark | plum | python3 | | lua | | node | |
 |---|---|---|---|---|---|---|---|
-| cart | 0.398 s | 0.495 s | 1.24x | 0.337 s | 0.85x | 0.036 s | 0.09x |
-| collatz | 1.314 s | 2.279 s | 1.73x | 0.759 s | 0.58x | 0.245 s | 0.19x |
-| dispatch | 0.307 s | 0.284 s | 0.93x | 0.269 s | 0.88x | 0.031 s | 0.10x |
-| fib | 0.065 s | 0.060 s | 0.92x | 0.050 s | 0.77x | 0.026 s | 0.40x |
-| jsondoc | 0.241 s | 0.243 s | 1.01x | - | | 0.123 s | 0.51x |
-| loop | 0.280 s | 0.741 s | 2.64x | 0.194 s | 0.69x | 0.049 s | 0.18x |
-| mandelbrot | 0.358 s | 0.934 s | 2.61x | 0.199 s | 0.56x | 0.038 s | 0.11x |
-| strings | 0.153 s | 0.175 s | 1.14x | 0.135 s | 0.88x | 0.049 s | 0.32x |
-| textbuild | 0.331 s | 0.322 s | 0.97x | 0.318 s | 0.96x | 0.061 s | 0.18x |
-| words | 0.318 s | 0.326 s | 1.02x | 0.194 s | 0.61x | 0.277 s | 0.87x |
+| cart | 0.307 s | 0.498 s | 1.62x | 0.332 s | 1.08x | 0.038 s | 0.12x |
+| collatz | 0.581 s | 2.278 s | 3.92x | 0.759 s | 1.31x | 0.246 s | 0.42x |
+| dispatch | 0.264 s | 0.283 s | 1.07x | 0.264 s | 1.00x | 0.033 s | 0.13x |
+| fib | 0.049 s | 0.059 s | 1.19x | 0.049 s | 1.00x | 0.025 s | 0.50x |
+| jsondoc | 0.239 s | 0.236 s | 0.99x | - | | 0.119 s | 0.50x |
+| loop | 0.199 s | 0.702 s | 3.52x | 0.189 s | 0.95x | 0.048 s | 0.24x |
+| mandelbrot | 0.159 s | 0.876 s | 5.49x | 0.196 s | 1.23x | 0.033 s | 0.21x |
+| strings | 0.142 s | 0.167 s | 1.17x | 0.128 s | 0.90x | 0.046 s | 0.32x |
+| textbuild | 0.322 s | 0.308 s | 0.96x | 0.295 s | 0.92x | 0.054 s | 0.17x |
+| words | 0.274 s | 0.310 s | 1.13x | 0.188 s | 0.69x | 0.261 s | 0.95x |
 
-Plumlang is ahead of CPython or within 8% of it on every benchmark. Lua's
-interpreter is faster on all of them, by up to 1.8 times on float and
-integer arithmetic (`mandelbrot`, `collatz`). Node.js compiles hot code to machine code
-(V8's JIT), which an interpreter doesn't; `words`, where the time goes into
-hashing and allocating strings, is where it is closest.
+Plumlang is ahead of CPython or within 4% of it on every benchmark, and
+3.5 to 5.5 times faster on integer and float arithmetic (`loop`,
+`collatz`, `mandelbrot`). It is level with Lua's interpreter on calls
+(`fib`, `dispatch`), ahead of it on `collatz`, `mandelbrot` and `cart`,
+and behind it by up to 1.46 times on `words`, where the time goes into
+hashing and allocating strings. Node.js compiles hot code to machine code
+(V8's JIT), which an interpreter doesn't; `words` is where it is closest.
 
 ## In CI
 
@@ -128,8 +130,12 @@ these numbers are partly the clients'.
 
 ## What was tried
 
-Each change was measured with `bench/run.py --runs 7` (the LTO and PGO
-rows: `--runs 5`, Linux x86_64, GCC 15.2) and kept only if it helped.
+Each change was measured and kept only if it helped. The rows up to
+computed-goto dispatch were measured with `bench/run.py --runs 7`; the
+LTO and PGO rows with `--runs 5` (Linux x86_64, GCC 15.2); the rows for
+typed operands (#118) with the best of several runs of each benchmark
+during development, and their totals below with
+`bench/run.py --runs 5 --plum-only`, on the machine above.
 
 | Change | Result | Kept |
 |---|---|---|
@@ -139,6 +145,17 @@ rows: `--runs 5`, Linux x86_64, GCC 15.2) and kept only if it helped.
 | Link-time optimisation alone (`-flto`, `make release-lto`) | mixed: jsondoc 0.236 s → 0.192 s and strings 0.150 s → 0.136 s (the stdlib's C inlined into the VM's calls), but cart, dispatch and loop 3–5% slower | only as part of PGO, and where PGO can't run |
 | Profile-guided optimisation alone (`-fprofile-use`, no LTO) | collatz −11%, fib −9%, jsondoc −9%, strings −8%; dispatch and cart within noise | no: LTO + PGO does more |
 | LTO + PGO (`make release-pgo`, trained by `tools/pgo-train.sh` on bench/ and examples/) | cart −17%, dispatch −17%, collatz −12%, fib −12%, jsondoc −11%, words −11%, strings −9%; loop, mandelbrot and textbuild unchanged; nothing slower | yes, for release binaries |
+| `plum_release` inline everywhere | slower: loop 0.27 s → 0.33 s, collatz 1.29 s → 1.36 s; the run loop grew and spilled more registers | no |
+| Typed arithmetic in place on the stack (no pop, pop, push), overflow checks with `__builtin_*_overflow` where the compiler has it, the step-limit check inline | collatz 1.30 s → 1.26 s, mandelbrot 0.34 s → 0.33 s | yes |
+| Right operand as an operand of the instruction (`_K` constant, `_L` local); `FOR_NEXT` jumps back to the body, not to `FOR_RANGE` | collatz 1.26 s → 1.16 s, mandelbrot 0.33 s → 0.24 s, loop 0.26 s → 0.25 s | yes |
+| Compare and jump in one instruction for `if` / `while` conditions and `and` chains (`JUMP_IF_NOT_LT_INT`) | collatz 1.16 s → 1.10 s, loop 0.25 s → 0.24 s | yes |
+| `GET_LOCAL` / `SET_LOCAL` (and globals) copy a value's type and number separately, and release only objects | collatz 1.10 s → 0.91 s, mandelbrot 0.24 s → 0.19 s: an in-place instruction writes only the number (8 bytes), and reading the whole 16-byte value straight after stalled on a failed store-to-load forward | yes |
+| Compare with a literal and jump (`JUMP_IF_NOT_NE_INT_K`) | collatz 0.91 s → 0.86 s, mandelbrot 0.19 s → 0.18 s | yes |
+| `//` and `%` in 32 bits when both operands are small and positive, a mask for `%` by a power of two | collatz 0.86 s → 0.73 s, loop 0.23 s → 0.20 s | yes |
+| Change an int local in place (`LOCAL_ADD_INT_K` for `n += 1`, `LOCAL_FLOORDIV_INT_K` for `n = n // 2`) | collatz 0.73 s → 0.63 s, mandelbrot 0.18 s → 0.16 s | yes |
+| Local op literal pushed by one instruction (`MOD_INT_LK`); `+=` / `-=` on an int global in place (`GLOBAL_ADD_INT_L`) | collatz 0.63 s → 0.58 s; loop unchanged at 0.20 s although it runs 3.3 instructions a time round instead of 5 | yes |
+| The running frame's slot base and constant array kept in local variables | no difference: they are spilled to the stack like the frame pointer | no |
+| Computed-goto dispatch again, with the typed operands in | within noise: loop 0.20 s → 0.19 s, mandelbrot 0.16 s → 0.15 s, dispatch 0.26 s → 0.27 s, cart 0.30 s → 0.31 s | no |
 
 LTO and PGO, Plumlang alone (`--plum-only`), fastest of five runs, the
 four builds measured one after another:
@@ -167,12 +184,32 @@ pass; that is still to be tracked down. Windows gets
 MSVC's LTCG (`-DPLUM_LTO=ON`) and no PGO, as MSVC's needs its own runtime
 DLL while training and the ARM64 build is cross-compiled.
 
-Method calls cost what function calls do (`dispatch` and `fib` both run
-level with Python): finding the method is one table lookup, and the time
-goes into setting up each call's frame.
+Before and after the typed operands (#118), Plumlang alone:
 
-The run loop is now dominated by the number of instructions executed
-(about 16 per iteration of Collatz's inner loop). Bigger gains need fewer
-instructions per operation: superinstructions (`x += 1` as one
-instruction) or register-based instructions. Those change the bytecode
-format, so they are a design decision for later, measured with this suite.
+| Benchmark | before | after | |
+|---|---|---|---|
+| cart | 0.399 s | 0.310 s | 1.29x |
+| collatz | 1.300 s | 0.580 s | 2.24x |
+| dispatch | 0.307 s | 0.268 s | 1.15x |
+| fib | 0.063 s | 0.049 s | 1.29x |
+| jsondoc | 0.241 s | 0.241 s | 1.00x |
+| loop | 0.274 s | 0.200 s | 1.37x |
+| mandelbrot | 0.340 s | 0.160 s | 2.13x |
+| strings | 0.148 s | 0.143 s | 1.03x |
+| textbuild | 0.328 s | 0.325 s | 1.01x |
+| words | 0.310 s | 0.281 s | 1.10x |
+
+#118 asked for `loop`, `collatz` and `mandelbrot` at least twice as fast:
+`collatz` and `mandelbrot` are, `loop` is 1.37 times. Its loop body is now
+three instructions (`MOD_INT_LK`, `JUMP_IF_NOT_EQ_INT_K`, `FOR_NEXT`, and
+`GLOBAL_ADD_INT_L` a third of the time), each costing about 30 machine
+instructions, with no branch mispredicted. What is left is the
+bookkeeping of a stack machine run by one large function: the stack top
+lives in memory rather than in a register, and the frame and constants
+are reloaded from the stack for every instruction. Keeping them in
+registers, a register-based instruction set (#123) or 8-byte values
+(#121) are the next steps, measured with this suite.
+
+Method calls cost what function calls do (`dispatch` and `fib` both run
+level with Lua): finding the method is one table lookup, and the time
+goes into setting up each call's frame.

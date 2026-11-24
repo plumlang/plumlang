@@ -45,13 +45,36 @@ typed instruction: `ADD_INT` or `ADD_FLOAT`, `LT_INT`, `LT_FLOAT` or
 `INT_TO_FLOAT` wherever the checker allowed it. The VM never looks at a
 value's type to decide what to do.
 
+Where an operand is a literal or a variable, it is often an operand of the
+instruction rather than a value on the stack, which saves instructions in
+hot loops. Each form exists only for ints or floats, which the checker has
+proven, and gives the same results and the same errors, at the same line,
+as the plain instruction:
+
+| Form | Example | Instead of |
+|---|---|---|
+| `_K`: the right operand is a constant | `n % 2`: `MOD_INT_K` | `CONST`, `MOD_INT` |
+| `_L`: the right operand is a local | `x * y`: `MUL_FLOAT_L` | `GET_LOCAL`, `MUL_FLOAT` |
+| `_LK`: a local and a constant, pushed | `i + 1`: `ADD_INT_LK` | `GET_LOCAL`, `CONST`, `ADD_INT` |
+| `LOCAL_`, `GLOBAL_`: change a variable in place | `n += 1`, `n = n // 2`: `LOCAL_ADD_INT_K`, `LOCAL_FLOORDIV_INT_K` | `GET_LOCAL`, `CONST`, `ADD_INT`, `SET_LOCAL` |
+| `JUMP_IF_NOT_`: compare and jump, for `if` and `while` | `while i < n`: `JUMP_IF_NOT_LT_INT` | `LT_INT`, `JUMP_IF_FALSE` |
+
+The int forms that take a constant for `//` and `%` are used only when the
+constant is above 0, so they never divide by zero or overflow. An int
+literal in float arithmetic becomes a float constant at compile time, as
+`INT_TO_FLOAT` would make it at run time. A condition `a and b` compiles
+to one jump out per operand, with no `good` or `bad` left to pop. The
+local forms read the running function's own slots, so a variable a
+closure captured (which lives in a cell) uses the plain instructions.
+
 ## Range loops
 
 `for i in a..b` uses no range object: `i` and a hidden end value live in
-neighbouring slots. `FOR_RANGE` at the top leaves the loop once `i` passes
-the end; `FOR_NEXT` after the body adds one and jumps back. For `a..=b`,
-`FOR_NEXT` stops when `i` equals the end before adding, so a range ending
-at the largest int cannot overflow.
+neighbouring slots. `FOR_RANGE` before the body skips the loop when `i` is
+already past the end; `FOR_NEXT` after the body adds one and jumps back to
+the body while the new `i` is still in the range, so each time round runs
+one loop instruction. It checks before adding, so a range ending at the
+largest int (`a..=b`) cannot overflow.
 
 ## Instructions
 

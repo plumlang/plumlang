@@ -7,6 +7,10 @@
  * and comparisons come in typed versions (ADD_INT, ADD_FLOAT) and the VM
  * never inspects types to decide what to do.
  *
+ * Some take an operand from the instruction instead of the stack (#118):
+ * _K a constant, _L a local, _LK both; LOCAL_ and GLOBAL_ change a
+ * variable in place; JUMP_IF_NOT_ compares and jumps (docs/bytecode.md).
+ *
  * X(name, operand count, what it does)
  */
 #ifndef PLUM_COMPILER_OPCODES_H
