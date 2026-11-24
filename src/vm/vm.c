@@ -2174,7 +2174,24 @@ static bool outside_world(const PlumNativeFunction *fn, const PlumRunOptions *op
            (fn == plum_native_function(&plum_module_time, "sleep") && options->max_sleep <= 0);
 }
 
-static bool execute(VM *vm) {
+/*
+ * The run loop starts on a 64-byte boundary. Where it lands otherwise
+ * depends on the size of everything placed before it, and moving it by 16
+ * or 32 bytes changed benchmarks by up to 23% in cycles with the same
+ * instructions (bench/README.md, "Code placement"). Aligned, a change
+ * elsewhere no longer moves the hot code under it. GCC and Clang; MSVC
+ * has no alignment for one function. PLUM_RUN_LOOP_ALIGN=0 turns it off.
+ */
+#ifndef PLUM_RUN_LOOP_ALIGN
+#define PLUM_RUN_LOOP_ALIGN 64
+#endif
+#if PLUM_RUN_LOOP_ALIGN > 0 && defined(__GNUC__) && !defined(__wasm__)
+#define VM_RUN_LOOP_ALIGNED __attribute__((aligned(PLUM_RUN_LOOP_ALIGN)))
+#else
+#define VM_RUN_LOOP_ALIGNED
+#endif
+
+VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
     /* The running function's frame and its code. */
     Frame *frame;
     PlumValue ret; /* what a RETURN returns */
