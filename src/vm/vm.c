@@ -1976,9 +1976,17 @@ static bool outside_world(const PlumNativeFunction *fn, const PlumRunOptions *op
 }
 
 static bool execute(VM *vm) {
-    Frame *frame = FRAME(vm, vm->frame_count - 1);
-    const uint8_t *ip = frame->ip;
-    PlumChunk *chunk = frame->fn->chunk;
+    /* The running function's frame and its code. */
+    Frame *frame;
+    const uint8_t *ip;
+    PlumChunk *chunk;
+#define ENTER_FRAME()                           \
+    do {                                        \
+        frame = FRAME(vm, vm->frame_count - 1); \
+        ip = frame->ip;                         \
+        chunk = frame->fn->chunk;               \
+    } while (0)
+    ENTER_FRAME();
 
 #define READ_U16() read_u16(&ip)
 #define SLOT(n)    (vm->stack[frame->base + (n)])
@@ -2029,18 +2037,43 @@ static bool execute(VM *vm) {
         }                                                                                     \
         s_->as.i = r;                                                                         \
     } while (0)
-/* The LOCAL_ forms change an int local in place, with no stack traffic. */
-#define LOCAL_CHECKED(fn, symbol, right)                                                      \
+/* The LOCAL_ and GLOBAL_ forms change an int variable in place, with no
+ * stack traffic; the _LK forms push local op constant. */
+#define PLACE_CHECKED(place, check, fn, symbol, right)                                        \
     do {                                                                                      \
         uint16_t n_ = READ_U16();                                                             \
         uint16_t m_ = READ_U16();                                                             \
-        PlumValue *v_ = &SLOT(n_);                                                            \
+        check(n_);                                                                            \
+        PlumValue *v_ = &place(n_);                                                           \
         int64_t a = v_->as.i, b = right(m_).as.i, r;                                          \
         if (fn(a, b, &r)) {                                                                   \
             FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
                  (long long)a, symbol, (long long)b);                                         \
         }                                                                                     \
         v_->as.i = r;                                                                         \
+    } while (0)
+#define NO_CHECK(n)                       ((void)(n))
+#define GLOBAL(n)                         (vm->globals[(n)])
+#define LOCAL_CHECKED(fn, symbol, right)  PLACE_CHECKED(SLOT, NO_CHECK, fn, symbol, right)
+#define GLOBAL_CHECKED(fn, symbol, right) PLACE_CHECKED(GLOBAL, CHECK_GLOBAL, fn, symbol, right)
+#define PUSH_INT(value)                        \
+    do {                                       \
+        int64_t v_ = (value);                  \
+        reserve_one(vm);                       \
+        PlumValue *t_ = &vm->stack[vm->top++]; \
+        t_->type = PLUM_VAL_INT;               \
+        t_->as.i = v_;                         \
+    } while (0)
+#define PUSH_CHECKED(fn, symbol)                                                              \
+    do {                                                                                      \
+        uint16_t n_ = READ_U16();                                                             \
+        uint16_t k_ = READ_U16();                                                             \
+        int64_t a = SLOT(n_).as.i, b = KONST(k_).as.i, r;                                     \
+        if (fn(a, b, &r)) {                                                                   \
+            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
+                 (long long)a, symbol, (long long)b);                                         \
+        }                                                                                     \
+        PUSH_INT(r);                                                                          \
     } while (0)
 #define FLOAT_WITH(operator, right)                  \
     do {                                             \
@@ -2305,6 +2338,39 @@ static bool execute(VM *vm) {
             uint16_t n = READ_U16();
             uint16_t k = READ_U16();
             SLOT(n).as.i = floor_mod(SLOT(n).as.i, KONST(k).as.i);
+            break;
+        }
+        case PLUM_OP_GLOBAL_ADD_INT_K:
+            GLOBAL_CHECKED(add_overflows, "+", KONST);
+            break;
+        case PLUM_OP_GLOBAL_SUB_INT_K:
+            GLOBAL_CHECKED(sub_overflows, "-", KONST);
+            break;
+        case PLUM_OP_GLOBAL_ADD_INT_L:
+            GLOBAL_CHECKED(add_overflows, "+", SLOT);
+            break;
+        case PLUM_OP_GLOBAL_SUB_INT_L:
+            GLOBAL_CHECKED(sub_overflows, "-", SLOT);
+            break;
+        case PLUM_OP_ADD_INT_LK:
+            PUSH_CHECKED(add_overflows, "+");
+            break;
+        case PLUM_OP_SUB_INT_LK:
+            PUSH_CHECKED(sub_overflows, "-");
+            break;
+        case PLUM_OP_MUL_INT_LK:
+            PUSH_CHECKED(mul_overflows, "*");
+            break;
+        case PLUM_OP_FLOORDIV_INT_LK: {
+            uint16_t n = READ_U16();
+            uint16_t k = READ_U16();
+            PUSH_INT(floor_div(SLOT(n).as.i, KONST(k).as.i));
+            break;
+        }
+        case PLUM_OP_MOD_INT_LK: {
+            uint16_t n = READ_U16();
+            uint16_t k = READ_U16();
+            PUSH_INT(floor_mod(SLOT(n).as.i, KONST(k).as.i));
             break;
         }
         case PLUM_OP_LOCAL_ADD_INT_L:
@@ -3031,9 +3097,7 @@ static bool execute(VM *vm) {
             if (!invoke(vm, fn, argc)) {
                 goto thrown;
             }
-            frame = FRAME(vm, vm->frame_count - 1);
-            ip = frame->ip;
-            chunk = frame->fn->chunk;
+            ENTER_FRAME();
             break;
         }
         case PLUM_OP_IS_NONE: {
@@ -3203,9 +3267,7 @@ static bool execute(VM *vm) {
             if (!call(vm, fn, closure, argc)) {
                 goto thrown;
             }
-            frame = FRAME(vm, vm->frame_count - 1);
-            ip = frame->ip;
-            chunk = frame->fn->chunk;
+            ENTER_FRAME();
             break;
         }
         case PLUM_OP_CALL_BUILTIN: {
@@ -3251,9 +3313,7 @@ static bool execute(VM *vm) {
             if (vm->frame_count == vm->stop_at) {
                 return true; /* back to whoever started this run */
             }
-            frame = FRAME(vm, vm->frame_count - 1);
-            ip = frame->ip;
-            chunk = frame->fn->chunk;
+            ENTER_FRAME();
             break;
         }
         case PLUM_OPCODE_COUNT:
@@ -3267,9 +3327,7 @@ static bool execute(VM *vm) {
         if (!catch_thrown(vm)) {
             return false;
         }
-        frame = FRAME(vm, vm->frame_count - 1);
-        ip = frame->ip;
-        chunk = frame->fn->chunk;
+        ENTER_FRAME();
     }
 
 #undef READ_U16

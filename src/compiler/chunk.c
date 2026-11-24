@@ -186,6 +186,13 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
         case PLUM_OP_FOR_NEXT:
             fprintf(out, " %u %u %u  ; -> %04zu", a, b, c3, next - c3);
             break;
+        case PLUM_OP_GLOBAL_ADD_INT_K:
+        case PLUM_OP_GLOBAL_SUB_INT_K:
+        case PLUM_OP_ADD_INT_LK:
+        case PLUM_OP_SUB_INT_LK:
+        case PLUM_OP_MUL_INT_LK:
+        case PLUM_OP_FLOORDIV_INT_LK:
+        case PLUM_OP_MOD_INT_LK:
         case PLUM_OP_LOCAL_ADD_INT_K:
         case PLUM_OP_LOCAL_SUB_INT_K:
         case PLUM_OP_LOCAL_MUL_INT_K:

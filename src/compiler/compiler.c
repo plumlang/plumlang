@@ -423,6 +423,34 @@ static bool fused_right(Compiler *c, PlumTokenKind tok, bool fl, const PlumTy *l
 }
 
 /*
+ * int local op int literal, pushed by one instruction (MOD_INT_LK, ...).
+ * Emits it and returns true, or emits nothing and returns false.
+ */
+static bool fused_both(Compiler *c, PlumTokenKind tok, const PlumExpr *left, const PlumExpr *right,
+                       uint32_t line) {
+    static const struct {
+        PlumTokenKind tok;
+        PlumOpcode o;
+    } ops[] = {
+        {PLUM_TOK_PLUS, PLUM_OP_ADD_INT_LK},    {PLUM_TOK_MINUS, PLUM_OP_SUB_INT_LK},
+        {PLUM_TOK_STAR, PLUM_OP_MUL_INT_LK},    {PLUM_TOK_SLASH_SLASH, PLUM_OP_FLOORDIV_INT_LK},
+        {PLUM_TOK_PERCENT, PLUM_OP_MOD_INT_LK},
+    };
+    uint16_t slot;
+    if (right->kind != PLUM_EXPR_INT || !int_like(left->ty) || !int_like(right->ty) ||
+        !plain_local(c, left, &slot)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof ops / sizeof ops[0]; i++) {
+        if (ops[i].tok == tok && (i < 3 || right->as.i > 0)) { /* // and %: above 0 */
+            op2(c, ops[i].o, slot, constant(c, plum_int(right->as.i), right->span), line);
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
  * left op right for arithmetic and bitwise operators (also compound
  * assignment): both operands are converted to the result's type as they
  * are computed. `left` is NULL when the left value is already pushed.
@@ -441,6 +469,9 @@ static void arithmetic(Compiler *c, PlumTokenKind tok, const PlumExpr *left, con
         return;
     }
     bool fl = tok == PLUM_TOK_SLASH || ty_is(lty, PLUM_TY_FLOAT) || ty_is(right->ty, PLUM_TY_FLOAT);
+    if (left != NULL && !fl && fused_both(c, tok, left, right, line)) {
+        return;
+    }
     if (left != NULL) {
         compile_expr(c, left);
     }
@@ -2493,6 +2524,7 @@ static PlumTokenKind compound_operator(PlumTokenKind tok) {
 /*
  * x op= v, and x = x op v, on an int local x, with v an int literal or an
  * int local: one instruction changes x in place (LOCAL_ADD_INT_K, ...).
+ * The same for += and -= on an int global (GLOBAL_ADD_INT_K, ...).
  * Emits it and returns true, or emits nothing and returns false.
  */
 static bool local_update(Compiler *c, const PlumExpr *target, PlumTokenKind tok,
@@ -2507,8 +2539,30 @@ static bool local_update(Compiler *c, const PlumExpr *target, PlumTokenKind tok,
         {PLUM_TOK_SLASH_SLASH, PLUM_OP_LOCAL_FLOORDIV_INT_K, PLUM_OPCODE_COUNT},
         {PLUM_TOK_PERCENT, PLUM_OP_LOCAL_MOD_INT_K, PLUM_OPCODE_COUNT},
     };
+    /* an int global: += and -= only */
+    static const PlumOpcode global_ops[2][2] = {
+        {PLUM_OP_GLOBAL_ADD_INT_K, PLUM_OP_GLOBAL_ADD_INT_L},
+        {PLUM_OP_GLOBAL_SUB_INT_K, PLUM_OP_GLOBAL_SUB_INT_L},
+    };
     uint16_t slot, from;
-    if (!ty_is(target->ty, PLUM_TY_INT) || !int_like(right->ty) || !plain_local(c, target, &slot)) {
+    if (!ty_is(target->ty, PLUM_TY_INT) || !int_like(right->ty)) {
+        return false;
+    }
+    if (!plain_local(c, target, &slot)) {
+        const PlumSymbol *sym = target->symbol;
+        int row = tok == PLUM_TOK_PLUS ? 0 : tok == PLUM_TOK_MINUS ? 1 : -1;
+        if (row < 0 || sym == NULL || !sym->global || !sym->has_slot) {
+            return false;
+        }
+        slot = (uint16_t)sym->slot;
+        if (right->kind == PLUM_EXPR_INT) {
+            op2(c, global_ops[row][0], slot, constant(c, plum_int(right->as.i), right->span), line);
+            return true;
+        }
+        if (plain_local(c, right, &from)) {
+            op2(c, global_ops[row][1], slot, from, line);
+            return true;
+        }
         return false;
     }
     for (size_t i = 0; i < sizeof ops / sizeof ops[0]; i++) {
