@@ -23,6 +23,7 @@ plum lsp --stdio    # the same (some editors add the flag)
 | Find references | Every place in the package that names the same variable, parameter, function, tree, trait, kind, case, field, method or module alias: uses, imports (`seed ./beds { Bed }`, `beds.Bed`), keyword arguments (`Bed(plants: 4)` names the field `plants`) and, if asked, the declaration. |
 | Signature help | While you type a call's arguments (after `(` and `,`): the signature of the function, method, constructor (`init`'s parameters, or the fields, parents' first), kind case, built-in or standard-library function, with the argument you are on highlighted; a keyword argument (`step: 2`) highlights the parameter it names. Works on a call you are still typing. |
 | Semantic tokens | Colour by meaning, for the whole file: what each name stands for (a parameter, a constant, a field, a case, a standard-library function, ...), and whether it is declared there; keywords, numbers, strings and comments too, so a file that doesn't parse is still coloured. The legend is below. |
+| Code actions | Quick fixes for diagnostics: **Add `seed math`** for an unknown name that is a standard module (E0301), or **Add `seed ./name`** when `name.plum` is beside the file, placed after the last `seed` (or after the comments the file starts with); **Prefix 'x' with '_' to keep it** for a name never used (W0502). |
 | Rename | Renames all of those at once, in every file of the package, open or not, as one edit. Built-ins (`drop`, `int`, `ValueError`), the standard library, keywords and a module's file name can't be renamed; the editor shows why. The new name must be a name and not a keyword. |
 
 ### Semantic token legend
@@ -90,7 +91,8 @@ Details:
 | Find references | Shift+F12 | `grr` | `gr` | Alt+Shift+F12 | `M-?` |
 | Rename | F2 | `grn` | `Space r` | F2 | `M-x eglot-rename` |
 | Signature help | as you type | `Ctrl-S` in insert mode | as you type | as you type | in the echo area (ElDoc) |
-| Semantic tokens | with most themes (`editor.semanticHighlighting.enabled`) | on by default | no (colours with tree-sitter) | when `semantic_tokens` is on in its settings | no (`lsp-mode` uses them, with `lsp-semantic-tokens-enable`) |
+| Semantic tokens | with most themes (`editor.semanticHighlighting.enabled`) | on by default | not used (colours with tree-sitter) | only in versions that support them (otherwise tree-sitter) | `lsp-mode` with `lsp-semantic-tokens-enable`; eglot only in versions that support them |
+| Code actions (quick fixes) | the light bulb, Ctrl+. | `gra` | `Space a` | Ctrl+. (Cmd+. on macOS) | `M-x eglot-code-actions` |
 
 The server needs only the path of `plum`; with `plum` on your `PATH`, the
 command is `plum lsp`. Associate the `.plum` extension with a `plum`

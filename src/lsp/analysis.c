@@ -131,6 +131,24 @@ static int by_position(const void *a, const void *b) {
     return x < y ? -1 : x > y;
 }
 
+static void write_one_diagnostic(PlumJsonWriter *w, const PlumLspLines *lines, const PlumModule *m,
+                                 const PlumDiag *d) {
+    size_t start = d->span.offset < m->len ? d->span.offset : m->len;
+    size_t end = start + d->span.length <= m->len ? start + d->span.length : m->len;
+    plum_jw_object(w);
+    plum_jw_key(w, "range");
+    write_range(w, lines, start, end);
+    plum_jw_key(w, "severity");
+    plum_jw_int(w, d->severity == PLUM_ERROR ? 1 : 2);
+    plum_jw_key(w, "code");
+    plum_jw_string(w, d->code);
+    plum_jw_key(w, "source");
+    plum_jw_string(w, "plum");
+    plum_jw_key(w, "message");
+    plum_jw_string(w, d->message);
+    plum_jw_object_end(w);
+}
+
 void plum_lsp_write_diagnostics(PlumJsonWriter *w, const PlumModule *m) {
     size_t n = m->diags.items.len;
     const PlumDiag **sorted = plum_alloc_zeroed(n + 1, sizeof *sorted);
@@ -142,21 +160,7 @@ void plum_lsp_write_diagnostics(PlumJsonWriter *w, const PlumModule *m) {
     plum_lsp_lines_init(&lines, m->text, m->len);
     plum_jw_array(w);
     for (size_t i = 0; i < n; i++) {
-        const PlumDiag *d = sorted[i];
-        size_t start = d->span.offset < m->len ? d->span.offset : m->len;
-        size_t end = start + d->span.length <= m->len ? start + d->span.length : m->len;
-        plum_jw_object(w);
-        plum_jw_key(w, "range");
-        write_range(w, &lines, start, end);
-        plum_jw_key(w, "severity");
-        plum_jw_int(w, d->severity == PLUM_ERROR ? 1 : 2);
-        plum_jw_key(w, "code");
-        plum_jw_string(w, d->code);
-        plum_jw_key(w, "source");
-        plum_jw_string(w, "plum");
-        plum_jw_key(w, "message");
-        plum_jw_string(w, d->message);
-        plum_jw_object_end(w);
+        write_one_diagnostic(w, &lines, m, sorted[i]);
     }
     plum_jw_array_end(w);
     plum_lsp_lines_free(&lines);
@@ -3223,4 +3227,140 @@ void plum_lsp_semantic_tokens(PlumJsonWriter *w, const PlumLspAnalysis *a) {
     plum_jw_object_end(w);
     plum_lsp_lines_free(&lines);
     plum_array_free(&tokens);
+}
+
+/* ------------------------------------------------------------------ */
+/* Code actions                                                        */
+/* ------------------------------------------------------------------ */
+
+/* The name a diagnostic's message quotes first: 'x' in "'x' is never used". */
+static bool quoted_name(const char *message, char *out, size_t size) {
+    const char *open = strchr(message, '\'');
+    const char *close = open != NULL ? strchr(open + 1, '\'') : NULL;
+    size_t n = close != NULL ? (size_t)(close - open - 1) : 0;
+    if (n == 0 || n >= size) {
+        return false;
+    }
+    memcpy(out, open + 1, n);
+    out[n] = '\0';
+    return true;
+}
+
+/* Where a new `seed` line goes: after the last one at the top level, or
+ * else after the comments a file starts with. */
+static size_t seed_line_at(const PlumModule *m) {
+    size_t at = 0;
+    bool any = false;
+    for (size_t i = 0; i < m->program.count; i++) {
+        const PlumStmt *s = m->program.stmts[i];
+        if (s->kind == PLUM_STMT_SEED) {
+            at = span_end(s->span, m->len);
+            any = true;
+        }
+    }
+    if (any) {
+        while (at < m->len && m->text[at] != '\n') {
+            at++;
+        }
+        return at < m->len ? at + 1 : at;
+    }
+    while (at < m->len && m->text[at] == '#') {
+        while (at < m->len && m->text[at] != '\n') {
+            at++;
+        }
+        if (at < m->len) {
+            at++;
+        }
+    }
+    return at;
+}
+
+/* A quick fix: one edit, inserting `text` at `at`, for diagnostic `d`. */
+static void write_fix(PlumJsonWriter *w, const PlumModule *m, const PlumLspLines *lines,
+                      const char *uri, const PlumDiag *d, const char *title, size_t at,
+                      const char *text) {
+    plum_jw_object(w);
+    plum_jw_key(w, "title");
+    plum_jw_string(w, title);
+    plum_jw_key(w, "kind");
+    plum_jw_string(w, "quickfix");
+    plum_jw_key(w, "diagnostics");
+    plum_jw_array(w);
+    write_one_diagnostic(w, lines, m, d);
+    plum_jw_array_end(w);
+    plum_jw_key(w, "isPreferred");
+    plum_jw_bool(w, true);
+    plum_jw_key(w, "edit");
+    plum_jw_object(w);
+    plum_jw_key(w, "changes");
+    plum_jw_object(w);
+    plum_jw_key(w, uri);
+    plum_jw_array(w);
+    plum_jw_object(w);
+    plum_jw_key(w, "range");
+    write_range(w, lines, at, at);
+    plum_jw_key(w, "newText");
+    plum_jw_string(w, text);
+    plum_jw_object_end(w);
+    plum_jw_array_end(w);
+    plum_jw_object_end(w);
+    plum_jw_object_end(w);
+    plum_jw_object_end(w);
+}
+
+static bool module_file_exists(const char *path, PlumModuleReader read, void *read_ctx) {
+    size_t len = 0;
+    int err = 0;
+    char *text = read != NULL ? read(read_ctx, path, &len, &err) : plum_read_file(path, &len, &err);
+    free(text); /* the readers' text is malloc'd */
+    return text != NULL;
+}
+
+void plum_lsp_code_actions(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *uri,
+                           size_t start, size_t end, PlumModuleReader read, void *read_ctx) {
+    const PlumModule *m = a->main;
+    PlumLspLines lines;
+    plum_lsp_lines_init(&lines, m->text, m->len);
+    plum_jw_array(w);
+    for (size_t i = 0; i < m->diags.items.len; i++) {
+        const PlumDiag *d = &m->diags.items.items[i];
+        size_t from = d->span.offset, to = span_end(d->span, m->len);
+        char name[128];
+        if (from > end || to < start || !quoted_name(d->message, name, sizeof name)) {
+            continue;
+        }
+        char title[192];
+        if (strcmp(d->code, "W0502") == 0) {
+            /* never used: `_x` keeps it without the warning */
+            long at = find_word(m->text, m->len, from, to, name);
+            if (at >= 0) {
+                snprintf(title, sizeof title, "Prefix '%s' with '_' to keep it", name);
+                write_fix(w, m, &lines, uri, d, title, (size_t)at, "_");
+            }
+        } else if (strcmp(d->code, "E0301") == 0) {
+            /* an unknown name that is a module: seed it */
+            const PlumNativeModule *nm = plum_native_module(name);
+            char seed[160];
+            const char *nl =
+                seed_line_at(m) == m->len && m->len > 0 && m->text[m->len - 1] != '\n' ? "\n" : "";
+            if (nm != NULL && !plum_native_is_methods(nm)) {
+                snprintf(title, sizeof title, "Add `seed %s`", name);
+                snprintf(seed, sizeof seed, "%sseed %s\n", nl, name);
+                write_fix(w, m, &lines, uri, d, title, seed_line_at(m), seed);
+                continue;
+            }
+            char rel[136];
+            snprintf(rel, sizeof rel, "./%s", name);
+            char *path = m->path[0] != '<' ? plum_module_path(m->path, rel) : NULL;
+            if (path != NULL && !plum_lsp_same_path(path, m->path) &&
+                module_file_exists(path, read, read_ctx)) {
+                snprintf(title, sizeof title, "Add `seed ./%s`", name);
+                snprintf(seed, sizeof seed, "%sseed ./%s\n", nl, name);
+                write_fix(w, m, &lines, uri, d, title, seed_line_at(m), seed);
+            }
+            plum_free(path);
+        }
+    }
+    plum_jw_array_end(w);
+    plum_lsp_lines_free(&lines);
 }

@@ -112,4 +112,13 @@ void plum_lsp_signature_help(PlumJsonWriter *w, const PlumLspAnalysis *a, const 
 void plum_lsp_semantic_legend(PlumJsonWriter *w);
 void plum_lsp_semantic_tokens(PlumJsonWriter *w, const PlumLspAnalysis *a);
 
+/*
+ * Quick fixes for the file's diagnostics in text[start, end] (a
+ * CodeAction[]): "Prefix 'x' with '_'" for W0502 (never used), and "Add
+ * `seed math`" (or `seed ./name`, for a file beside it) for E0301, an
+ * unknown name that is a module. Edits name the file `uri`.
+ */
+void plum_lsp_code_actions(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *uri,
+                           size_t start, size_t end, PlumModuleReader read, void *read_ctx);
+
 #endif /* PLUM_LSP_ANALYSIS_H */

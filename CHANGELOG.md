@@ -28,6 +28,7 @@ Format for a new entry:
 - **Tools**: `plum lsp` finds references and renames (#114): every use of a variable, parameter, function, tree, trait, kind, case, field, method or module alias in the package, imports and keyword arguments included, as one edit across files open or not; built-ins, the standard library and keywords are refused with the reason (docs/lsp.md).
 - **Tools**: `plum lsp` signature help (#114): the signature of the call being typed, with the argument under the cursor (by position or by keyword) highlighted, for functions, methods, constructors, kind cases, built-ins and the standard library.
 - **Tools**: `plum lsp` semantic tokens (#114): the whole file coloured by meaning (modules, types, trees, traits, kinds and cases, parameters, variables, fields, functions, methods; declarations, constants and what is built in), with keywords, numbers, strings and comments, in the protocol's standard legend.
+- **Tools**: `plum lsp` quick fixes (#114): "Add `seed math`" (or `seed ./name` for a file beside it) for an unknown name that is a module, and "Prefix 'x' with '_'" for a name never used (W0502).
 
 ## v2.1.4 — 2026-11-16
 
