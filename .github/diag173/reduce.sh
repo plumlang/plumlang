@@ -2,8 +2,8 @@ mkdir -p red && cd red
 cat > a.c <<'X'
 #include <stdio.h>
 void call_send(int fd);
-static void send(const char *who) { printf("static send in a.c called (%s)\n", who); }
-void lsp(void) { send("lsp"); }
+__attribute__((noinline)) static void send(const char *who) { printf("static send in a.c called (%s)\n", who); }
+void lsp(void) { send("lsp"); send("lsp again"); }
 int main(void) { lsp(); call_send(-1); return 0; }
 X
 cat > b.c <<'X'
@@ -19,5 +19,6 @@ for f in "" "-flto" "-flto=thin"; do
   echo "=== clang -O2 $f"; clang -O2 $f -c a.c -o a.o && clang -O2 $f -c b.c -o b.o && clang -O2 $f a.o b.o -o t && ./t
 done
 echo "=== IR names"; clang -O2 -flto -S -emit-llvm b.c -o - | grep -E 'send'; clang -O2 -S -emit-llvm a.c -o - | grep -E 'define.*send'
+echo "=== merged object symbols"; clang -O2 -flto -c a.c -o a.o; clang -O2 -flto -c b.c -o b.o; clang -O2 -flto a.o b.o -Wl,-object_path_lto,lto.o -o t2; nm lto.o | grep -i send; otool -tvV lto.o | grep -B2 -A1 "bl\|call" | grep -i send
 echo "=== x86_64"; for f in "" "-flto"; do clang -arch x86_64 -O2 $f a.c b.c -o t86 && (arch -x86_64 ./t86 || ./t86); done
 clang --version | head -1
