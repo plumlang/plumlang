@@ -1,0 +1,14 @@
+# Inside a try, return f(...) is an ordinary call: the try is still there
+# when a deeper call fails, and catches it.
+branch dig(n: int) -> int {
+    if n == 0 {
+        return 1 // n
+    }
+    try {
+        return dig(n - 1)
+    } catch e {
+        drop("caught at {n}: {e.message}")
+        return -1
+    }
+}
+drop(dig(3))

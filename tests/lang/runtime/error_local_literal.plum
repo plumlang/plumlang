@@ -1,0 +1,6 @@
+# Overflow with the literal in the instruction: the same message as before.
+branch lower(n: int) -> int {
+    plant m = n - 2
+    return m
+}
+drop(lower(-9223372036854775807))

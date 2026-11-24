@@ -16,15 +16,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * A call in progress (#120: kept small, since every call writes one). The
+ * arguments are where the caller pushed them: they become slots 0 and up
+ * in place, and the other slots are pushed above them.
+ */
 typedef struct Frame {
     PlumFunction *fn;
-    PlumClosure *closure; /* its captured variables; NULL for a plain function */
     const uint8_t *ip;
-    size_t base; /* index of slot 0 in the stack; the function itself sits at base - 1 */
-    /* 1: the function sits at base - 1, and the result goes there; 0: a
-     * method, whose function the program holds: slot 0 is the object and
-     * the result takes its place. */
-    size_t below;
+    uint32_t base; /* index of slot 0 in the stack */
+    /* 1: the function value sits at base - 1 and goes when the call
+     * returns (a closure's captured variables are read through it); 0: the
+     * caller didn't push it (CALL_GLOBAL, methods). */
+    uint32_t callee : 1;
+    /* how many times `return f(...)` restarted this call of f (TAIL_SELF),
+     * for its stack trace */
+    uint32_t tail_calls : 31;
 } Frame;
 
 /* A try in progress: where to go, and what to unwind to, on an error. */
@@ -187,7 +194,13 @@ static inline bool is_unset(PlumValue v) {
 }
 
 static inline Frame *FRAME(VM *vm, int i) {
-    return &vm->segs[i / FRAME_SEG][i % FRAME_SEG];
+    return &vm->segs[(unsigned)i / FRAME_SEG][(unsigned)i % FRAME_SEG];
+}
+
+/* The closure a frame runs: only a function with captured variables reads
+ * it, and such a function is always called with its closure under slot 0. */
+static inline PlumClosure *frame_closure(const VM *vm, const Frame *f) {
+    return plum_as_closure(vm->stack[f->base - 1]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -280,12 +293,18 @@ static void throw_error(VM *vm, PlumValue error) {
             i = 1;
         }
         const Frame *f = FRAME(vm, i);
+        char tail[64] = "";
+        if (f->tail_calls > 0) {
+            /* the calls `return f(...)` made in place of this one (spec 6.5) */
+            snprintf(tail, sizeof tail, " (after %u tail call%s)", (unsigned)f->tail_calls,
+                     f->tail_calls == 1 ? "" : "s");
+        }
         if (f->fn->path != NULL && strcmp(f->fn->path, vm->source->path) != 0) {
             /* code from an imported module */
-            trace_add(vm, "  in %s, line %u of %s\n", f->fn->name, (unsigned)frame_line(f),
-                      f->fn->path);
+            trace_add(vm, "  in %s, line %u of %s%s\n", f->fn->name, (unsigned)frame_line(f),
+                      f->fn->path, tail);
         } else {
-            trace_add(vm, "  in %s, line %u\n", f->fn->name, (unsigned)frame_line(f));
+            trace_add(vm, "  in %s, line %u%s\n", f->fn->name, (unsigned)frame_line(f), tail);
         }
     }
 }
@@ -816,7 +835,7 @@ static PlumValue *walk_path(VM *vm, PlumValue *place, const PlumValue *keys, int
 }
 
 static bool execute(VM *vm);
-static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc);
+static bool call(VM *vm, PlumFunction *fn, int argc, uint32_t callee);
 
 /*
  * Call a Plumlang function from native code (map, filter, ...): run the
@@ -836,12 +855,12 @@ static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, Pl
     for (int i = 0; i < argc; i++) {
         push(vm, plum_retain(args[i]));
     }
-    PlumClosure *closure = fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn) : NULL;
-    PlumFunction *f = closure != NULL ? closure->fn : plum_as_function(fn);
+    PlumFunction *f =
+        fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn)->fn : plum_as_function(fn);
     int saved = vm->stop_at;
     vm->stop_at = vm->frame_count;
     vm->callback_depth++;
-    bool ok = call(vm, f, closure, argc) && execute(vm) && !vm->stopped;
+    bool ok = call(vm, f, argc, 1) && execute(vm) && !vm->stopped;
     vm->callback_depth--;
     vm->stop_at = saved;
     if (!ok) {
@@ -1199,38 +1218,16 @@ static bool object_text(void *ctx, PlumValue object, PlumString **out) {
     return true;
 }
 
+static inline Frame *call_frame(VM *vm, PlumFunction *fn, int argc, uint32_t callee);
+
 /*
  * Call `fn` as a method: the object sits under its `argc` arguments and
  * becomes slot 0 (self). Nothing goes under it: the program holds its
  * methods for the whole run, and the result takes the object's place.
- * The usual case is done here, inline in the run loop; call() does the
- * rest (limits, a new segment of frames, a bigger stack, too deep).
  * Returns the new frame, or NULL if the call failed.
  */
 static inline Frame *invoke(VM *vm, PlumFunction *fn, int argc) {
-    unsigned n = (unsigned)vm->frame_count;
-    size_t base = vm->top - (size_t)argc - 1;
-    size_t slots = (size_t)fn->slot_count;
-    if (vm->limited || n % FRAME_SEG == 0 || n >= PLUM_MAX_FRAMES ||
-        base + slots + 1 > vm->capacity) {
-        if (!call(vm, fn, NULL, argc + 1)) {
-            return NULL;
-        }
-        Frame *f = FRAME(vm, vm->frame_count - 1);
-        f->below = 0;
-        return f;
-    }
-    Frame *f = &vm->segs[n / FRAME_SEG][n % FRAME_SEG];
-    vm->frame_count = (int)n + 1;
-    f->fn = fn;
-    f->closure = NULL;
-    f->ip = fn->chunk->code.items;
-    f->base = base;
-    f->below = 0;
-    for (size_t i = (size_t)argc + 1; i < slots; i++) {
-        vm->stack[vm->top++] = plum_none();
-    }
-    return f;
+    return call_frame(vm, fn, argc + 1, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1799,9 +1796,9 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
         if (!t->started) {
             t->started = true;
             PlumValue fn = vm->stack[0];
-            PlumClosure *closure = fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn) : NULL;
-            PlumFunction *f = closure != NULL ? closure->fn : plum_as_function(fn);
-            ok = call(vm, f, closure, t->start_argc) && execute(vm);
+            PlumFunction *f = fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn)->fn
+                                                                  : plum_as_function(fn);
+            ok = call(vm, f, t->start_argc, 1) && execute(vm);
         } else {
             ok = execute(vm);
         }
@@ -1872,7 +1869,9 @@ static inline bool step(VM *vm) {
     return !vm->limited || step_limited(vm);
 }
 
-static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
+/* The rare parts of a call: a step limit, the recursion limit, a new
+ * segment of frames. False after an error. */
+static bool call_slow(VM *vm) {
     if (!step(vm)) {
         return false;
     }
@@ -1881,21 +1880,88 @@ static bool call(VM *vm, PlumFunction *fn, PlumClosure *closure, int argc) {
                       PLUM_MAX_FRAMES);
         return false;
     }
-    if (vm->frame_count % FRAME_SEG == 0 && vm->segs[vm->frame_count / FRAME_SEG] == NULL) {
-        vm->segs[vm->frame_count / FRAME_SEG] = plum_alloc_zeroed(FRAME_SEG, sizeof(Frame));
-    }
-    Frame *f = FRAME(vm, vm->frame_count++);
-    f->fn = fn;
-    f->closure = closure;
-    f->ip = fn->chunk->code.items;
-    f->base = vm->top - (size_t)argc;
-    f->below = 1;
-    /* The other local slots start as none. */
-    grow(vm, f->base + (size_t)fn->slot_count + 1);
-    for (int i = argc; i < fn->slot_count; i++) {
-        vm->stack[vm->top++] = plum_none(); /* room was made above */
+    if ((unsigned)vm->frame_count % FRAME_SEG == 0 &&
+        vm->segs[(unsigned)vm->frame_count / FRAME_SEG] == NULL) {
+        vm->segs[(unsigned)vm->frame_count / FRAME_SEG] =
+            plum_alloc_zeroed(FRAME_SEG, sizeof(Frame));
     }
     return true;
+}
+
+/*
+ * Start a call of `fn`, whose `argc` arguments are on top of the stack
+ * (with the function value under them if `callee`). The arguments stay
+ * where they are as slots 0 and up; the other slots are pushed as none.
+ * Returns the new frame, or NULL after an error.
+ */
+static inline Frame *call_frame(VM *vm, PlumFunction *fn, int argc, uint32_t callee) {
+    int n = vm->frame_count;
+    if (vm->limited || (unsigned)n % FRAME_SEG == 0 || n == PLUM_MAX_FRAMES) {
+        if (!call_slow(vm)) {
+            return NULL;
+        }
+    }
+    vm->frame_count = n + 1;
+    Frame *f = FRAME(vm, n);
+    f->fn = fn;
+    f->ip = fn->chunk->code.items;
+    f->base = (uint32_t)(vm->top - (size_t)argc);
+    f->callee = callee & 1;
+    f->tail_calls = 0;
+    size_t need = vm->top + (size_t)(fn->slot_count - argc) + 1;
+    if (need > vm->capacity) {
+        grow(vm, need);
+    }
+    for (int i = argc; i < fn->slot_count; i++) {
+        vm->stack[vm->top++] = plum_none();
+    }
+    return f;
+}
+
+static bool call(VM *vm, PlumFunction *fn, int argc, uint32_t callee) {
+    return call_frame(vm, fn, argc, callee) != NULL;
+}
+
+/* Give up the reference the object value at `v` holds: inline while
+ * something else still holds the object, plum_release when it may go. */
+static inline void drop_ref(const PlumValue *v) {
+    if (v->as.obj->refcount > 1) {
+        v->as.obj->refcount--;
+    } else {
+        plum_release(*v);
+    }
+}
+
+/* Release the objects among [from, to): the scan makes no calls, so a
+ * return whose slots hold only numbers doesn't spill registers. */
+#if defined(__GNUC__)
+#define VM_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define VM_NOINLINE __declspec(noinline)
+#else
+#define VM_NOINLINE
+#endif
+VM_NOINLINE static void release_objects(PlumValue *from, PlumValue *to);
+
+static inline void release_values(PlumValue *from, PlumValue *to) {
+    for (PlumValue *v = from; v < to; v++) {
+        if (v->type == PLUM_VAL_OBJ) {
+            if (v->as.obj->refcount > 1) {
+                v->as.obj->refcount--; /* most still have other holders */
+            } else {
+                release_objects(v, to); /* this one may go: the rest the slow way */
+                return;
+            }
+        }
+    }
+}
+
+VM_NOINLINE static void release_objects(PlumValue *from, PlumValue *to) {
+    for (PlumValue *v = to; v-- > from;) {
+        if (v->type == PLUM_VAL_OBJ) {
+            drop_ref(v); /* most still have other holders */
+        }
+    }
 }
 
 /* Release everything from stack index `to` up. */
@@ -1924,16 +1990,6 @@ static inline void store_value(PlumValue *to, const PlumValue *v) {
         plum_release(old);
     } else {
         copy_value(to, v);
-    }
-}
-
-/* Give up the reference the object value at `v` holds: inline while
- * something else still holds the object, plum_release when it may go. */
-static inline void drop_ref(const PlumValue *v) {
-    if (v->as.obj->refcount > 1) {
-        v->as.obj->refcount--;
-    } else {
-        plum_release(*v);
     }
 }
 
@@ -1977,7 +2033,7 @@ static PlumValue *place_of(VM *vm, Frame *frame, int kind, uint16_t n) {
     } else if (kind == 1) {
         p = &vm->globals[n];
     } else {
-        p = &frame->closure->cells[n]->value;
+        p = &frame_closure(vm, frame)->cells[n]->value;
     }
     return p;
 }
@@ -2016,6 +2072,7 @@ static bool outside_world(const PlumNativeFunction *fn, const PlumRunOptions *op
 static bool execute(VM *vm) {
     /* The running function's frame and its code. */
     Frame *frame;
+    PlumValue ret; /* what a RETURN returns */
     const uint8_t *ip;
     PlumChunk *chunk;
 #define ENTER_FRAME()                           \
@@ -2076,7 +2133,8 @@ static bool execute(VM *vm) {
         s_->as.i = r;                                                                         \
     } while (0)
 /* The LOCAL_ and GLOBAL_ forms change an int variable in place, with no
- * stack traffic; the _LK forms push local op constant. */
+ * stack traffic; the _LK forms push local op a literal the instruction
+ * holds (-32768 to 32767). */
 #define PLACE_CHECKED(place, check, fn, symbol, right)                                        \
     do {                                                                                      \
         uint16_t n_ = READ_U16();                                                             \
@@ -2130,7 +2188,7 @@ static bool execute(VM *vm) {
     do {                                                                                      \
         uint16_t n_ = READ_U16();                                                             \
         uint16_t k_ = READ_U16();                                                             \
-        int64_t a = SLOT(n_).as.i, b = KONST(k_).as.i, r;                                     \
+        int64_t a = SLOT(n_).as.i, b = (int16_t)k_, r;                                        \
         if (fn(a, b, &r)) {                                                                   \
             FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
                  (long long)a, symbol, (long long)b);                                         \
@@ -2161,6 +2219,15 @@ static bool execute(VM *vm) {
         if (!(s_->as.field operator KONST(k_).as.field)) { \
             ip += d_;                                      \
         }                                                  \
+    } while (0)
+#define JUMP_UNLESS_LK(operator)                     \
+    do {                                             \
+        uint16_t n_ = READ_U16();                    \
+        uint16_t k_ = READ_U16();                    \
+        uint16_t d_ = READ_U16();                    \
+        if (!(SLOT(n_).as.i operator(int16_t) k_)) { \
+            ip += d_;                                \
+        }                                            \
     } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
 #define CHECK_GLOBAL(n)                                                                      \
@@ -2231,17 +2298,18 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_GET_CAPTURE:
-            push(vm, plum_retain(frame->closure->cells[READ_U16()]->value));
+            push(vm, plum_retain(frame_closure(vm, frame)->cells[READ_U16()]->value));
             break;
         case PLUM_OP_SET_CAPTURE: {
-            PlumCell *cell = frame->closure->cells[READ_U16()];
+            PlumCell *cell = frame_closure(vm, frame)->cells[READ_U16()];
             PlumValue v = pop(vm);
             plum_release(cell->value);
             cell->value = v;
             break;
         }
         case PLUM_OP_GET_SELF:
-            push(vm, plum_retain(vm->stack[frame->base - 1])); /* the callee sits below slot 0 */
+            /* A nested function: always called with itself under slot 0. */
+            push(vm, plum_retain(vm->stack[frame->base - 1]));
             break;
         case PLUM_OP_MAKE_CLOSURE: {
             PlumFunction *fn = plum_as_function(chunk->constants.items[READ_U16()]);
@@ -2249,7 +2317,7 @@ static bool execute(VM *vm) {
             for (int i = 0; i < fn->capture_count; i++) {
                 const PlumCapture *cap = &fn->captures[i];
                 PlumCell *cell = cap->from_local ? plum_as_cell(SLOT(cap->index))
-                                                 : frame->closure->cells[cap->index];
+                                                 : frame_closure(vm, frame)->cells[cap->index];
                 cell->obj.refcount++;
                 closure->cells[i] = cell;
             }
@@ -2426,13 +2494,13 @@ static bool execute(VM *vm) {
         case PLUM_OP_FLOORDIV_INT_LK: {
             uint16_t n = READ_U16();
             uint16_t k = READ_U16();
-            PUSH_INT(floor_div(SLOT(n).as.i, KONST(k).as.i));
+            PUSH_INT(floor_div(SLOT(n).as.i, (int16_t)k));
             break;
         }
         case PLUM_OP_MOD_INT_LK: {
             uint16_t n = READ_U16();
             uint16_t k = READ_U16();
-            PUSH_INT(floor_mod(SLOT(n).as.i, KONST(k).as.i));
+            PUSH_INT(floor_mod(SLOT(n).as.i, (int16_t)k));
             break;
         }
         case PLUM_OP_LOCAL_ADD_INT_L:
@@ -3353,6 +3421,24 @@ static bool execute(VM *vm) {
         case PLUM_OP_JUMP_IF_NOT_NE_INT_K:
             JUMP_UNLESS_K(i, !=);
             break;
+        case PLUM_OP_JUMP_IF_NOT_LT_INT_LK:
+            JUMP_UNLESS_LK(<);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_LE_INT_LK:
+            JUMP_UNLESS_LK(<=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_GT_INT_LK:
+            JUMP_UNLESS_LK(>);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_GE_INT_LK:
+            JUMP_UNLESS_LK(>=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_EQ_INT_LK:
+            JUMP_UNLESS_LK(==);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_NE_INT_LK:
+            JUMP_UNLESS_LK(!=);
+            break;
         case PLUM_OP_JUMP_IF_NOT_LT_FLOAT_K:
             JUMP_UNLESS_K(f, <);
             break;
@@ -3412,14 +3498,70 @@ static bool execute(VM *vm) {
         case PLUM_OP_CALL: {
             uint16_t argc = READ_U16();
             PlumValue callee = *peek(vm, argc);
-            PlumClosure *closure =
-                callee.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(callee) : NULL;
-            PlumFunction *fn = closure != NULL ? closure->fn : plum_as_function(callee);
+            PlumFunction *fn = callee.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(callee)->fn
+                                                                       : plum_as_function(callee);
             SAVE_IP();
-            if (!call(vm, fn, closure, argc)) {
+            Frame *f = call_frame(vm, fn, argc, 1);
+            if (f == NULL) {
                 goto thrown;
             }
-            ENTER_FRAME();
+            frame = f;
+            ip = f->ip;
+            chunk = fn->chunk;
+            break;
+        }
+        case PLUM_OP_CALL_GLOBAL: {
+            /* A function the program declared, called by name with every
+             * argument (#120): the function stays in its global, not
+             * pushed, and the arguments become its slots where they are. */
+            uint16_t g = READ_U16();
+            uint16_t argc = READ_U16();
+            CHECK_GLOBAL(g);
+            PlumFunction *fn = plum_as_function(vm->globals[g]);
+            SAVE_IP();
+            Frame *f = call_frame(vm, fn, argc, 0);
+            if (f == NULL) {
+                goto thrown;
+            }
+            frame = f;
+            ip = f->ip;
+            chunk = fn->chunk;
+            break;
+        }
+        case PLUM_OP_CALL_SELF: {
+            /* A declared function calling itself by name. */
+            uint16_t argc = READ_U16();
+            PlumFunction *fn = frame->fn;
+            SAVE_IP();
+            Frame *f = call_frame(vm, fn, argc, 0);
+            if (f == NULL) {
+                goto thrown;
+            }
+            frame = f;
+            ip = f->ip;
+            break;
+        }
+        case PLUM_OP_TAIL_SELF: {
+            /* return f(...) in f, outside any try: the arguments replace
+             * the running call's slots and it starts again (spec 6.5). It
+             * counts as a step, as a call does. */
+            uint16_t argc = READ_U16();
+            if (!step(vm)) {
+                SAVE_IP();
+                goto thrown;
+            }
+            PlumValue *slots = &vm->stack[frame->base];
+            PlumValue *args = &vm->stack[vm->top - argc];
+            release_values(slots, args); /* the old slots, and anything above them */
+            memmove(slots, args, (size_t)argc * sizeof(PlumValue));
+            vm->top = frame->base + (size_t)argc;
+            for (int i = argc; i < frame->fn->slot_count; i++) {
+                vm->stack[vm->top++] = plum_none();
+            }
+            if (frame->tail_calls < 0x7FFFFFFF) {
+                frame->tail_calls++;
+            }
+            ip = chunk->code.items;
             break;
         }
         case PLUM_OP_CALL_BUILTIN: {
@@ -3451,35 +3593,48 @@ static bool execute(VM *vm) {
             SAVE_IP();
             throw_error(vm, pop(vm));
             goto thrown;
-        case PLUM_OP_RETURN:
-        case PLUM_OP_RETURN_NONE: {
-            /* Values are read a field at a time (copy_value): the result
-             * and the locals were often just written in place. */
-            PlumValue *sp = &vm->stack[vm->top];
-            PlumValue result = plum_none();
-            if (op == PLUM_OP_RETURN) {
-                sp--;
-                copy_value(&result, sp);
+        case PLUM_OP_RETURN_LOCAL: {
+            const PlumValue *v = &SLOT(READ_U16());
+            copy_value(&ret, v);
+            if (ret.type == PLUM_VAL_OBJ) {
+                ret.as.obj->refcount++;
             }
-            size_t to = frame->base - frame->below;
-            vm->frame_count--;
-            while (vm->handler_count > 0 &&
-                   vm->handlers[vm->handler_count - 1].frame_count > vm->frame_count) {
+            goto do_return;
+        }
+        case PLUM_OP_RETURN_NONE:
+            ret = plum_none();
+            goto do_return;
+        case PLUM_OP_RETURN_ADD_INT: {
+            const PlumValue *s = &vm->stack[vm->top - 2];
+            int64_t a = s[0].as.i, b = s[1].as.i, r;
+            if (add_overflows(a, b, &r)) {
+                FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld + %lld doesn't fit in an int",
+                     (long long)a, (long long)b);
+            }
+            vm->top -= 2;
+            ret.type = PLUM_VAL_INT;
+            ret.as.i = r;
+            goto do_return;
+        }
+        case PLUM_OP_RETURN: {
+            copy_value(&ret, &vm->stack[--vm->top]);
+        do_return:;
+            int n = --vm->frame_count;
+            while (vm->handler_count > 0 && vm->handlers[vm->handler_count - 1].frame_count > n) {
                 vm->handler_count--; /* tries the function returned out of */
             }
-            /* the slots and the function itself; most still have other holders */
-            for (PlumValue *end = &vm->stack[to]; sp > end;) {
-                sp--;
-                if (sp->type == PLUM_VAL_OBJ) {
-                    drop_ref(sp);
-                }
-            }
-            vm->top = to;
-            copy_value(&vm->stack[vm->top++], &result); /* where the function was */
-            if (vm->frame_count == vm->stop_at) {
+            /* the slots, what is left above them, and the function if pushed */
+            size_t to = frame->base - frame->callee;
+            release_values(&vm->stack[to], &vm->stack[vm->top]);
+            copy_value(&vm->stack[to], &ret);
+            vm->top = to + 1;
+            if (n == vm->stop_at) {
                 return true; /* back to whoever started this run */
             }
-            ENTER_FRAME();
+            /* the caller's frame: the one before, unless a segment starts here */
+            frame = (unsigned)n % FRAME_SEG != 0 ? frame - 1 : FRAME(vm, n - 1);
+            ip = frame->ip;
+            chunk = frame->fn->chunk;
             break;
         }
         case PLUM_OPCODE_COUNT:
@@ -3509,6 +3664,7 @@ static bool execute(VM *vm) {
 #undef FLOAT_WITH
 #undef JUMP_UNLESS
 #undef JUMP_UNLESS_K
+#undef JUMP_UNLESS_LK
 #undef PLACE_CHECKED
 #undef NO_CHECK
 #undef FIELD_OF

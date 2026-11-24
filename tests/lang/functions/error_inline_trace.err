@@ -1,0 +1,4 @@
+tests/lang/functions/error_inline_trace.plum:4: OverflowError: integer overflow: 9223372036854775807 + 1 doesn't fit in an int
+  in bump, line 4
+  in run, line 8
+  in <main>, line 10

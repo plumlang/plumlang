@@ -8,7 +8,8 @@
  * never inspects types to decide what to do.
  *
  * Some take an operand from the instruction instead of the stack (#118):
- * _K a constant, _L a local, _LK both; LOCAL_ and GLOBAL_ change a
+ * _K a constant, _L a local, _LK a local and a literal from -32768 to
+ * 32767 in the instruction itself; LOCAL_ and GLOBAL_ change a
  * variable in place; JUMP_IF_NOT_ compares and jumps (docs/bytecode.md).
  *
  * Fields have fixed positions, the parent tree's first; GET_FIELD_L and
@@ -69,11 +70,11 @@
     X(ADD_INT_L, 1, "a + int local [a]")                                                           \
     X(SUB_INT_L, 1, "a - int local [a]")                                                           \
     X(MUL_INT_L, 1, "a * int local [a]")                                                           \
-    X(ADD_INT_LK, 2, "push int local [a] + int constant [b]")                                      \
-    X(SUB_INT_LK, 2, "push int local [a] - int constant [b]")                                      \
-    X(MUL_INT_LK, 2, "push int local [a] * int constant [b]")                                      \
-    X(FLOORDIV_INT_LK, 2, "push int local [a] // int constant [b], which is above 0")              \
-    X(MOD_INT_LK, 2, "push int local [a] % int constant [b], which is above 0")                    \
+    X(ADD_INT_LK, 2, "push int local [a] + [b]")                                                   \
+    X(SUB_INT_LK, 2, "push int local [a] - [b]")                                                   \
+    X(MUL_INT_LK, 2, "push int local [a] * [b]")                                                   \
+    X(FLOORDIV_INT_LK, 2, "push int local [a] // [b], which is above 0")                           \
+    X(MOD_INT_LK, 2, "push int local [a] % [b], which is above 0")                                 \
     X(LOCAL_ADD_INT_K, 2, "int local [a] += int constant [b]")                                     \
     X(LOCAL_SUB_INT_K, 2, "int local [a] -= int constant [b]")                                     \
     X(LOCAL_MUL_INT_K, 2, "int local [a] *= int constant [b]")                                     \
@@ -207,6 +208,12 @@
     X(JUMP_IF_NOT_GE_FLOAT_K, 2, "pop a (float); jump forward [b] bytes unless a >= constant [a]") \
     X(JUMP_IF_NOT_EQ_FLOAT_K, 2, "pop a (float); jump forward [b] bytes unless a == constant [a]") \
     X(JUMP_IF_NOT_NE_FLOAT_K, 2, "pop a (float); jump forward [b] bytes unless a != constant [a]") \
+    X(JUMP_IF_NOT_LT_INT_LK, 3, "jump [c] unless int local [a] < [b]")                             \
+    X(JUMP_IF_NOT_LE_INT_LK, 3, "jump [c] unless int local [a] <= [b]")                            \
+    X(JUMP_IF_NOT_GT_INT_LK, 3, "jump [c] unless int local [a] > [b]")                             \
+    X(JUMP_IF_NOT_GE_INT_LK, 3, "jump [c] unless int local [a] >= [b]")                            \
+    X(JUMP_IF_NOT_EQ_INT_LK, 3, "jump [c] unless int local [a] == [b]")                            \
+    X(JUMP_IF_NOT_NE_INT_LK, 3, "jump [c] unless int local [a] != [b]")                            \
     X(LOOP, 1, "jump back [a] bytes")                                                              \
     X(FOR_RANGE, 3, "jump forward [c] if local [a] is past local [a+1] (<, or <= if [b])")         \
     X(FOR_NEXT, 3,                                                                                 \
@@ -217,10 +224,15 @@
     X(THROW, 0, "throw the error on top")                                                          \
     /* Calls */                                                                                    \
     X(CALL, 1, "call the function under [a] arguments")                                            \
+    X(CALL_GLOBAL, 2, "call the function in global [a] with the [b] arguments on top")             \
+    X(CALL_SELF, 1, "call the running function with the [a] arguments on top")                     \
+    X(TAIL_SELF, 1, "return what the running function returns for the [a] arguments on top")       \
     X(CALL_BUILTIN, 2, "call built-in [a] with [b] arguments")                                     \
     X(SPAWN, 1, "a task running the function under [a] arguments; push the task")                  \
     X(CALL_NATIVE, 2, "call standard-library function [a] with [b] arguments")                     \
     X(RETURN, 0, "return the top value")                                                           \
+    X(RETURN_LOCAL, 1, "return local slot [a]")                                                    \
+    X(RETURN_ADD_INT, 0, "return a + b")                                                           \
     X(RETURN_NONE, 0, "return none")
 
 typedef enum PlumOpcode {

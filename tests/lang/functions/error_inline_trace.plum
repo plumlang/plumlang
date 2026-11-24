@@ -1,0 +1,10 @@
+# A function that can fail isn't compiled in place, so its frame is in
+# the trace; one that can't is, and the line is still the caller's.
+branch ratio(a: float, b: float) -> float => a / b
+branch bump(n: int) -> int => n + 1
+branch run(n: int) -> int {
+    plant r = ratio(1.0, 4.0)
+    drop(r)
+    return bump(n)
+}
+drop(run(9223372036854775807))

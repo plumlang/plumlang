@@ -179,6 +179,14 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
             print_constant(out, chunk->constants.items[a]);
             fprintf(out, ", else -> %04zu", next + b);
             break;
+        case PLUM_OP_JUMP_IF_NOT_LT_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_LE_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_GT_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_GE_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_EQ_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_NE_INT_LK:
+            fprintf(out, " %u %d %u  ; else -> %04zu", a, (int)(int16_t)b, c3, next + c3);
+            break;
         case PLUM_OP_FOR_RANGE:
             fprintf(out, " %u %u %u  ; local %u %s local %u, else -> %04zu", a, b, c3, a,
                     b ? "<=" : "<", a + 1u, next + c3);
@@ -188,11 +196,6 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
             break;
         case PLUM_OP_GLOBAL_ADD_INT_K:
         case PLUM_OP_GLOBAL_SUB_INT_K:
-        case PLUM_OP_ADD_INT_LK:
-        case PLUM_OP_SUB_INT_LK:
-        case PLUM_OP_MUL_INT_LK:
-        case PLUM_OP_FLOORDIV_INT_LK:
-        case PLUM_OP_MOD_INT_LK:
         case PLUM_OP_LOCAL_ADD_INT_K:
         case PLUM_OP_LOCAL_SUB_INT_K:
         case PLUM_OP_LOCAL_MUL_INT_K:
@@ -200,6 +203,13 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
         case PLUM_OP_LOCAL_MOD_INT_K:
             fprintf(out, " %u %u  ; ", a, b);
             print_constant(out, chunk->constants.items[b]);
+            break;
+        case PLUM_OP_ADD_INT_LK:
+        case PLUM_OP_SUB_INT_LK:
+        case PLUM_OP_MUL_INT_LK:
+        case PLUM_OP_FLOORDIV_INT_LK:
+        case PLUM_OP_MOD_INT_LK:
+            fprintf(out, " %u %d", a, (int)(int16_t)b); /* the literal is the operand */
             break;
         case PLUM_OP_CALL_BUILTIN:
             fprintf(out, " %s %u", plum_builtin_name((PlumBuiltin)a), b);

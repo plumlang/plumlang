@@ -1,0 +1,4 @@
+tests/lang/functions/error_tail_trace.plum:5: ZeroDivisionError: division by zero: 100 // 0
+  in countdown, line 5 (after 25 tail calls)
+  in start, line 10
+  in <main>, line 12

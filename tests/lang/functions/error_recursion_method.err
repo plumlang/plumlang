@@ -1,0 +1,14 @@
+tests/lang/functions/error_recursion_method.plum:4: Error: too much recursion: more than 10000 calls deep
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  in Node.dive, line 4
+  ... 9988 more calls
+  in Node.dive, line 4
+  in <main>, line 6

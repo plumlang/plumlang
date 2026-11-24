@@ -693,6 +693,30 @@ inside the runtime (a `to_str` running while something prints, the
 function given to `map` or `filter`) may nest 100 deep; past that is also
 a runtime error.
 
+A declared function that returns a call of itself by name,
+`return f(...)` (or `=> f(...)`), outside any `try`, is a *tail call*:
+the new call takes the place of the running one instead of going on top
+of it. Such a function can recurse any number of times without reaching
+the stack limit, and a stack trace shows the call once, with how many
+tail calls replaced it:
+
+```text
+count.plum:3: ZeroDivisionError: division by zero: 1 // 0
+  in count, line 3 (after 50 tail calls)
+  in <main>, line 7
+```
+
+A call that isn't the whole value of the `return` (`return 1 + f(n - 1)`),
+a call through a variable or a method, and any call inside a `try` (whose
+`catch` must still be there when it fails) are ordinary calls.
+
+A call of a small declared function whose body is one expression that
+can't fail (comparisons, `and`, `or`, `not`, float arithmetic, `&`, `|`,
+`^` and `~` on its `int`, `float` and `bool` parameters) may be compiled
+in place of the call. Such a call never appears in a stack trace, since
+nothing in it can throw, and it counts neither toward the stack limit nor
+toward a limit on the steps a run may take.
+
 ## 7. Built-in functions
 
 These are always available without `seed`:
