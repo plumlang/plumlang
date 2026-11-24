@@ -1943,6 +1943,15 @@ static inline void drop_ref(const PlumValue *v) {
     }
 }
 
+/* Let go of a value popped off the stack: inline while something else
+ * still holds its object (a list read from a variable, a constant), the
+ * function call only when it may go (#122). */
+static inline void drop_value(PlumValue v) {
+    if (plum_is_ref(v)) {
+        drop_ref(&v);
+    }
+}
+
 /* Release the objects among [from, to): the scan makes no calls, so a
  * return whose slots hold only numbers doesn't spill registers. */
 #if defined(__GNUC__)
@@ -2473,8 +2482,8 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
         PlumValue b = pop(vm);                                         \
         PlumValue a = pop(vm);                                         \
         int c = compare_strings(plum_as_string(a), plum_as_string(b)); \
-        plum_release(a);                                               \
-        plum_release(b);                                               \
+        drop_value(a);                                                 \
+        drop_value(b);                                                 \
         push(vm, plum_bool(test));                                     \
     } while (0)
 
@@ -3013,7 +3022,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             size_t from = plum_string_offset(s, (size_t)i);
             size_t to = plum_string_offset(s, (size_t)i + 1);
             PlumString *ch = plum_string_new(s->chars + from, to - from);
-            plum_release(v);
+            drop_value(v);
             push(vm, plum_obj(&ch->obj));
             break;
         }
@@ -3036,8 +3045,8 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 goto thrown;
             }
             push(vm, plum_retain(*found));
-            plum_release(m);
-            plum_release(key);
+            drop_value(m);
+            drop_value(key);
             break;
         }
         case PLUM_OP_BUILD_LIST: {
@@ -3061,7 +3070,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 goto thrown;
             }
             push(vm, plum_retain(list->items[i]));
-            plum_release(v);
+            drop_value(v);
             break;
         }
         case PLUM_OP_INDEX_LIST_L: {
@@ -3146,8 +3155,8 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                     found = plum_values_equal(list->items[i], item);
                 }
             }
-            plum_release(coll);
-            plum_release(item);
+            drop_value(coll);
+            drop_value(item);
             push(vm, plum_bool(found));
             break;
         }
