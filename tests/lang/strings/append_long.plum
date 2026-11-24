@@ -1,0 +1,25 @@
+# A long text built a line at a time (#148): each += adds to the same
+# buffer, which grows by half each time it is full, so this stays linear.
+# Snapshots taken along the way keep their own text.
+plant text = ""
+plant snapshots: list[str] = []
+for i in 0..200000 {
+    text += "row {i},{i * 3 % 101}\n"
+    if i % 50000 == 0 {
+        snapshots.push(text)
+    }
+}
+drop(len(text), text.count("\n"), text[0..7], text[len(text) - 13..len(text)])
+for s in snapshots {
+    drop(len(s), s.count("\n"))
+}
+
+branch build(n: int) -> str {
+    plant out = ""
+    for i in 0..n {
+        out = out + "é" + "{i % 10}"
+    }
+    return out
+}
+plant built = build(100000)
+drop(len(built), built.byte_len(), built[199996..200000])

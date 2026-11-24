@@ -67,6 +67,24 @@ to one jump out per operand, with no `good` or `bad` left to pop. The
 local forms read the running function's own slots, so a variable a
 closure captured (which lives in a cell) uses the plain instructions.
 
+## Building text
+
+An interpolated string pushes the text of each part and joins them with
+one `BUILD_STRING`; so does a chain of `+` on strings (`a + b + "{c}"`),
+rather than making a new string for every `+`.
+
+`s += text` and `s = s + text`, on a str local or module variable, push
+the pieces of `text` the same way and then `APPEND_LOCAL` or
+`APPEND_GLOBAL`, which adds them to `s` itself. When `s` is the string's
+only owner (its count is 1) and the string isn't frozen, its buffer grows
+in place, by half again each time it is full, so a loop adding a line at
+a time is linear rather than quadratic. Otherwise `s` gets a new string
+(copy-on-write), so another holder of the old one never sees a change.
+The compiler freezes its constant strings. A module variable uses
+`APPEND_GLOBAL` only when computing `text` makes no call, which could
+change the variable before it is read; a captured variable (in a cell)
+and a field use the plain instructions.
+
 ## Range loops
 
 `for i in a..b` uses no range object: `i` and a hidden end value live in
