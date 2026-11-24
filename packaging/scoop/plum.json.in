@@ -1,0 +1,40 @@
+{
+    "version": "@VERSION@",
+    "description": "Small, fast, memory-safe programming language",
+    "homepage": "https://plum.elixpo.com",
+    "license": {
+        "identifier": "@SCOOP_LICENSE@",
+        "url": "https://github.com/plumlang/plumlang/blob/v@VERSION@/LICENSE"
+    },
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/plumlang/plumlang/releases/download/v@VERSION@/plum-@VERSION@-windows-x86_64.zip",
+            "hash": "@SHA_windows-x86_64@",
+            "extract_dir": "plum-@VERSION@-windows-x86_64"
+        },
+        "arm64": {
+            "url": "https://github.com/plumlang/plumlang/releases/download/v@VERSION@/plum-@VERSION@-windows-arm64.zip",
+            "hash": "@SHA_windows-arm64@",
+            "extract_dir": "plum-@VERSION@-windows-arm64"
+        }
+    },
+    "bin": "plum.exe",
+    "checkver": {
+        "github": "https://github.com/plumlang/plumlang"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/plumlang/plumlang/releases/download/v$version/plum-$version-windows-x86_64.zip",
+                "extract_dir": "plum-$version-windows-x86_64"
+            },
+            "arm64": {
+                "url": "https://github.com/plumlang/plumlang/releases/download/v$version/plum-$version-windows-arm64.zip",
+                "extract_dir": "plum-$version-windows-arm64"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS"
+        }
+    }
+}
