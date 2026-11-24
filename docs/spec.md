@@ -1233,21 +1233,24 @@ this way is in [design/concurrency.md](design/concurrency.md).
 
 Tasks take turns on one thread, so they wait well but compute on one
 core. To compute on more, a program starts **workers**. A worker is an
-**isolate**: its own memory, its own tasks, and its own thread of the
-operating system. Isolates share no variables and no changeable objects,
-so two workers never change the same thing at once and nothing needs a
-lock. Every program starts with one isolate, the **main isolate**, which
-runs the program's own code.
+**isolate**: its own memory and its own tasks. Isolates share no
+variables and no changeable objects, so two workers never change the same
+thing at once and nothing needs a lock. Every program starts with one
+isolate, the **main isolate**, which runs the program's own code. The
+runtime runs the isolates on a pool of threads of the operating system,
+one per core (12.5.3), as Erlang does: a worker is not a thread of its
+own, so a program can start thousands.
 
 | | Task (`spawn`) | Worker (`workers.start`) |
 |---|---|---|
-| Runs | taking turns with the other tasks of its isolate | at the same time as other workers, on another core |
-| Costs | a few kilobytes; thousands are fine | a thread and memory of its own; about one per core |
-| Shares | channels with the tasks of its isolate | channels and frozen values (12.7), nothing else |
-| Good for | waiting: network, files, timers | computing |
+| Runs | taking turns with the other tasks of its isolate | at the same time as other workers, on every core |
+| Costs | a few kilobytes; thousands are fine | memory of its own and its own copy of the modules it uses; thousands are fine |
+| Shares | channels with the tasks of its isolate | channels, frozen values (12.7) and moved handles (12.6.3), nothing else |
+| Good for | waiting: network, files, timers | computing, and keeping state of its own apart |
 
 `spawn` doesn't change: it starts a task on the isolate that calls it. A
-worker can spawn tasks of its own, which run on the worker's thread.
+worker can spawn tasks of its own, which take turns within the worker as
+in 12.4.
 
 ```plum
 seed workers
@@ -1344,6 +1347,62 @@ branch triple_and_count(n: int) -> int {
 drop(workers.start(() => triple(14)).wait())    # 42
 ```
 
+#### 12.5.3 How workers are scheduled
+
+The runtime starts one **scheduler thread** per core, `workers.cores()`
+of them (`plum run --schedulers n` sets another number, for a container
+limited to fewer cores, say). Every isolate, the main isolate included,
+runs on one of them:
+
+- An isolate runs on one scheduler thread at a time, so inside an isolate
+  nothing changes: its tasks take turns as in 12.4, and its memory is
+  never touched by two threads at once. Between turns it may move to
+  another scheduler thread; the program can't tell.
+- An isolate with a task that can run waits in a queue for a scheduler
+  thread. One whose tasks all wait (for a channel, a timer, a socket,
+  another worker) takes no thread at all until something wakes it. A
+  scheduler thread with nothing to run takes work queued for a busy one.
+- **Fairness.** An isolate runs for a budget of **steps**, the calls and
+  backward jumps of loops that `max_steps` already counts, and then goes
+  to the back of its queue, so a worker in a long loop can't keep the
+  others waiting. It is paused only between steps, never inside a call
+  into the runtime: a long one (sorting a big list) finishes first, as it
+  does before `stop()` (12.9). Pausing an isolate never switches its
+  tasks: within an isolate a task still runs until it waits (12.4).
+- **Calls that block.** A call that waits on the operating system without
+  a way to be told when it is done (looking a host name up, `os.run`,
+  reading a file, `ask`) runs on a separate helper thread, not on a
+  scheduler thread. Its isolate waits for it, all its tasks with it, as a
+  host name lookup waits today, but the other isolates keep every
+  scheduler thread.
+
+A program that starts no workers has one isolate, and runs as it did
+before workers existed.
+
+#### 12.5.4 Workers in the browser
+
+In the browser build (`make wasm`, [playground.md](playground.md)), each
+worker runs in a Web Worker of its own: one of the JavaScript engine's own
+threads, with its own instance of `plum.wasm` and its own memory. Isolates
+share no memory, so nothing needs `SharedArrayBuffer`, and the page needs
+no `Cross-Origin-Opener-Policy` or `-Embedder-Policy` headers. A value
+crossing between isolates (12.6) goes through `postMessage`, its bytes in
+a transferred buffer; a frozen value is copied once into each Web Worker
+that receives it, and keeps its identity (`==` on a frozen object is still
+`good` between isolates). `workers.cores()` is what the browser reports
+(`navigator.hardwareConcurrency`). Under Node.js, workers use the
+`worker_threads` module the same way.
+
+Where Web Workers aren't available (a page whose Content Security Policy
+forbids them, a JavaScript engine without them), `workers.start` still
+works: the worker runs on the page's one thread, taking turns with the
+main isolate as a task does. It is still an isolate, with memory and
+module variables of its own, and everything in 12.5 to 12.10 holds, so
+the program means the same; it just doesn't run in parallel. The first
+`workers.start` writes a note to standard error then: `note: Web Workers
+are not available here; workers run one at a time on the page's
+thread`.
+
 ### 12.6 Sending values between isolates (planned for 3.0)
 
 A `Channel[T]` carries values between isolates as it does between tasks.
@@ -1384,6 +1443,9 @@ the program means, only how fast it runs:
 - **Shared**, when the value is frozen (12.7): only a count goes up.
 - **Copied**, otherwise, all the way down.
 
+Handles are the exception: a socket can't be copied, so it always moves
+(12.6.3).
+
 ```plum
 plant rows = build_rows()      # a list of a million floats
 out.send(rows)                 # rows isn't used again: moved, nothing copied
@@ -1408,7 +1470,8 @@ captures (and the channels it captures carry), and a worker's result.
 | tree and trait objects | no: an object is shared by everyone who holds it (8.3), and two cores changing one object is a data race. Send its values, or freeze it |
 | functions and lambdas | no: a function value may capture variables. Send a `kind` that says what to do |
 | `Task[T]`, `Worker[T]` | no: they belong to the isolate that started them |
-| sockets, listeners and other handles | no: they belong to the isolate that opened them |
+| `Connection`, `Listener`, `UdpSocket` | yes: **moved**, never copied; the sender can't use it after (12.6.3) |
+| other handles | no, unless their module's page says they move as in 12.6.3 |
 
 A type that isn't sendable is a compile error where it would cross
 (E0701):
@@ -1423,6 +1486,53 @@ plant acct = Account("Ada")
 workers.start(() => drop(acct.balance))       # error E0701: an Account can't cross
 plant balance = acct.balance
 workers.start(() => drop(balance))            # fine: a float
+```
+
+#### 12.6.3 Moving handles
+
+A handle stands for something of the operating system: a socket, a
+listening port. There is one of it, so it can't be copied; it **moves**.
+The handles of `net` move: `Connection` (TCP and TLS), `Listener` (TCP
+and TLS) and `UdpSocket`. A handle moves when it crosses as any sendable
+value does: sent on a channel, captured by a start function, or returned
+in a worker's result, alone or inside a list, map or kind.
+
+- After a handle has moved, the receiving isolate owns it, with whatever
+  it had read but not yet given out (the rest of a line, a TLS session)
+  and its time limits; it closes when the receiver closes it or lets go
+  of it.
+- The sender can't use it again. The checker reports a use of a variable
+  after a `send`, capture or `return` that moved its handle (E0707).
+  Where the checker can't see it (another variable, or a list, that holds
+  the same handle), the runtime checks: every use of a moved handle in
+  the sending isolate throws its module's error for a closed handle
+  (`NetError: the connection was moved to another isolate`), and so does
+  a task of the sender that was waiting on it when it moved. `close()` on
+  a moved handle does nothing, and letting go of it doesn't close what
+  the receiver now owns.
+- A handle can't be frozen (12.7): it changes as it is used.
+
+A program can accept connections in one isolate and serve them in others:
+
+```plum
+seed net
+seed workers
+
+plant conns = Channel[Connection](capacity: 64)
+
+for _ in 0..workers.cores() {
+    workers.start(() => {
+        for conn in conns {
+            spawn ((c: Connection) => serve(c))(conn)
+        }
+    })
+}
+
+plant server = net.listen(8080)
+while good {
+    plant conn = server.accept()
+    conns.send(conn)              # conn moves; using it here is E0707
+}
 ```
 
 ### 12.7 Frozen values (planned for 3.0)
@@ -1499,9 +1609,9 @@ The error, and a worker's result, are **handed over** whole: the worker
 has ended, so nothing in it can use them again, and they arrive as the
 same trees with the same fields, objects included. This is why a worker's
 result type may hold tree objects though a channel's can't; it still
-can't hold functions, tasks, workers or handles (E0701). An error with a
-field that can't be handed over (it holds a function, task or handle)
-arrives as a `WorkerError` instead, whose message names the error's tree
+can't hold functions, tasks or workers (E0701), and handles in it move
+(12.6.3). An error with a field that can't be handed over (it holds a
+function, task or worker) arrives as a `WorkerError` instead, whose message names the error's tree
 and repeats its message.
 
 ```plum
@@ -1607,12 +1717,24 @@ b.other = a
 ### 12.11 net.http on every core (planned for 3.0)
 
 `http.serve(make_app, port = 8080, host = "0.0.0.0", workers = 0)` serves
-HTTP from several isolates at once: `workers` of them, or one per core
-when it is 0. Each isolate calls `make_app()` to build its own server
-(routes, middleware and all), and every isolate listens on the same port;
-the operating system spreads new connections over them. Inside an
-isolate, each connection is served by a task of its own, as with
-`app.listen`.
+HTTP from several isolates at once: `workers` of them, or one per
+scheduler thread (12.5.3) when it is 0. Each isolate calls `make_app()` to
+build its own server (routes, middleware and all). Inside an isolate, each
+connection is served by a task of its own, as with `app.listen`.
+
+How connections reach the isolates depends on what the operating system
+can do well:
+
+- **Linux** (and FreeBSD, with `SO_REUSEPORT_LB`): every isolate opens
+  its own listener on the same port with `SO_REUSEPORT`, and the kernel
+  spreads new connections over them. Nothing is handed between isolates,
+  and accepting scales with the cores.
+- **Everywhere else** (macOS and the other BSDs, Windows, where a shared
+  port either isn't allowed or doesn't spread connections): one small
+  isolate of `http.serve`'s own accepts, and moves each connection
+  (12.6.3) to the serving isolate with the fewest open connections.
+
+Which one is used never changes what a handler sees.
 
 `make_app` follows the rules of a start function (12.5.1): a top-level
 function, or a lambda written in the call whose captures can cross.
