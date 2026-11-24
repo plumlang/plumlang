@@ -74,6 +74,24 @@ check "fmt formats in place"        0 ""                    out -- fmt "$tmp/mes
 check "fmt --check after formatting" 0 ""                   out -- fmt --check "$tmp/messy.plum"
 check "fmt --check a directory"     0 ""                    out -- fmt --check "$tmp"
 check "fmt --stdout"                0 "^plant x = 1$"       out -- fmt --stdout "$tmp/messy.plum"
+check "help lists test"             0 "plum test"           out -- help
+check "test a package directory"    0 "^5 passed, 0 failed$" out -- test "$here/../examples/garden"
+check "test finds files in subdirectories" 0 "garden_test.plum$" out -- test "$here/../examples"
+check "test a filter that matches nothing" 0 "no tests match 'nothing'" out -- test --filter nothing "$here/../examples"
+check "test a directory without tests" 0 "no tests found"  out -- test "$tmp"
+check "test a missing file"         3 "cannot read"         err -- test "$tmp/missing_test.plum"
+check "test an unknown option"      2 "unknown option"      err -- test --fast
+check "test --filter without text"  2 "after '--filter'"    err -- test --filter
+plum_abs=$(cd "$(dirname "$PLUM")" && pwd)/$(basename "$PLUM")
+if (cd "$here/../examples/garden" && "$plum_abs" test >"$tmp/out" 2>&1) &&
+    grep -q "^5 passed" "$tmp/out"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL test in a package's directory"
+    sed 's/^/    /' "$tmp/out"
+    fail=$((fail + 1))
+fi
+
 printf 'plant x = 20\nx * 2 + 2\n:type x\nexit(4)\n' >"$tmp/repl.in"
 printf 'plant x = 1 +\n  "two"\n:q\n' >"$tmp/repl-error.in"
 STDIN="$tmp/repl.in" check "repl echoes a value"   4 "^= 42 : int$"  out -- repl

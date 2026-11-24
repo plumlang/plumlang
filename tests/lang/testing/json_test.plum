@@ -1,0 +1,11 @@
+# command: test --json
+# exit: 1
+# The report as JSON, for editors and CI.
+branch test_passes() {
+    assert(1 + 1 == 2)
+}
+
+branch test_fails() {
+    drop("about to fail")
+    assert(len("plum") == 5, "\"plum\" has 4 letters")
+}

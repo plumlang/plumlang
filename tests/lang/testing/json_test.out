@@ -1,0 +1,9 @@
+{
+  "tests": [
+    {"file": "tests/lang/testing/json_test.plum", "name": "test_passes", "line": 4, "passed": true},
+    {"file": "tests/lang/testing/json_test.plum", "name": "test_fails", "line": 8, "passed": false, "error": {"type": "AssertError", "message": "assertion failed: \"plum\" has 4 letters", "file": "tests/lang/testing/json_test.plum", "line": 10, "trace": "  in test_fails, line 10\n"}, "output": "about to fail\n"}
+  ],
+  "broken": [],
+  "passed": 1,
+  "failed": 1
+}

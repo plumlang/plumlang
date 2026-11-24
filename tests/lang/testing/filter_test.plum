@@ -1,0 +1,13 @@
+# command: test --filter parse
+# Only the tests whose name contains "parse" run.
+branch test_parse_int() {
+    assert(int("42") == 42)
+}
+
+branch test_parse_float() {
+    assert(float("2.5") == 2.5)
+}
+
+branch test_format() {
+    assert(bad, "filtered out, so it never runs")
+}

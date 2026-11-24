@@ -1,0 +1,22 @@
+# Every test passes: one line each, then the count.
+plant greeting = "hello"
+
+branch shout(s: str) -> str => s.upper() + "!"
+
+branch test_shout() {
+    assert(shout("hi") == "HI!")
+}
+
+branch test_module_state_is_fresh() {
+    # Each test runs the file's top-level code again: the change that
+    # test_change_state makes never reaches this test.
+    assert(greeting == "hello", "greeting is {greeting}")
+}
+
+branch test_change_state() {
+    greeting = "changed"
+    assert(greeting == "changed")
+}
+
+# Not a test: it takes a parameter but doesn't start with test_.
+branch helper(n: int) -> int => n * 2

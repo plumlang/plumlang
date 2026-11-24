@@ -1,0 +1,5 @@
+tests/lang/testing/filter_test.plum
+  ok   test_parse_int
+  ok   test_parse_float
+
+2 passed, 0 failed

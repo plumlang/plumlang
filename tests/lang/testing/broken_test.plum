@@ -1,0 +1,6 @@
+# exit: 1
+# A test file with a compile error: its errors go to standard error, and
+# none of its tests run.
+branch test_typo() {
+    assert(lenn("abc") == 3)
+}

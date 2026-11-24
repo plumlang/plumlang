@@ -1,0 +1,2 @@
+# A file without tests: nothing runs, and that is not a failure.
+branch helper() -> int => 1

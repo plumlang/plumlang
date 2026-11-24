@@ -1,0 +1,6 @@
+tests/lang/testing/passing_test.plum
+  ok   test_shout
+  ok   test_module_state_is_fresh
+  ok   test_change_state
+
+3 passed, 0 failed

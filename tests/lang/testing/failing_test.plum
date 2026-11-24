@@ -1,0 +1,25 @@
+# exit: 1
+# One failure: the others still run, and the report gives the assertion's
+# message, its file and line, and what the test printed.
+branch average(xs: list[int]) -> int => xs.reduce((a, b) => a + b, 0) // len(xs)
+
+branch test_average() {
+    assert(average([2, 4, 6]) == 4)
+}
+
+branch test_average_rounds_down() {
+    drop("checking 1 and 2")
+    assert(average([1, 2]) == 2, "average of 1 and 2 should round up")
+}
+
+branch test_empty_list() {
+    average([])
+}
+
+branch test_after_failures() {
+    assert(average([5]) == 5)
+}
+
+branch test_with_parameter(n: int) {
+    assert(n > 0)
+}

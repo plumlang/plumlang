@@ -9,7 +9,8 @@
 #
 # A `# command: NAME [OPTIONS]` line among the first three runs
 # `plum NAME [OPTIONS]` instead
-# of `plum run` (for example `tokens` to test the lexer). An `# exit: N`
+# of `plum run` (for example `tokens` to test the lexer). A file named
+# NAME_test.plum is run with `plum test` unless it says otherwise. An `# exit: N`
 # line expects exit code N instead (say 0 for a .err file of warnings).
 # An `# ignore: REGEX` line leaves out the output lines that match the
 # extended regular expression, for output that differs between machines
@@ -95,6 +96,9 @@ for test in $(find "$DIR" -name '*.plum' | sort); do
     fi
 
     subcommand=$(head -n 3 "$test" | sed -n 's/^# command: *\([a-z -]*\).*/\1/p' | head -n 1)
+    case $test in
+        *_test.plum) subcommand=${subcommand:-test} ;;
+    esac
     exit_line=$(head -n 3 "$test" | sed -n 's/^# exit: *\([0-9]*\).*/\1/p' | head -n 1)
     if [ -n "$exit_line" ]; then
         want_exit=$exit_line

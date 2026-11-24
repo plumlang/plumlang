@@ -1,0 +1,8 @@
+examples/garden/garden_test.plum
+  ok   test_plants_grow_half_a_centimetre_a_day
+  ok   test_blooming_in_a_season
+  ok   test_tallest
+  ok   test_season_names
+  ok   test_an_empty_bed_has_no_first_plant
+
+5 passed, 0 failed

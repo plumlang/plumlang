@@ -1,0 +1,48 @@
+# The garden's tests: `plum test examples/garden`, or `plum test` in the
+# package's directory. Each test_ function runs on its own, with a fresh
+# copy of the modules.
+seed test
+seed ./models/plant { Plant, Season, season_name }
+seed ./models/bed { Bed }
+
+branch test_plants_grow_half_a_centimetre_a_day() {
+    plant p = Plant("tulip", Season.Spring)
+    p.grow(20)
+    assert(p.height_cm == 20.0, "a tulip that grew 20 days is {p.height_cm} cm")
+}
+
+branch test_blooming_in_a_season() {
+    plant bed = Bed("front")
+    bed.add(Plant("tulip", Season.Spring))
+    bed.add(Plant("sunflower", Season.Summer))
+    bed.add(Plant("crocus", Season.Spring))
+    plant names = bed.blooming_in(Season.Spring).map((p) => p.name)
+    assert(names == ["tulip", "crocus"], "spring: {names}")
+    assert(len(bed.blooming_in(Season.Winter)) == 0)
+}
+
+branch test_tallest() {
+    plant bed = Bed("back")
+    assert(bed.tallest() == none, "an empty bed has no tallest plant")
+    bed.add(Plant("sunflower", Season.Summer, height_cm: 30.0))
+    bed.add(Plant("crocus", Season.Spring))
+    if plant top = bed.tallest() {
+        assert(top.name == "sunflower")
+    } else {
+        assert(bad, "a bed with plants has a tallest one")
+    }
+}
+
+branch test_season_names() {
+    assert(season_name(Season.Autumn) == "autumn")
+}
+
+branch test_an_empty_bed_has_no_first_plant() {
+    # test.throws gives the error the code threw (and fails the test if
+    # it threw none): here an IndexError, as the bed has no plants.
+    plant bed = Bed("empty")
+    plant e = test.throws(() => {
+        bed.plants[0].grow(1)
+    })
+    assert(e is IndexError, "expected an IndexError, got {type_of(e)}")
+}
