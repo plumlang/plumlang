@@ -60,6 +60,8 @@ Plumlang is faster.
 (`textbuild` was measured after #148, the rest after #119, fastest of
 five runs each.)
 
+The table predates the cheaper calls of #120: `fib`, `cart`, `dispatch`,
+`collatz` and `mandelbrot` are faster now (see "Calls (#120)" below).
 Plumlang is ahead of CPython or within 1% of it on every benchmark, and
 3.5 to 5.7 times faster on integer and float arithmetic (`loop`,
 `collatz`, `mandelbrot`) and on method calls (`dispatch`, `cart`). It is
@@ -281,6 +283,73 @@ lives in memory rather than in a register, and the frame and constants
 are reloaded from the stack for every instruction. Keeping them in
 registers, a register-based instruction set (#123) or 8-byte values
 (#121) are the next steps, measured with this suite.
+
+## Calls (#120)
+
+`perf record` of `fib(32)` on a `-O2 -g` build, before: 80% of the time
+in the run loop, 9% in `call()` and 8% in `plum_release`, about 370
+machine instructions and 82 cycles per Plumlang call. By source line, the
+time went to the dispatch switch (~14%), finding the frame's segment
+(`FRAME()`, a signed division: ~11%), releasing the slots and the
+function value on return (a call to `plum_release` per value: ~15%),
+`call()` itself (the step and recursion checks, a new segment, `grow`, a
+`push` per slot: ~17%), and `GET_GLOBAL` of the function (its unset
+check and reference count, released again on return). Branch
+mispredictions were negligible (0.1%): the cost was instructions, at 3.8
+per cycle.
+
+What changed, each measured with `perf stat` on `fib(32)` (cycles, best
+of five, pinned to one core):
+
+| Change | fib(32) cycles | Kept |
+|---|---|---|
+| before | 579 M | |
+| Frames of 24 bytes (no closure pointer: a closure's captures are read through the function value under slot 0), `CALL_GLOBAL` for a declared function called by name (not pushed, no reference counted), methods called without moving their arguments, the rare call checks in one test, an inline return | 433 M | yes |
+| `JUMP_IF_NOT_*_INT_LK` (an int local against a literal) and `RETURN_LOCAL` | 292 M | yes |
+| Releasing a returning call's slots: a scan without calls first, so a frame of numbers spills no registers | 282 M | yes |
+| `CALL_SELF`: a function calling itself reads itself from its frame | 238 M | yes |
+| Threaded dispatch (computed goto) for the eight hottest instructions | 233 M; 243 M with `-fno-gcse -fno-crossjumping`, which GCC needs to keep the jumps apart | no |
+| A switch over all 256 byte values, to drop its range check | 243 M: GCC keeps the check | no |
+| Small int literals as instruction operands instead of constants | 2.5% fewer instructions, the same cycles | no |
+| `RETURN_ADD_INT` (`return a + b` of ints), computed without a round trip through the stack | 213 M | yes |
+
+Tail calls (`return f(...)` of a function's own call, `TAIL_SELF`) and
+inlining small functions that can't fail don't change these benchmarks;
+they let such code run without the recursion limit, or without a call
+(spec 6.5). A call now costs about 155 instructions and 30 cycles. What
+bounds it is the stack top and the frame living in memory: each
+instruction reads and writes `vm->top`, and every argument is stored and
+read back once, which keeping the stack top in a register or a register
+VM (#123) would remove.
+
+Before and after, Plumlang alone, `make` (`-O2`), best of three
+alternating runs of `bench/run.py --runs 5 --plum-only` pinned to one
+core (the machine above, in power-saving mode, so slower than the table
+at the top):
+
+| Benchmark | before | after | |
+|---|---|---|---|
+| cart | 0.491 s | 0.391 s | 1.26x |
+| collatz | 0.917 s | 0.709 s | 1.29x |
+| dispatch | 0.425 s | 0.389 s | 1.09x |
+| fib | 0.077 s | 0.029 s | 2.66x |
+| jsondoc | 0.341 s | 0.339 s | 1.01x |
+| loop | 0.314 s | 0.322 s | 0.98x |
+| mandelbrot | 0.252 s | 0.220 s | 1.15x |
+| strings | 0.219 s | 0.225 s | 0.97x |
+| textbuild | 0.066 s | 0.065 s | 1.02x |
+| words | 0.388 s | 0.392 s | 0.99x |
+
+`loop`, `strings` and `words` run none of the changed instructions;
+counting cycles, they are 2.9%, 2.0% and 0.9% slower in the `-O2` build,
+which is GCC laying out the large run loop differently. In the release
+build (`make release-pgo`) none is slower: by cycles, fib −52%, cart and
+collatz −12%, mandelbrot −5%, strings −3%, loop −1%, the others within
+0.5%.
+
+With `python3 bench/run.py --runs 7` on the same machine, pinned to one
+core, `fib` takes 0.028 s and CPython 3.14 0.091 s: 3.25 times as fast
+(1.18 times before). Node.js takes 0.039 s.
 
 Before and after appending in place (#148), Plumlang alone,
 `bench/run.py --runs 7 --plum-only`, the two builds measured one after

@@ -1,0 +1,14 @@
+tests/lang/functions/error_recursion_mutual.plum:2: Error: too much recursion: more than 10000 calls deep
+  in ping, line 2
+  in pong, line 3
+  in ping, line 2
+  in pong, line 3
+  in ping, line 2
+  in pong, line 3
+  in ping, line 2
+  in pong, line 3
+  in ping, line 2
+  in pong, line 3
+  ... 9988 more calls
+  in ping, line 2
+  in <main>, line 4

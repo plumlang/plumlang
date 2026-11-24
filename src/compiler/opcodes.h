@@ -207,6 +207,12 @@
     X(JUMP_IF_NOT_GE_FLOAT_K, 2, "pop a (float); jump forward [b] bytes unless a >= constant [a]") \
     X(JUMP_IF_NOT_EQ_FLOAT_K, 2, "pop a (float); jump forward [b] bytes unless a == constant [a]") \
     X(JUMP_IF_NOT_NE_FLOAT_K, 2, "pop a (float); jump forward [b] bytes unless a != constant [a]") \
+    X(JUMP_IF_NOT_LT_INT_LK, 3, "jump [c] unless int local [a] < int constant [b]")                \
+    X(JUMP_IF_NOT_LE_INT_LK, 3, "jump [c] unless int local [a] <= int constant [b]")               \
+    X(JUMP_IF_NOT_GT_INT_LK, 3, "jump [c] unless int local [a] > int constant [b]")                \
+    X(JUMP_IF_NOT_GE_INT_LK, 3, "jump [c] unless int local [a] >= int constant [b]")               \
+    X(JUMP_IF_NOT_EQ_INT_LK, 3, "jump [c] unless int local [a] == int constant [b]")               \
+    X(JUMP_IF_NOT_NE_INT_LK, 3, "jump [c] unless int local [a] != int constant [b]")               \
     X(LOOP, 1, "jump back [a] bytes")                                                              \
     X(FOR_RANGE, 3, "jump forward [c] if local [a] is past local [a+1] (<, or <= if [b])")         \
     X(FOR_NEXT, 3,                                                                                 \
@@ -217,10 +223,15 @@
     X(THROW, 0, "throw the error on top")                                                          \
     /* Calls */                                                                                    \
     X(CALL, 1, "call the function under [a] arguments")                                            \
+    X(CALL_GLOBAL, 2, "call the function in global [a] with the [b] arguments on top")             \
+    X(CALL_SELF, 1, "call the running function with the [a] arguments on top")                     \
+    X(TAIL_SELF, 1, "return what the running function returns for the [a] arguments on top")       \
     X(CALL_BUILTIN, 2, "call built-in [a] with [b] arguments")                                     \
     X(SPAWN, 1, "a task running the function under [a] arguments; push the task")                  \
     X(CALL_NATIVE, 2, "call standard-library function [a] with [b] arguments")                     \
     X(RETURN, 0, "return the top value")                                                           \
+    X(RETURN_LOCAL, 1, "return local slot [a]")                                                    \
+    X(RETURN_ADD_INT, 0, "return a + b")                                                           \
     X(RETURN_NONE, 0, "return none")
 
 typedef enum PlumOpcode {

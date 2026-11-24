@@ -1,0 +1,6 @@
+# A method calling itself without end reaches the limit too.
+tree Node {
+    depth: int = 0
+    branch dive(n: int, label: str = "x") -> int => self.dive(n + 1, label: label) + 1
+}
+drop(Node().dive(0))

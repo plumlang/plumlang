@@ -50,6 +50,8 @@ typedef struct FnState {
     Try *tries;                   /* innermost first */
     PLUM_ARRAY(Capture) captures; /* the outer variables this function uses */
     PlumSymbol *self;             /* a nested function's own name: GET_SELF, not a capture */
+    const PlumBranch *decl;       /* a declared function's own declaration; NULL otherwise */
+    size_t last_op;               /* where the last instruction written starts */
 } FnState;
 
 typedef struct TreeEntry {
@@ -77,8 +79,9 @@ typedef struct Compiler {
     bool whole_program;
     FnState *fs;
     int global_count;
-    PlumTy *result;   /* the current function's result type, for return */
-    const char *path; /* the module being compiled; NULL for the program's own file */
+    PlumTy *result;       /* the current function's result type, for return */
+    const char *path;     /* the module being compiled; NULL for the program's own file */
+    uint32_t inline_line; /* while inlining a call: its line, which the code gets */
 } Compiler;
 
 static void compile_expr(Compiler *c, const PlumExpr *e);
@@ -102,6 +105,10 @@ static PlumChunk *chunk(Compiler *c) {
 }
 
 static void op(Compiler *c, PlumOpcode o, uint32_t line) {
+    if (c->inline_line != 0) {
+        line = c->inline_line; /* an inlined function's code is on the call's line */
+    }
+    c->fs->last_op = chunk(c)->code.len;
     plum_chunk_write_op(chunk(c), o, line);
 }
 
@@ -291,11 +298,15 @@ static bool int_like(const PlumTy *t) {
 }
 
 /* The checker allowed `from` where `to` is expected; convert if needed. */
-static void widen(Compiler *c, const PlumTy *from, const PlumTy *to, uint32_t line) {
+static bool widens(const PlumTy *from, const PlumTy *to) {
     if (to != NULL && to->kind == PLUM_TY_OPTIONAL) {
         to = to->as.elem;
     }
-    if (int_like(from) && ty_is(to, PLUM_TY_FLOAT)) {
+    return int_like(from) && ty_is(to, PLUM_TY_FLOAT);
+}
+
+static void widen(Compiler *c, const PlumTy *from, const PlumTy *to, uint32_t line) {
+    if (widens(from, to)) {
         op(c, PLUM_OP_INT_TO_FLOAT, line);
     }
 }
@@ -598,6 +609,19 @@ static void compile_cond(Compiler *c, const PlumExpr *e, Jumps *out) {
         PlumValue k = kind == 0                    ? plum_int(r->as.i)
                       : r->kind == PLUM_EXPR_FLOAT ? plum_float(r->as.f)
                                                    : plum_float((double)r->as.i);
+        uint16_t slot;
+        if (kind == 0 && plain_local(c, l, &slot)) {
+            /* an int local against a literal: nothing pushed */
+            static const PlumOpcode jumps_lk[6] = {
+                PLUM_OP_JUMP_IF_NOT_EQ_INT_LK, PLUM_OP_JUMP_IF_NOT_NE_INT_LK,
+                PLUM_OP_JUMP_IF_NOT_LT_INT_LK, PLUM_OP_JUMP_IF_NOT_LE_INT_LK,
+                PLUM_OP_JUMP_IF_NOT_GT_INT_LK, PLUM_OP_JUMP_IF_NOT_GE_INT_LK,
+            };
+            op2(c, jumps_lk[row], slot, constant(c, k, r->span), line);
+            plum_chunk_write_u16(chunk(c), 0xFFFF, line);
+            plum_array_push(out, chunk(c)->code.len - 2);
+            return;
+        }
         compile_expr(c, l);
         if (kind == 1 && int_like(l->ty)) {
             op(c, PLUM_OP_INT_TO_FLOAT, line);
@@ -2069,7 +2093,194 @@ static void compile_method(Compiler *c, const PlumExpr *e) {
     plum_chunk_write_u16(chunk(c), argc, line);
 }
 
+/* ------------------------------------------------------------------ */
+/* Inlining (#120)                                                     */
+/* ------------------------------------------------------------------ */
+
+/* The most syntax-tree nodes a function's expression may have to be
+ * inlined: bigger ones cost more to repeat than a call does. */
+#define INLINE_MAX_NODES 16
+
+static bool plain_number(const PlumTy *t) {
+    return ty_is(t, PLUM_TY_INT) || ty_is(t, PLUM_TY_FLOAT) || ty_is(t, PLUM_TY_BOOL);
+}
+
+/* Is `sym` one of `b`'s parameters? */
+static bool is_param_of(const PlumBranch *b, const PlumSymbol *sym) {
+    for (size_t i = 0; i < b->param_count; i++) {
+        if (b->params[i].symbol == sym) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Can `e`, in the body of `b`, be computed in the caller's place? Only
+ * when it can't fail, so that no error ever comes from inside an inlined
+ * call, and a stack trace never misses a frame: literals, the parameters,
+ * not / and / or, comparisons of numbers, float arithmetic (+ - * / never
+ * fail on floats), and & | ^ ~ on ints. Int + - * can overflow, so they
+ * aren't. Counts the nodes in *nodes.
+ */
+static bool inlinable(const PlumExpr *e, const PlumBranch *b, int *nodes) {
+    if (++*nodes > INLINE_MAX_NODES || !plain_number(e->ty)) {
+        return false;
+    }
+    switch (e->kind) {
+    case PLUM_EXPR_INT:
+    case PLUM_EXPR_FLOAT:
+    case PLUM_EXPR_BOOL:
+        return true;
+    case PLUM_EXPR_NAME:
+        return e->symbol != NULL && e->symbol->kind == PLUM_SYM_PARAM && !e->symbol->captured &&
+               is_param_of(b, e->symbol) && plum_expr_native_constant(e) == NULL;
+    case PLUM_EXPR_UNARY: {
+        const PlumExpr *x = e->as.unary.operand;
+        bool ok = (e->as.unary.op == PLUM_TOK_NOT && ty_is(x->ty, PLUM_TY_BOOL)) ||
+                  (e->as.unary.op == PLUM_TOK_MINUS &&
+                   (ty_is(x->ty, PLUM_TY_FLOAT) || x->kind == PLUM_EXPR_INT)) ||
+                  (e->as.unary.op == PLUM_TOK_TILDE && ty_is(x->ty, PLUM_TY_INT));
+        return ok && inlinable(x, b, nodes);
+    }
+    case PLUM_EXPR_BINARY: {
+        const PlumExpr *l = e->as.binary.left, *r = e->as.binary.right;
+        PlumTokenKind tok = e->as.binary.op;
+        bool ok;
+        switch (tok) {
+        case PLUM_TOK_AND:
+        case PLUM_TOK_OR:
+            ok = ty_is(l->ty, PLUM_TY_BOOL) && ty_is(r->ty, PLUM_TY_BOOL);
+            break;
+        case PLUM_TOK_PLUS:
+        case PLUM_TOK_MINUS:
+        case PLUM_TOK_STAR:
+        case PLUM_TOK_SLASH:
+            ok = ty_is(e->ty, PLUM_TY_FLOAT) && !ty_is(l->ty, PLUM_TY_BOOL) &&
+                 !ty_is(r->ty, PLUM_TY_BOOL);
+            break;
+        case PLUM_TOK_AMP:
+        case PLUM_TOK_PIPE:
+        case PLUM_TOK_CARET:
+            ok = ty_is(l->ty, PLUM_TY_INT) && ty_is(r->ty, PLUM_TY_INT);
+            break;
+        default:
+            ok = number_comparison(e) >= 0;
+            break;
+        }
+        return ok && inlinable(l, b, nodes) && inlinable(r, b, nodes);
+    }
+    default:
+        return false;
+    }
+}
+
+/* The expression a declared function returns, if its body is only that:
+ * `=> expr` or `{ return expr }`. */
+static const PlumExpr *returned_expr(const PlumBranch *b) {
+    if (b->arrow != NULL) {
+        return b->arrow;
+    }
+    if (b->body == NULL || b->body->kind != PLUM_STMT_BLOCK || b->body->as.block.count != 1) {
+        return NULL;
+    }
+    const PlumStmt *only = b->body->as.block.stmts[0];
+    return only->kind == PLUM_STMT_RETURN ? only->as.expr : NULL;
+}
+
+/*
+ * f(args) where f is a small declared function whose body can't fail
+ * (inlinable): compile its expression here instead of calling it. The
+ * arguments are computed as for a call, in order, into hidden slots that
+ * stand for the parameters; an argument that is already a plain local is
+ * read where it is. Emits it and returns true, or emits nothing and
+ * returns false.
+ */
+static bool compile_inline_call(Compiler *c, const PlumExpr *e, const PlumBranch *b,
+                                const PlumTy *fty) {
+    const PlumExpr *body = returned_expr(b);
+    int nodes = 0;
+    if (body == NULL || b->param_count > 8 || !inlinable(body, b, &nodes) ||
+        fty->as.func.result == NULL || !plain_number(fty->as.func.result)) {
+        return false;
+    }
+    for (size_t i = 0; i < b->param_count; i++) {
+        PlumSymbol *p = b->params[i].symbol;
+        if (p == NULL || !plain_number(p->ty) || p->captured) {
+            return false;
+        }
+    }
+    /* Positional arguments, one per parameter, that are plain locals of
+     * the caller are used where they are; anything else is computed. */
+    bool direct = e->as.call.arg_count == b->param_count;
+    for (size_t i = 0; direct && i < e->as.call.arg_count; i++) {
+        uint16_t slot;
+        direct = e->as.call.args[i].name == NULL &&
+                 plain_local(c, e->as.call.args[i].value, &slot) &&
+                 !widens(e->as.call.args[i].value->ty, b->params[i].symbol->ty);
+    }
+    struct Saved {
+        int slot;
+        bool has_slot;
+        int depth;
+    } saved[8];
+    int next_slot = c->fs->next_slot;
+    uint16_t slots[8];
+    if (direct) {
+        for (size_t i = 0; i < b->param_count; i++) {
+            plain_local(c, e->as.call.args[i].value, &slots[i]);
+        }
+    } else {
+        compile_args(c, e, fty, b);
+        for (size_t i = 0; i < b->param_count; i++) {
+            slots[i] = new_local(c, NULL, e->span);
+        }
+        for (size_t i = b->param_count; i-- > 0;) {
+            op1(c, PLUM_OP_SET_LOCAL, slots[i], e->span.line);
+        }
+    }
+    for (size_t i = 0; i < b->param_count; i++) {
+        PlumSymbol *p = b->params[i].symbol;
+        saved[i] = (struct Saved){p->slot, p->has_slot, p->function_depth};
+        p->slot = slots[i];
+        p->has_slot = true;
+        p->function_depth = c->fs->depth;
+    }
+    uint32_t outer_line = c->inline_line;
+    if (outer_line == 0) {
+        c->inline_line = e->span.line;
+    }
+    compile_as(c, body, fty->as.func.result);
+    c->inline_line = outer_line;
+    for (size_t i = 0; i < b->param_count; i++) {
+        PlumSymbol *p = b->params[i].symbol;
+        p->slot = saved[i].slot;
+        p->has_slot = saved[i].has_slot;
+        p->function_depth = saved[i].depth;
+    }
+    c->fs->next_slot = next_slot; /* the hidden slots are free again */
+    return true;
+}
+
+/* Is `e` a call of the declared function being compiled, by its name? */
+static bool self_call(Compiler *c, const PlumExpr *e) {
+    if (e->kind != PLUM_EXPR_CALL || e->as.call.callee->kind != PLUM_EXPR_NAME) {
+        return false;
+    }
+    const PlumSymbol *sym = e->as.call.callee->symbol;
+    return sym != NULL && sym->kind == PLUM_SYM_FUNC && sym->global && sym->has_slot &&
+           c->fs->decl != NULL && callee_decl(sym) == c->fs->decl;
+}
+
+/* A call; with `tail`, the value of a return statement that may reuse the
+ * running frame when it is a call of the function itself (TAIL_SELF). */
+static void compile_call_as(Compiler *c, const PlumExpr *e, bool tail);
+
 static void compile_call(Compiler *c, const PlumExpr *e) {
+    compile_call_as(c, e, false);
+}
+
+static void compile_call_as(Compiler *c, const PlumExpr *e, bool tail) {
     const PlumExpr *callee = e->as.call.callee;
     PlumSymbol *sym = callee->kind == PLUM_EXPR_NAME ? callee->symbol : NULL;
     uint32_t line = e->span.line;
@@ -2142,6 +2353,23 @@ static void compile_call(Compiler *c, const PlumExpr *e) {
         unsupported(c, e->span, "this kind of call", 36);
         return;
     }
+    if (sym != NULL && sym->kind == PLUM_SYM_FUNC && sym->global && sym->has_slot &&
+        sym != c->fs->self) {
+        /* A declared function, called by name: it stays in its global,
+         * and a function calling itself needn't even read that. */
+        const PlumBranch *decl = callee_decl(sym);
+        if (decl != NULL && decl != c->fs->decl && compile_inline_call(c, e, decl, fty)) {
+            return;
+        }
+        compile_args(c, e, fty, decl);
+        uint16_t argc = (uint16_t)fty->as.func.param_count;
+        if (self_call(c, e)) {
+            op1(c, tail ? PLUM_OP_TAIL_SELF : PLUM_OP_CALL_SELF, argc, line);
+        } else {
+            op2(c, PLUM_OP_CALL_GLOBAL, (uint16_t)sym->slot, argc, line);
+        }
+        return;
+    }
     compile_expr(c, callee);
     compile_args(c, e, fty, callee_decl(sym));
     op1(c, PLUM_OP_CALL, (uint16_t)fty->as.func.param_count, line);
@@ -2152,7 +2380,7 @@ static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b,
 static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam *params,
                                   size_t param_count, const PlumExpr *arrow, const PlumStmt *body,
                                   int depth, const PlumTy *result, PlumSymbol *self,
-                                  PlumSymbol *receiver);
+                                  PlumSymbol *receiver, const PlumBranch *decl);
 
 /* Push `fn` as a value: a plain function, or a closure if it captures. */
 static void emit_function_value(Compiler *c, PlumFunction *fn, PlumSpan span) {
@@ -2169,7 +2397,7 @@ static void compile_lambda(Compiler *c, const PlumExpr *e) {
     const PlumTy *result = ty_is(e->ty, PLUM_TY_FUNC) ? e->ty->as.func.result : NULL;
     plum_retain(plum_obj(&fn->obj));
     compile_function_body(c, fn, e->as.lambda.params, e->as.lambda.param_count, e->as.lambda.body,
-                          e->as.lambda.block, c->fs->depth + 1, result, NULL, NULL);
+                          e->as.lambda.block, c->fs->depth + 1, result, NULL, NULL, NULL);
     emit_function_value(c, fn, e->span); /* the constant pool takes one reference */
     plum_release(plum_obj(&fn->obj));
 }
@@ -2956,6 +3184,8 @@ static void compile_assign(Compiler *c, const PlumStmt *s) {
 static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b, int depth,
                              const PlumTy *result, PlumSymbol *self);
 
+static void compile_return(Compiler *c, const PlumExpr *e, uint32_t line);
+
 static void compile_stmt(Compiler *c, const PlumStmt *s) {
     uint32_t line = s->span.line;
     switch (s->kind) {
@@ -3040,9 +3270,7 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
             leave_tries(c, NULL, line);
             op(c, PLUM_OP_RETURN_NONE, line);
         } else {
-            compile_as(c, s->as.expr, c->result);
-            leave_tries(c, NULL, line); /* the value waits on the stack */
-            op(c, PLUM_OP_RETURN, line);
+            compile_return(c, s->as.expr, line);
         }
         return;
     case PLUM_STMT_BRANCH: {
@@ -3083,16 +3311,45 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
     }
 }
 
+/*
+ * return `e`. Outside a try, a local is returned straight from its slot
+ * (RETURN_LOCAL), and a call of the function itself reuses the running
+ * frame (TAIL_SELF, spec 6.5): inside a try, the try must still be there
+ * while the call runs.
+ */
+static void compile_return(Compiler *c, const PlumExpr *e, uint32_t line) {
+    uint16_t slot;
+    if (c->fs->tries == NULL && plain_local(c, e, &slot) && !widens(e->ty, c->result)) {
+        op1(c, PLUM_OP_RETURN_LOCAL, slot, line);
+        return;
+    }
+    if (c->fs->tries == NULL && self_call(c, e)) {
+        compile_call_as(c, e, true);
+        return;
+    }
+    compile_as(c, e, c->result);
+    leave_tries(c, NULL, line); /* the value waits on the stack */
+    PlumChunk *ch = chunk(c);
+    if (c->fs->tries == NULL && e->kind == PLUM_EXPR_BINARY && e->as.binary.op == PLUM_TOK_PLUS &&
+        c->fs->last_op + 1 == ch->code.len && ch->code.items[c->fs->last_op] == PLUM_OP_ADD_INT) {
+        /* return a + b: the sum is returned without being pushed */
+        ch->code.items[c->fs->last_op] = PLUM_OP_RETURN_ADD_INT;
+        return;
+    }
+    op(c, PLUM_OP_RETURN, line);
+}
+
 static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam *params,
                                   size_t param_count, const PlumExpr *arrow, const PlumStmt *body,
                                   int depth, const PlumTy *result, PlumSymbol *self,
-                                  PlumSymbol *receiver) {
+                                  PlumSymbol *receiver, const PlumBranch *decl) {
     FnState fs;
     memset(&fs, 0, sizeof fs);
     fs.enclosing = c->fs;
     fs.fn = fn;
     fs.depth = depth;
     fs.self = self;
+    fs.decl = decl;
     fn->path = c->path;
     PlumTy *outer_result = c->result;
     c->fs = &fs;
@@ -3109,12 +3366,12 @@ static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam
         box_if_captured(c, params[i].symbol, params[i].span); /* shared with closures */
     }
     bool returns_value = result != NULL && result->kind != PLUM_TY_NONE;
-    if (arrow != NULL) {
-        compile_as(c, arrow, result);
-        op(c, returns_value ? PLUM_OP_RETURN : PLUM_OP_POP, arrow->span.line);
-        if (!returns_value) {
-            op(c, PLUM_OP_RETURN_NONE, arrow->span.line);
-        }
+    if (arrow != NULL && returns_value) {
+        compile_return(c, arrow, arrow->span.line);
+    } else if (arrow != NULL) {
+        compile_expr(c, arrow);
+        op(c, PLUM_OP_POP, arrow->span.line);
+        op(c, PLUM_OP_RETURN_NONE, arrow->span.line);
     } else if (body != NULL) {
         const PlumStmt *const *stmts = (const PlumStmt *const *)body->as.block.stmts;
         size_t n = body->kind == PLUM_STMT_BLOCK ? body->as.block.count : 0;
@@ -3140,12 +3397,12 @@ static void compile_function_body(Compiler *c, PlumFunction *fn, const PlumParam
 static void compile_function(Compiler *c, PlumFunction *fn, const PlumBranch *b, int depth,
                              const PlumTy *result, PlumSymbol *self) {
     compile_function_body(c, fn, b->params, b->param_count, b->arrow, b->body, depth, result, self,
-                          NULL);
+                          NULL, b);
 }
 
 static void compile_method_body(Compiler *c, PlumFunction *fn, const PlumBranch *m) {
     compile_function_body(c, fn, m->params, m->param_count, m->arrow, m->body, 1,
-                          m->ty != NULL ? m->ty->as.func.result : NULL, NULL, m->self);
+                          m->ty != NULL ? m->ty->as.func.result : NULL, NULL, m->self, NULL);
 }
 
 PlumCompiled plum_compile(const PlumProgram *program, PlumInterner *names, PlumDiagList *diags) {

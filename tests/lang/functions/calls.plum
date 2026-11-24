@@ -1,0 +1,86 @@
+# Calls through each path (#120): by name with named and default
+# arguments, a function calling itself, tail calls, closures, methods,
+# calls through a variable, and small functions compiled in place.
+branch connect(host: str, port: int = 80, secure: bool = bad) -> str {
+    if secure {
+        return "{host}:{port} (secure)"
+    }
+    return "{host}:{port}"
+}
+drop(connect("a.org"))
+drop(connect(secure: good, host: "b.org"))
+drop(connect("c.org", port: 8080))
+
+# return f(...) of itself: a million deep, no recursion limit
+branch count(n: int, acc: int = 0) -> int {
+    if n == 0 {
+        return acc
+    }
+    return count(acc: acc + n, n: n - 1)
+}
+drop(count(1000000))
+
+# a tail call that returns objects: the old slots are released
+branch build(n: int, items: list[str]) -> list[str] {
+    if n == 0 {
+        return items
+    }
+    plant more = items + ["x{n}"]
+    return build(n - 1, more)
+}
+drop(build(3, []))
+
+# not tail calls: the call isn't the whole value returned
+branch fib(n: int) -> int {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+drop(fib(20))
+
+# a nested function calling itself, capturing a variable
+branch outer(step: int) -> int {
+    branch walk(n: int) -> int {
+        if n <= 0 {
+            return 0
+        }
+        return step + walk(n - step)
+    }
+    return walk(10)
+}
+drop(outer(3))
+
+# a call through a variable, and a closure
+plant f = fib
+drop(f(10))
+branch adder(k: int) -> (int) -> int {
+    return (x: int) => x + k
+}
+plant add5 = adder(5)
+drop(add5(10))
+drop([1, 2, 3].map(add5))
+
+# methods: the object becomes the first slot, arguments stay in place
+tree Counter {
+    total: int = 0
+    branch add(by: int, times: int = 1) -> int {
+        self.total += by * times
+        return self.total
+    }
+}
+plant c = Counter()
+c.add(2)
+drop(c.add(times: 3, by: 4))
+
+# compiled in place: arguments are computed once, in order
+branch area(w: float, h: float) -> float => w * h
+branch inside(x: float, lo: float = 0.0, hi: float = 1.0) -> bool => x >= lo and x <= hi
+branch noisy(v: float) -> float {
+    drop("arg {v}")
+    return v
+}
+plant w = 2.0
+drop(area(w, 3.0))
+drop(area(noisy(1.5), noisy(4.0)))
+drop(inside(0.5), inside(2.0, hi: 3.0), inside(hi: -1.0, x: 0.0))

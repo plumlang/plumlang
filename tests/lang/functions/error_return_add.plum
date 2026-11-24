@@ -1,0 +1,5 @@
+# return a + b in one instruction keeps the overflow error and its line.
+branch total(a: int, b: int) -> int {
+    return a + b
+}
+drop(total(9223372036854775807, 1))

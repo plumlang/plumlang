@@ -1,0 +1,12 @@
+# An error after tail calls: the frame they reused shows once, with how
+# many there were (spec 6.5); the calls around it show as usual.
+branch countdown(n: int, by: int) -> int {
+    if n == 0 {
+        return 100 // by
+    }
+    return countdown(n - 1, by: by)
+}
+branch start() -> int {
+    return countdown(25, 0) + 1
+}
+drop(start())

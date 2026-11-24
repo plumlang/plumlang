@@ -179,6 +179,16 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
             print_constant(out, chunk->constants.items[a]);
             fprintf(out, ", else -> %04zu", next + b);
             break;
+        case PLUM_OP_JUMP_IF_NOT_LT_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_LE_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_GT_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_GE_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_EQ_INT_LK:
+        case PLUM_OP_JUMP_IF_NOT_NE_INT_LK:
+            fprintf(out, " %u %u %u  ; ", a, b, c3);
+            print_constant(out, chunk->constants.items[b]);
+            fprintf(out, ", else -> %04zu", next + c3);
+            break;
         case PLUM_OP_FOR_RANGE:
             fprintf(out, " %u %u %u  ; local %u %s local %u, else -> %04zu", a, b, c3, a,
                     b ? "<=" : "<", a + 1u, next + c3);

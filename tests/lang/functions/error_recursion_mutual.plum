@@ -1,0 +1,4 @@
+# Two functions calling each other by name still reach the limit.
+branch ping(n: int) -> int => pong(n + 1) + 1
+branch pong(n: int) -> int => ping(n + 1) + 1
+drop(ping(0))
