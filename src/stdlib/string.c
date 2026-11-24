@@ -116,7 +116,7 @@ static bool s_trim_end(ARGS) {
 /* split(): on runs of whitespace; split(sep): on each sep. */
 static bool s_split(ARGS) {
     const PlumString *s = S(args[0]);
-    const PlumString *sep = argc > 1 && args[1].type != PLUM_VAL_NONE ? S(args[1]) : NULL;
+    const PlumString *sep = argc > 1 && !plum_is_none(args[1]) ? S(args[1]) : NULL;
     PlumList *out = plum_list_new(0);
     if (sep == NULL) {
         size_t i = 0;
@@ -268,7 +268,7 @@ static bool s_replace(ARGS) {
 static bool s_repeat(ARGS) {
     (void)argc;
     const PlumString *s = S(args[0]);
-    int64_t times = args[1].as.i;
+    int64_t times = plum_as_int(args[1]);
     if (times < 0) {
         return plum_native_throw(n, PLUM_ERROR_VALUE, "repeat(%lld): the count must be 0 or more",
                                  (long long)times);
@@ -310,8 +310,8 @@ static bool s_reverse(ARGS) {
 /* pad_start / pad_end: up to `width` characters with `fill` (one character). */
 static bool pad(PlumNative *n, const PlumValue *args, int argc, PlumValue *result, bool start) {
     const PlumString *s = S(args[0]);
-    int64_t width = args[1].as.i;
-    const PlumString *fill = argc > 2 && args[2].type != PLUM_VAL_NONE ? S(args[2]) : NULL;
+    int64_t width = plum_as_int(args[1]);
+    const PlumString *fill = argc > 2 && !plum_is_none(args[2]) ? S(args[2]) : NULL;
     const char *f = fill != NULL ? fill->chars : " ";
     size_t flen = fill != NULL ? fill->len : 1;
     if (fill != NULL && plum_utf8_length(fill->chars, fill->len) != 1) {

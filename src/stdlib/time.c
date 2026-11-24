@@ -49,7 +49,7 @@ static bool broken_down(PlumNative *n, const char *what, const PlumValue *args, 
         return plum_native_throw(n, PLUM_ERROR_VALUE,
                                  "%s(%g): the time must be within the years 1 to 9999", what, t);
     }
-    bool utc = argc > utc_arg && args[utc_arg].type == PLUM_VAL_BOOL && args[utc_arg].as.b;
+    bool utc = argc > utc_arg && plum_is_bool(args[utc_arg]) && plum_as_bool(args[utc_arg]);
     time_t secs = (time_t)floor(t);
     struct tm *tm = utc ? gmtime(&secs) : localtime(&secs);
     if (tm == NULL) {
@@ -65,7 +65,7 @@ static bool broken_down(PlumNative *n, const char *what, const PlumValue *args, 
  * unknown one is a ValueError, not undefined behaviour).
  */
 static bool t_format(ARGS) {
-    const char *pattern = argc > 1 && args[1].type != PLUM_VAL_NONE ? plum_as_string(args[1])->chars
+    const char *pattern = argc > 1 && !plum_is_none(args[1]) ? plum_as_string(args[1])->chars
                                                                     : "%Y-%m-%d %H:%M:%S";
     size_t plen = strlen(pattern);
     if (plen > 200) {

@@ -131,7 +131,7 @@ static void put_int_base(Buf *b, int64_t v, int base, bool upper) {
 
 static bool put_number(Buf *b, PlumValue v, const Spec *spec, char *error, size_t error_size) {
     char tmp[512];
-    bool is_int = v.type == PLUM_VAL_INT;
+    bool is_int = plum_is_int(v);
     switch (spec->type) {
     case 'x':
     case 'X':
@@ -141,7 +141,7 @@ static bool put_number(Buf *b, PlumValue v, const Spec *spec, char *error, size_
             snprintf(error, error_size, "format '%c' needs an int", spec->type);
             return false;
         }
-        put_int_base(b, v.as.i,
+        put_int_base(b, plum_as_int(v),
                      spec->type == 'b'   ? 2
                      : spec->type == 'o' ? 8
                                          : 16,
@@ -152,18 +152,18 @@ static bool put_number(Buf *b, PlumValue v, const Spec *spec, char *error, size_
             snprintf(error, error_size, "format 'd' needs an int; use .0 to round a float");
             return false;
         }
-        put_int_base(b, v.as.i, 10, false);
+        put_int_base(b, plum_as_int(v), 10, false);
         return true;
     default:
         break;
     }
-    double f = is_int ? (double)v.as.i : v.as.f;
+    double f = is_int ? (double)plum_as_int(v) : plum_as_float(v);
     if (spec->type == 'e') {
         snprintf(tmp, sizeof tmp, "%.*e", spec->precision >= 0 ? (int)spec->precision : 6, f);
     } else if (spec->type == 'f' || spec->precision >= 0) {
         snprintf(tmp, sizeof tmp, "%.*f", spec->precision >= 0 ? (int)spec->precision : 6, f);
     } else if (is_int) {
-        snprintf(tmp, sizeof tmp, "%lld", (long long)v.as.i);
+        snprintf(tmp, sizeof tmp, "%lld", (long long)plum_as_int(v));
     } else {
         plum_format_float(f, tmp);
     }
@@ -179,25 +179,25 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
         put(b, "...", 3);
         return true;
     }
-    switch (v.type) {
+    switch (plum_value_type(v)) {
     case PLUM_VAL_NONE:
         put(b, "none", 4);
         return true;
     case PLUM_VAL_BOOL:
-        put(b, v.as.b ? "good" : "bad", v.as.b ? 4 : 3);
+        put(b, plum_as_bool(v) ? "good" : "bad", plum_as_bool(v) ? 4 : 3);
         return true;
     case PLUM_VAL_INT:
-        snprintf(tmp, sizeof tmp, "%lld", (long long)v.as.i);
+        snprintf(tmp, sizeof tmp, "%lld", (long long)plum_as_int(v));
         put(b, tmp, strlen(tmp));
         return true;
     case PLUM_VAL_FLOAT:
-        plum_format_float(v.as.f, tmp);
+        plum_format_float(plum_as_float(v), tmp);
         put(b, tmp, strlen(tmp));
         return true;
     case PLUM_VAL_OBJ:
         break;
     }
-    switch ((PlumObjType)v.as.obj->type) {
+    switch ((PlumObjType)plum_as_obj(v)->type) {
     case PLUM_OBJ_STRING: {
         PlumString *s = plum_as_string(v);
         if (!quote_strings) {
@@ -231,7 +231,7 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
     case PLUM_OBJ_FUNCTION:
     case PLUM_OBJ_CLOSURE: {
         const PlumFunction *fn =
-            v.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(v)->fn : plum_as_function(v);
+            plum_as_obj(v)->type == PLUM_OBJ_CLOSURE ? plum_as_closure(v)->fn : plum_as_function(v);
         snprintf(tmp, sizeof tmp, "<branch %.150s>", fn->name);
         put(b, tmp, strlen(tmp));
         return true;
@@ -294,6 +294,10 @@ static bool put_plain(Buf *b, PlumValue v, bool quote_strings, const PlumTextHoo
         return true;
     case PLUM_OBJ_WEAK: /* never seen by programs: reading one gives its object */
         put(b, "<weak>", 6);
+        return true;
+    case PLUM_OBJ_INT: /* a boxed int: plum_value_type says PLUM_VAL_INT, above */
+        snprintf(tmp, sizeof tmp, "%lld", (long long)plum_as_int(v));
+        put(b, tmp, strlen(tmp));
         return true;
     case PLUM_OBJ_TREE_INFO:
         snprintf(tmp, sizeof tmp, "<tree %.150s>", plum_as_tree_info(v)->name);
@@ -360,7 +364,7 @@ PlumString *plum_value_text_with(PlumValue v, const char *format, const PlumText
         return NULL;
     }
     Buf b = {0};
-    bool number = v.type == PLUM_VAL_INT || v.type == PLUM_VAL_FLOAT;
+    bool number = plum_is_int(v) || plum_is_float(v);
 
     if (number) {
         if (!put_number(&b, v, &spec, error, error_size)) {

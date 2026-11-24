@@ -13,6 +13,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+
+#include "util/alloc.h"
 
 typedef enum PlumValueType {
     PLUM_VAL_NONE,
@@ -35,6 +38,7 @@ typedef enum PlumObjType {
     PLUM_OBJ_TASK,      /* a task (spawn): defined in vm.c, which owns its running state */
     PLUM_OBJ_CHANNEL,   /* a channel between tasks: defined in vm.c */
     PLUM_OBJ_HANDLE,    /* a resource of the operating system: a socket */
+    PLUM_OBJ_INT,       /* an int too large to store inline (PLUM_NANBOX) */
 } PlumObjType;
 
 /*
@@ -80,6 +84,185 @@ static inline bool plum_obj_unique(const PlumObj *o) {
     return o->refcount == 1 && (o->flags & PLUM_OBJ_FROZEN) == 0;
 }
 
+/*
+ * How a value is laid out is chosen when Plumlang is built (#121):
+ *
+ * PLUM_NANBOX=0, the wide layout: a type tag and an 8-byte payload, 16
+ *   bytes in all (12 where int64_t is 4-byte aligned).
+ *
+ * PLUM_NANBOX=1, NaN boxing: 8 bytes. A float is its own IEEE 754 bits;
+ *   everything else hides in the quiet NaNs with the sign bit set, which no
+ *   float the VM makes ever has (a NaN it makes or takes in is one of the
+ *   two with no payload, plum_float):
+ *
+ *     below 0xFFF9 0000 0000 0000   a float (-NaN is 0xFFF8 0000 0000 0000)
+ *     0xFFF9 0000 0000 000x         none (x = 0), unset (1), bad (2), good (3)
+ *     0xFFFA pppp pppp pppp         a heap object at the 48-bit address p
+ *     0xFFFC ... to 0xFFFF ...      an int from -2^49 to 2^49 - 1, stored as
+ *                                   i + 0xFFFE 0000 0000 0000 (mod 2^64)
+ *
+ *   An int outside that range is boxed: a PlumBigInt on the heap, held
+ *   like any object, so an int is still a full 64-bit int with the same
+ *   overflow errors. An int that fits inline is never boxed, so two inline
+ *   ints are equal exactly when their bits are, and their bits order them
+ *   as unsigned numbers.
+ *
+ * Code outside this header reads and makes values only through the
+ * functions below, so it compiles to either layout.
+ */
+#ifndef PLUM_NANBOX
+#define PLUM_NANBOX 0
+#endif
+
+/* An int too large to store inline (NaN boxing only): immutable. */
+typedef struct PlumBigInt {
+    PlumObj obj;
+    int64_t i;
+} PlumBigInt;
+
+#if PLUM_NANBOX
+
+typedef struct PlumValue {
+    uint64_t bits;
+} PlumValue;
+
+#define PLUM_NB_SPECIAL   UINT64_C(0xFFF9000000000000) /* below it: a float */
+#define PLUM_NB_OBJ       UINT64_C(0xFFFA000000000000)
+#define PLUM_NB_INT       UINT64_C(0xFFFC000000000000) /* at or above it: an inline int */
+#define PLUM_NB_INT_ZERO  UINT64_C(0xFFFE000000000000) /* the int 0 */
+#define PLUM_NB_ADDRESS   UINT64_C(0x0000FFFFFFFFFFFF)
+#define PLUM_NB_QUIET_NAN UINT64_C(0x7FF8000000000000)
+#define PLUM_NB_SIGN      UINT64_C(0x8000000000000000)
+
+/* The smallest and largest int stored inline. */
+#define PLUM_INLINE_INT_MIN (-(INT64_C(1) << 49))
+#define PLUM_INLINE_INT_MAX ((INT64_C(1) << 49) - 1)
+
+static inline PlumValue plum_value_of_bits(uint64_t bits) {
+    PlumValue v;
+    v.bits = bits;
+    return v;
+}
+
+static inline PlumValue plum_none(void) {
+    return plum_value_of_bits(PLUM_NB_SPECIAL);
+}
+
+static inline PlumValue plum_bool(bool b) {
+    return plum_value_of_bits(PLUM_NB_SPECIAL | 2u | (b ? 1u : 0u));
+}
+
+/* Does `i` fit inline? */
+static inline bool plum_int_inline(int64_t i) {
+    return (uint64_t)i + (UINT64_C(1) << 49) < (UINT64_C(1) << 50);
+}
+
+/* The inline int `i`, which must fit (plum_int_inline). */
+static inline PlumValue plum_small_int(int64_t i) {
+    return plum_value_of_bits((uint64_t)i + PLUM_NB_INT_ZERO);
+}
+
+/* Is `v` an int stored inline? */
+static inline bool plum_is_small_int(PlumValue v) {
+    return v.bits >= PLUM_NB_INT;
+}
+
+/* Are both inline ints? */
+static inline bool plum_both_small_ints(PlumValue a, PlumValue b) {
+    return (a.bits & b.bits) >= PLUM_NB_INT;
+}
+
+/* The int stored inline in `v`. */
+static inline int64_t plum_small_int_of(PlumValue v) {
+    return (int64_t)(v.bits - PLUM_NB_INT_ZERO);
+}
+
+/* An int outside the inline range, boxed (value.c). */
+PlumValue plum_int_boxed(int64_t i);
+
+static inline PlumValue plum_int(int64_t i) {
+    return plum_int_inline(i) ? plum_small_int(i) : plum_int_boxed(i);
+}
+
+/*
+ * A float, as it is stored. A NaN becomes the one of its sign with no
+ * payload, so no NaN (whatever strtod or the hardware made) lands among the
+ * other values. Arithmetic on these two gives one of them again (IEEE 754,
+ * and WebAssembly's rule for canonical NaNs), so the VM's float
+ * instructions store their results with plum_float_raw.
+ */
+static inline PlumValue plum_float_raw(double f) {
+    PlumValue v;
+    memcpy(&v.bits, &f, sizeof f);
+    return v;
+}
+
+static inline PlumValue plum_float(double f) {
+    PlumValue v = plum_float_raw(f);
+    if (f != f) {
+        v.bits = (v.bits & PLUM_NB_SIGN) | PLUM_NB_QUIET_NAN;
+    }
+    return v;
+}
+
+static inline double plum_as_float(PlumValue v) {
+    double f;
+    memcpy(&f, &v.bits, sizeof f);
+    return f;
+}
+
+static inline PlumValue plum_obj(PlumObj *obj) {
+#if UINTPTR_MAX > UINT32_MAX
+    if (((uint64_t)(uintptr_t)obj >> 48) != 0) {
+        plum_fatal("an object's address doesn't fit in 48 bits; build with PLUM_NANBOX=0");
+    }
+#endif
+    return plum_value_of_bits(PLUM_NB_OBJ | (uint64_t)(uintptr_t)obj);
+}
+
+/* Does `v` hold a reference (an object, or a boxed int)? */
+static inline bool plum_is_ref(PlumValue v) {
+    return (v.bits >> 48) == (PLUM_NB_OBJ >> 48);
+}
+
+/* The heap object a reference points at. */
+static inline PlumObj *plum_as_obj(PlumValue v) {
+    return (PlumObj *)(uintptr_t)(v.bits & PLUM_NB_ADDRESS);
+}
+
+static inline bool plum_is_none(PlumValue v) {
+    return (v.bits & ~UINT64_C(1)) == PLUM_NB_SPECIAL; /* none or unset */
+}
+
+static inline bool plum_as_bool(PlumValue v) {
+    return (v.bits & 1u) != 0;
+}
+
+static inline int64_t plum_as_int(PlumValue v) {
+    return plum_is_small_int(v) ? plum_small_int_of(v) : ((const PlumBigInt *)plum_as_obj(v))->i;
+}
+
+static inline PlumValueType plum_value_type(PlumValue v) {
+    if (v.bits < PLUM_NB_SPECIAL) {
+        return PLUM_VAL_FLOAT;
+    }
+    if (v.bits >= PLUM_NB_INT) {
+        return PLUM_VAL_INT;
+    }
+    if (plum_is_ref(v)) {
+        return plum_as_obj(v)->type == PLUM_OBJ_INT ? PLUM_VAL_INT : PLUM_VAL_OBJ;
+    }
+    return (v.bits & 2u) != 0 ? PLUM_VAL_BOOL : PLUM_VAL_NONE;
+}
+
+/* Is the whole of `v` the same as the whole of `w` (not equality of
+ * values: two boxed ints can be equal and differ)? */
+static inline bool plum_same_bits(PlumValue v, PlumValue w) {
+    return v.bits == w.bits;
+}
+
+#else /* the wide layout */
+
 typedef struct PlumValue {
     PlumValueType type;
     union {
@@ -89,6 +272,121 @@ typedef struct PlumValue {
         PlumObj *obj;
     } as;
 } PlumValue;
+
+static inline PlumValue plum_none(void) {
+    PlumValue v;
+    v.type = PLUM_VAL_NONE;
+    v.as.i = 0;
+    return v;
+}
+
+static inline PlumValue plum_bool(bool b) {
+    PlumValue v;
+    v.type = PLUM_VAL_BOOL;
+    v.as.i = 0;
+    v.as.b = b;
+    return v;
+}
+
+static inline bool plum_int_inline(int64_t i) {
+    (void)i;
+    return true;
+}
+
+static inline PlumValue plum_int(int64_t i) {
+    PlumValue v;
+    v.type = PLUM_VAL_INT;
+    v.as.i = i;
+    return v;
+}
+
+static inline PlumValue plum_small_int(int64_t i) {
+    return plum_int(i);
+}
+
+static inline bool plum_is_small_int(PlumValue v) {
+    (void)v;
+    return true;
+}
+
+static inline bool plum_both_small_ints(PlumValue a, PlumValue b) {
+    (void)a;
+    (void)b;
+    return true;
+}
+
+static inline int64_t plum_small_int_of(PlumValue v) {
+    return v.as.i;
+}
+
+static inline PlumValue plum_float(double f) {
+    PlumValue v;
+    v.type = PLUM_VAL_FLOAT;
+    v.as.f = f;
+    return v;
+}
+
+static inline PlumValue plum_float_raw(double f) {
+    return plum_float(f);
+}
+
+static inline double plum_as_float(PlumValue v) {
+    return v.as.f;
+}
+
+static inline PlumValue plum_obj(PlumObj *obj) {
+    PlumValue v;
+    v.type = PLUM_VAL_OBJ;
+    v.as.obj = obj;
+    return v;
+}
+
+static inline bool plum_is_ref(PlumValue v) {
+    return v.type == PLUM_VAL_OBJ;
+}
+
+static inline PlumObj *plum_as_obj(PlumValue v) {
+    return v.as.obj;
+}
+
+static inline bool plum_is_none(PlumValue v) {
+    return v.type == PLUM_VAL_NONE;
+}
+
+static inline bool plum_as_bool(PlumValue v) {
+    return v.as.b;
+}
+
+static inline int64_t plum_as_int(PlumValue v) {
+    return v.as.i;
+}
+
+static inline PlumValueType plum_value_type(PlumValue v) {
+    return v.type;
+}
+
+static inline bool plum_same_bits(PlumValue v, PlumValue w) {
+    return v.type == w.type && v.as.i == w.as.i;
+}
+
+#endif /* PLUM_NANBOX */
+
+static inline bool plum_is_int(PlumValue v) {
+    return plum_value_type(v) == PLUM_VAL_INT;
+}
+
+static inline bool plum_is_float(PlumValue v) {
+    return plum_value_type(v) == PLUM_VAL_FLOAT;
+}
+
+static inline bool plum_is_bool(PlumValue v) {
+    return plum_value_type(v) == PLUM_VAL_BOOL;
+}
+
+/* Is `v` a heap object (a string, list, ... but not a boxed int)? */
+static inline bool plum_is_object(PlumValue v) {
+    return plum_value_type(v) == PLUM_VAL_OBJ;
+}
 
 /*
  * Immutable UTF-8 text. `chars` points just past the struct, NUL-terminated,
@@ -178,7 +476,7 @@ typedef struct PlumHandle {
 } PlumHandle;
 
 static inline PlumHandle *plum_as_handle(PlumValue v) {
-    return (PlumHandle *)(void *)v.as.obj;
+    return (PlumHandle *)(void *)plum_as_obj(v);
 }
 
 /* Freeing tasks and channels, whose insides only the VM knows. */
@@ -221,90 +519,88 @@ typedef struct PlumClosure {
     PlumCell **cells; /* each holds a reference */
 } PlumClosure;
 
-static inline PlumValue plum_none(void) {
-    PlumValue v;
-    v.type = PLUM_VAL_NONE;
-    v.as.i = 0;
-    return v;
-}
-
-static inline PlumValue plum_bool(bool b) {
-    PlumValue v;
-    v.type = PLUM_VAL_BOOL;
-    v.as.i = 0;
-    v.as.b = b;
-    return v;
-}
-
-static inline PlumValue plum_int(int64_t i) {
-    PlumValue v;
-    v.type = PLUM_VAL_INT;
-    v.as.i = i;
-    return v;
-}
-
-static inline PlumValue plum_float(double f) {
-    PlumValue v;
-    v.type = PLUM_VAL_FLOAT;
-    v.as.f = f;
-    return v;
-}
-
-static inline PlumValue plum_obj(PlumObj *obj) {
-    PlumValue v;
-    v.type = PLUM_VAL_OBJ;
-    v.as.obj = obj;
-    return v;
-}
-
+/* Is `v` an object of `type`? */
 static inline bool plum_is_obj(PlumValue v, PlumObjType type) {
-    return v.type == PLUM_VAL_OBJ && v.as.obj->type == type;
+    return plum_is_ref(v) && plum_as_obj(v)->type == type;
 }
 
 static inline PlumString *plum_as_string(PlumValue v) {
-    return (PlumString *)v.as.obj;
+    return (PlumString *)plum_as_obj(v);
 }
 
 static inline PlumFunction *plum_as_function(PlumValue v) {
-    return (PlumFunction *)v.as.obj;
+    return (PlumFunction *)plum_as_obj(v);
 }
 
 static inline PlumCell *plum_as_cell(PlumValue v) {
-    return (PlumCell *)v.as.obj;
+    return (PlumCell *)plum_as_obj(v);
 }
 
 static inline PlumClosure *plum_as_closure(PlumValue v) {
-    return (PlumClosure *)v.as.obj;
+    return (PlumClosure *)plum_as_obj(v);
 }
 
 /* A function or closure value, either of which can be called. */
 static inline bool plum_is_callable(PlumValue v) {
-    return v.type == PLUM_VAL_OBJ &&
-           (v.as.obj->type == PLUM_OBJ_FUNCTION || v.as.obj->type == PLUM_OBJ_CLOSURE);
+    return plum_is_ref(v) && (plum_as_obj(v)->type == PLUM_OBJ_FUNCTION ||
+                              plum_as_obj(v)->type == PLUM_OBJ_CLOSURE);
 }
 
 static inline PlumTreeInfo *plum_as_tree_info(PlumValue v) {
-    return (PlumTreeInfo *)v.as.obj;
+    return (PlumTreeInfo *)plum_as_obj(v);
 }
 
 static inline PlumObject *plum_as_object(PlumValue v) {
-    return (PlumObject *)v.as.obj;
+    return (PlumObject *)plum_as_obj(v);
 }
 
 static inline PlumList *plum_as_list(PlumValue v) {
-    return (PlumList *)v.as.obj;
+    return (PlumList *)plum_as_obj(v);
 }
 
 /* Take another reference to an object value (no-op for the rest). */
 static inline PlumValue plum_retain(PlumValue v) {
-    if (v.type == PLUM_VAL_OBJ) {
-        v.as.obj->refcount++;
+    if (plum_is_ref(v)) {
+        plum_as_obj(v)->refcount++;
     }
     return v;
 }
 
 /* Give up a reference; frees the object when it was the last one. */
 void plum_release(PlumValue v);
+
+/* Let go of an int value: a boxed one holds a reference. */
+static inline void plum_release_int(PlumValue v) {
+#if PLUM_NANBOX
+    if (plum_is_ref(v)) {
+        plum_release(v);
+    }
+#else
+    (void)v;
+#endif
+}
+
+/* Store `i` in the variable at `slot`, which holds an int. The wide layout
+ * writes only the number: the type is already there. */
+static inline void plum_set_int(PlumValue *slot, int64_t i) {
+#if PLUM_NANBOX
+    PlumValue old = *slot;
+    *slot = plum_int(i);
+    plum_release_int(old);
+#else
+    slot->as.i = i;
+#endif
+}
+
+/* Store the float `f` (a result of float arithmetic) in the variable at
+ * `slot`, which holds a float. */
+static inline void plum_set_float(PlumValue *slot, double f) {
+#if PLUM_NANBOX
+    *slot = plum_float_raw(f);
+#else
+    slot->as.f = f;
+#endif
+}
 
 /*
  * The longest a string may be, in bytes, and a list, in items (spec 11.4).

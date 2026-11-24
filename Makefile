@@ -41,6 +41,13 @@ INCLUDE := -Iinclude -Isrc
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DEFS    := -DPLUM_COMMIT=\"$(COMMIT)\"
 
+# NANBOX=1 or NANBOX=0 builds with that value layout (src/vm/value.h, #121)
+# instead of the default, into a build directory of its own.
+ifneq ($(NANBOX),)
+  DEFS += -DPLUM_NANBOX=$(NANBOX)
+  LAYOUT := -nanbox$(NANBOX)
+endif
+
 # make wasm: Emscripten's emcc if it is on the PATH, or else this image
 # (docker), pinned so every build is the same.
 EMSDK_IMAGE ?= emscripten/emsdk:6.0.13
@@ -88,7 +95,7 @@ endif
 # that llvm-profdata merges into one .profdata (LLVM_PROFDATA=llvm-profdata-18
 # where it has a version suffix).
 IS_CLANG := $(shell $(CC) --version 2>/dev/null | grep -q clang && echo yes)
-PGO_DIR  := build/pgo
+PGO_DIR  := build/pgo$(LAYOUT)
 ifeq ($(shell uname -s 2>/dev/null),Darwin)
   LLVM_PROFDATA ?= xcrun llvm-profdata
 else
@@ -154,11 +161,11 @@ LDLIBS  += -lws2_32 -lbcrypt -lcrypt32
 LDFLAGS += -Wl,--stack,8388608
 endif
 
-BUILD   := build/$(MODE)
+BUILD   := build/$(MODE)$(LAYOUT)
 ifneq ($(PGO),)
   BUILD := $(PGO_DIR)
 else ifeq ($(MODE)$(LTO),release1)
-  BUILD := build/release-lto
+  BUILD := build/release-lto$(LAYOUT)
 endif
 ifeq ($(MODE),wasm)
   BUILD := build/wasm-obj

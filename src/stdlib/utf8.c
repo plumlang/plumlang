@@ -139,7 +139,7 @@ static bool u_code(ARGS) {
 /* char(code): the character with that code point. */
 static bool u_char(ARGS) {
     (void)argc;
-    int64_t code = args[0].as.i;
+    int64_t code = plum_as_int(args[0]);
     if (!is_scalar(code)) {
         return code_error(n, "utf8.char", code);
     }
@@ -182,7 +182,7 @@ static bool u_from_codes(ARGS) {
     const PlumList *codes = plum_as_list(args[0]);
     Buf b = {0};
     for (size_t i = 0; i < codes->len; i++) {
-        int64_t code = codes->items[i].as.i;
+        int64_t code = plum_as_int(codes->items[i]);
         if (!is_scalar(code)) {
             plum_array_free(&b);
             char fn[64];

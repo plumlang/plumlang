@@ -40,7 +40,7 @@ typedef struct PlumTable {
 } PlumTable;
 
 static inline PlumTable *plum_as_table(PlumValue v) {
-    return (PlumTable *)v.as.obj;
+    return (PlumTable *)plum_as_obj(v);
 }
 
 PlumTable *plum_table_new(bool is_set, const uint64_t seed[2]);

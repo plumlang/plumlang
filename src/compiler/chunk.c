@@ -69,11 +69,13 @@ void plum_chunk_write_u16(PlumChunk *chunk, uint16_t value, uint32_t line) {
 size_t plum_chunk_add_constant(PlumChunk *chunk, PlumValue value) {
     for (size_t i = 0; i < chunk->constants.len; i++) {
         PlumValue c = chunk->constants.items[i];
-        bool same_kind = c.type == value.type &&
-                         (c.type != PLUM_VAL_OBJ ||
+        PlumValueType type = plum_value_type(c);
+        bool same_kind = type == plum_value_type(value) &&
+                         (type != PLUM_VAL_OBJ ||
                           (plum_is_obj(c, PLUM_OBJ_STRING) && plum_is_obj(value, PLUM_OBJ_STRING)));
-        bool same_float_bits =
-            c.type != PLUM_VAL_FLOAT || memcmp(&c.as.f, &value.as.f, sizeof(double)) == 0;
+        double f = type == PLUM_VAL_FLOAT ? plum_as_float(c) : 0;
+        double g = type == PLUM_VAL_FLOAT ? plum_as_float(value) : 0;
+        bool same_float_bits = memcmp(&f, &g, sizeof(double)) == 0;
         if (same_kind && same_float_bits && plum_values_equal(c, value)) {
             plum_release(value);
             return i;

@@ -129,7 +129,7 @@ static void unsupported(Compiler *c, PlumSpan span, const char *what, int issue)
 
 static uint16_t constant(Compiler *c, PlumValue v, PlumSpan span) {
     if (plum_is_obj(v, PLUM_OBJ_STRING)) {
-        v.as.obj->flags |= PLUM_OBJ_FROZEN; /* never appended to in place */
+        plum_as_obj(v)->flags |= PLUM_OBJ_FROZEN; /* never appended to in place */
     }
     size_t i = plum_chunk_add_constant(chunk(c), v);
     if (i >= NO_FORMAT) {

@@ -8,7 +8,7 @@
 
 static bool all_ints(const PlumValue *args, int argc) {
     for (int i = 0; i < argc; i++) {
-        if (args[i].type != PLUM_VAL_INT) {
+        if (!plum_is_int(args[i])) {
             return false;
         }
     }
@@ -74,7 +74,7 @@ static bool m_log(ARGS) {
     if (x <= 0) {
         return plum_native_throw(n, PLUM_ERROR_VALUE, "log(%g): the value must be above 0", x);
     }
-    if (argc > 1 && args[1].type != PLUM_VAL_NONE) {
+    if (argc > 1 && !plum_is_none(args[1])) {
         double base = plum_num(args[1]);
         if (base <= 0 || base == 1.0) {
             return plum_native_throw(n, PLUM_ERROR_VALUE,
@@ -89,14 +89,14 @@ static bool m_log(ARGS) {
 
 static bool m_abs(ARGS) {
     (void)argc;
-    if (args[0].type == PLUM_VAL_INT) {
-        if (args[0].as.i == INT64_MIN) {
+    if (plum_is_int(args[0])) {
+        if (plum_as_int(args[0]) == INT64_MIN) {
             return plum_native_throw(n, PLUM_ERROR_OVERFLOW, "abs(%lld) doesn't fit in an int",
-                                     (long long)args[0].as.i);
+                                     (long long)plum_as_int(args[0]));
         }
-        *result = plum_int(args[0].as.i < 0 ? -args[0].as.i : args[0].as.i);
+        *result = plum_int(plum_as_int(args[0]) < 0 ? -plum_as_int(args[0]) : plum_as_int(args[0]));
     } else {
-        *result = plum_float(fabs(args[0].as.f));
+        *result = plum_float(fabs(plum_as_float(args[0])));
     }
     return true;
 }
@@ -105,7 +105,7 @@ static bool m_abs(ARGS) {
 static bool m_min(ARGS) {
     (void)n;
     if (all_ints(args, argc)) {
-        *result = plum_int(args[0].as.i < args[1].as.i ? args[0].as.i : args[1].as.i);
+        *result = plum_int(plum_as_int(args[0]) < plum_as_int(args[1]) ? plum_as_int(args[0]) : plum_as_int(args[1]));
     } else {
         double a = plum_num(args[0]), b = plum_num(args[1]);
         *result = plum_float(a < b ? a : b);
@@ -116,7 +116,7 @@ static bool m_min(ARGS) {
 static bool m_max(ARGS) {
     (void)n;
     if (all_ints(args, argc)) {
-        *result = plum_int(args[0].as.i > args[1].as.i ? args[0].as.i : args[1].as.i);
+        *result = plum_int(plum_as_int(args[0]) > plum_as_int(args[1]) ? plum_as_int(args[0]) : plum_as_int(args[1]));
     } else {
         double a = plum_num(args[0]), b = plum_num(args[1]);
         *result = plum_float(a > b ? a : b);
@@ -126,7 +126,7 @@ static bool m_max(ARGS) {
 
 static bool m_clamp(ARGS) {
     if (all_ints(args, argc)) {
-        int64_t x = args[0].as.i, lo = args[1].as.i, hi = args[2].as.i;
+        int64_t x = plum_as_int(args[0]), lo = plum_as_int(args[1]), hi = plum_as_int(args[2]);
         if (lo > hi) {
             return plum_native_throw(n, PLUM_ERROR_VALUE, "clamp: low %lld is above high %lld",
                                      (long long)lo, (long long)hi);
@@ -166,11 +166,11 @@ static bool m_ceil(ARGS) {
 /* round(x) halves away from zero; round(x, digits) keeps that many decimals. */
 static bool m_round(ARGS) {
     double x = plum_num(args[0]);
-    if (argc < 2 || args[1].type == PLUM_VAL_NONE) {
+    if (argc < 2 || plum_is_none(args[1])) {
         *result = plum_float(round(x));
         return true;
     }
-    int64_t digits = args[1].as.i;
+    int64_t digits = plum_as_int(args[1]);
     if (digits < -15 || digits > 15) {
         return plum_native_throw(n, PLUM_ERROR_VALUE, "round: digits must be -15 to 15, not %lld",
                                  (long long)digits);
@@ -206,7 +206,7 @@ static bool m_random(ARGS) {
 
 static bool m_random_int(ARGS) {
     (void)argc;
-    int64_t low = args[0].as.i, high = args[1].as.i;
+    int64_t low = plum_as_int(args[0]), high = plum_as_int(args[1]);
     if (low > high) {
         return plum_native_throw(n, PLUM_ERROR_VALUE, "random_int: low %lld is above high %lld",
                                  (long long)low, (long long)high);
@@ -227,7 +227,7 @@ static bool m_random_int(ARGS) {
 
 static bool m_seed(ARGS) {
     (void)argc;
-    plum_native_seed_random(n, (uint64_t)args[0].as.i);
+    plum_native_seed_random(n, (uint64_t)plum_as_int(args[0]));
     *result = plum_none();
     return true;
 }
