@@ -149,12 +149,23 @@
     X(NEW_OBJECT, 2, "an object of tree constant [a] from its [b] fields on the stack")            \
     X(GET_FIELD, 1, "field [a] of the object on top")                                              \
     X(SET_FIELD, 1, "object.field [a] = value (shared: every holder sees it)")                     \
+    X(GET_FIELD_L, 2, "field [b] of the object in local [a]")                                      \
+    X(SET_FIELD_L, 2, "pop into field [b] of the object in local [a]")                             \
+    X(FIELD_ADD_INT_K, 3, "int field [b] of the object in local [a] += int constant [c]")          \
+    X(FIELD_SUB_INT_K, 3, "int field [b] of the object in local [a] -= int constant [c]")          \
+    X(FIELD_ADD_INT_L, 3, "int field [b] of the object in local [a] += int local [c]")             \
+    X(FIELD_SUB_INT_L, 3, "int field [b] of the object in local [a] -= int local [c]")             \
+    X(FIELD_ADD_FLOAT_K, 3, "float field [b] of the object in local [a] += float constant [c]")    \
+    X(FIELD_SUB_FLOAT_K, 3, "float field [b] of the object in local [a] -= float constant [c]")    \
+    X(FIELD_ADD_FLOAT_L, 3, "float field [b] of the object in local [a] += float local [c]")       \
+    X(FIELD_SUB_FLOAT_L, 3, "float field [b] of the object in local [a] -= float local [c]")       \
     X(IS_TREE, 1, "is the top value an object of tree constant [a] or one extending it")           \
     X(WEAK, 0, "the top value as a weak reference (an object's weak box; none stays none)")        \
     X(UNWEAK, 0, "a weak reference's object, or none if it is gone")                               \
     X(IS_TRAIT, 1, "does the top value's tree have the trait named by constant [a]")               \
     X(INVOKE, 2, "call method [a] of the object under [b] arguments, the object as self")          \
     X(INVOKE_FROM, 3, "call tree constant [a]'s method [b] (super, init) with [c] arguments")      \
+    X(CALL_METHOD, 2, "call program method [a], found when compiling, the object under [b] args")  \
     /* Every type */                                                                               \
     X(EQ, 0, "a == b, for any two values")                                                         \
     X(NE, 0, "a != b, for any two values")                                                         \

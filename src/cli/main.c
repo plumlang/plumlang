@@ -246,6 +246,10 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
         compiled = plum_cli_compile(&modules);
         if (compiled.main != NULL && stage == STAGE_DIS) {
             plum_disassemble(stdout, compiled.main);
+            for (int i = 0; i < compiled.method_count; i++) {
+                fputc('\n', stdout);
+                plum_disassemble(stdout, compiled.methods[i]);
+            }
         }
     }
     fflush(stdout);

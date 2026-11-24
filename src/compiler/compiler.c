@@ -70,6 +70,11 @@ typedef struct Compiler {
     PlumMap method_ids;               /* method name -> its number + 1 */
     int method_id_count;
     PLUM_ARRAY(MethodFn) methods; /* every method with a body, compiled */
+    /* Every tree the program declares, when it is the whole program (not a
+     * REPL entry, which a later one can extend): a call whose method no
+     * tree extending the receiver's overrides is then a direct call. */
+    PLUM_ARRAY(PlumSymbol *) program_trees;
+    bool whole_program;
     FnState *fs;
     int global_count;
     PlumTy *result;   /* the current function's result type, for return */
@@ -1222,6 +1227,26 @@ static PlumSymbol *tree_of(const PlumTy *t) {
     return t != NULL && t->kind == PLUM_TY_TREE ? t->as.decl : NULL;
 }
 
+/*
+ * Is `obj` (a name, self or super) an object of a tree held in a local
+ * slot of the running function, not in a closure's cell? Its fields are
+ * then read and changed through the slot (GET_FIELD_L, FIELD_ADD_INT_K).
+ */
+static bool object_local(Compiler *c, const PlumExpr *obj, uint16_t *slot) {
+    if (!ty_is(obj->ty, PLUM_TY_TREE) ||
+        (obj->kind != PLUM_EXPR_NAME && obj->kind != PLUM_EXPR_SELF &&
+         obj->kind != PLUM_EXPR_SUPER)) {
+        return false;
+    }
+    const PlumSymbol *sym = obj->symbol;
+    if (sym == NULL || sym->kind == PLUM_SYM_NATIVE || !sym->has_slot || sym->global ||
+        sym->captured || sym == c->fs->self || sym->function_depth != c->fs->depth) {
+        return false;
+    }
+    *slot = (uint16_t)sym->slot;
+    return true;
+}
+
 /* obj.field and obj?.field */
 static void compile_field(Compiler *c, const PlumExpr *e) {
     const PlumExpr *obj = e->as.field.object;
@@ -1250,6 +1275,15 @@ static void compile_field(Compiler *c, const PlumExpr *e) {
     }
     if (index < 0) {
         unsupported(c, e->span, "a method as a value (call it, or wrap it in a lambda)", 36);
+        return;
+    }
+    uint16_t slot;
+    if (!e->as.field.optional && object_local(c, obj, &slot)) {
+        /* self.x: straight from the object in the local, no reference taken */
+        op2(c, PLUM_OP_GET_FIELD_L, slot, (uint16_t)index, e->span.line);
+        if (field_weak(tree, index)) {
+            op(c, PLUM_OP_UNWEAK, e->span.line);
+        }
         return;
     }
     if (obj->kind == PLUM_EXPR_SUPER) {
@@ -1409,8 +1443,12 @@ static void fill_method_tables(Compiler *c) {
     }
 }
 
-/* Compile the methods of a tree or trait (the ones with a body). */
-static void compile_methods(Compiler *c, const PlumStmt *s) {
+/*
+ * Make a function for each method of a tree or trait with a body, before
+ * any code is compiled: a direct call (CALL_METHOD) names the function by
+ * its place in the program's list, whichever is compiled first.
+ */
+static void declare_methods(Compiler *c, const PlumStmt *s) {
     for (size_t i = 0; i < s->as.tree.method_count; i++) {
         const PlumBranch *m = &s->as.tree.methods[i];
         if (m->body == NULL && m->arrow == NULL) {
@@ -1423,8 +1461,65 @@ static void compile_methods(Compiler *c, const PlumStmt *s) {
         MethodFn entry = {m, fn};
         plum_array_push(&c->methods, entry);
         method_id(c, m->name);
-        compile_method_body(c, fn, m);
     }
+    if (s->kind == PLUM_STMT_TREE && s->symbol != NULL && c->whole_program) {
+        plum_array_push(&c->program_trees, s->symbol);
+    }
+}
+
+/* Compile the methods of a tree or trait (the ones with a body). */
+static void compile_methods(Compiler *c, const PlumStmt *s) {
+    for (size_t i = 0; i < s->as.tree.method_count; i++) {
+        const PlumBranch *m = &s->as.tree.methods[i];
+        if (m->body == NULL && m->arrow == NULL) {
+            continue;
+        }
+        compile_method_body(c, method_function(c, m), m);
+    }
+}
+
+/* The number of method `m`'s function in the program's list, or -1. */
+static int static_method_of(const Compiler *c, const PlumBranch *m) {
+    for (size_t i = 0; i < c->methods.len; i++) {
+        if (c->methods.items[i].decl == m) {
+            return i <= 0xFFFF ? (int)i : -1;
+        }
+    }
+    return -1;
+}
+
+/* Does `tree` extend `ancestor`, directly or through its parents? */
+static bool extends_tree(const PlumSymbol *tree, const PlumSymbol *ancestor) {
+    for (const PlumSymbol *t = parent_of(tree); t != NULL; t = parent_of(t)) {
+        if (t == ancestor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * The method a call of `name` on an object of type `tree` runs, when it is
+ * the same whatever tree the object really is: no tree in the program that
+ * extends `tree` overrides it. Returns its function's number in the
+ * program's list (CALL_METHOD's operand), or -1 if the object's own table
+ * must decide at run time (INVOKE).
+ */
+static int static_method(Compiler *c, const PlumSymbol *tree, const char *name) {
+    if (!c->whole_program || tree == NULL || tree->kind != PLUM_SYM_TREE || tree->decl == NULL) {
+        return -1;
+    }
+    const PlumBranch *m = method_impl(tree, name);
+    if (m == NULL) {
+        return -1;
+    }
+    for (size_t i = 0; i < c->program_trees.len; i++) {
+        const PlumSymbol *other = c->program_trees.items[i];
+        if (other != tree && extends_tree(other, tree) && method_impl(other, name) != m) {
+            return -1;
+        }
+    }
+    return static_method_of(c, m);
 }
 
 static PlumTy *unwrap_optional(PlumTy *t) {
@@ -1489,6 +1584,13 @@ static void compile_invoke(Compiler *c, const PlumExpr *e) {
         /* the parent's version, whatever the object's own tree is */
         load_symbol(c, obj->symbol, obj->span);
         compile_args(c, e, fty, method_decl(decl, name, 0));
+        int direct = c->whole_program && method_impl(decl, name) != NULL
+                         ? static_method_of(c, method_impl(decl, name))
+                         : -1;
+        if (direct >= 0) {
+            op2(c, PLUM_OP_CALL_METHOD, (uint16_t)direct, argc, line);
+            return;
+        }
         op2(c, PLUM_OP_INVOKE_FROM, tree_constant(c, decl, e->span), id, line);
         plum_chunk_write_u16(chunk(c), argc, line);
         return;
@@ -1499,7 +1601,12 @@ static void compile_invoke(Compiler *c, const PlumExpr *e) {
         skip = emit_jump(c, PLUM_OP_JUMP_IF_NONE_KEEP, line); /* none?.m() is none */
     }
     compile_args(c, e, fty, method_decl(decl, name, 0));
-    op2(c, PLUM_OP_INVOKE, id, argc, line);
+    int direct = static_method(c, decl, name);
+    if (direct >= 0) {
+        op2(c, PLUM_OP_CALL_METHOD, (uint16_t)direct, argc, line); /* no table to look in */
+    } else {
+        op2(c, PLUM_OP_INVOKE, id, argc, line); /* the object's own tree decides */
+    }
     if (callee->as.field.optional) {
         patch_jump(c, skip, e->span);
     }
@@ -1515,8 +1622,14 @@ static void compile_init_call(Compiler *c, const PlumExpr *e, PlumSymbol *tree,
     op1(c, PLUM_OP_SET_LOCAL, obj, line);
     op1(c, PLUM_OP_GET_LOCAL, obj, line);
     compile_args(c, e, init->ty, init);
-    op2(c, PLUM_OP_INVOKE_FROM, tree_constant(c, tree, e->span), method_id(c, "init"), line);
-    plum_chunk_write_u16(chunk(c), (uint16_t)init->param_count, line);
+    const PlumBranch *runs = c->whole_program ? method_impl(tree, "init") : NULL;
+    int direct = runs != NULL ? static_method_of(c, runs) : -1;
+    if (direct >= 0) {
+        op2(c, PLUM_OP_CALL_METHOD, (uint16_t)direct, (uint16_t)init->param_count, line);
+    } else {
+        op2(c, PLUM_OP_INVOKE_FROM, tree_constant(c, tree, e->span), method_id(c, "init"), line);
+        plum_chunk_write_u16(chunk(c), (uint16_t)init->param_count, line);
+    }
     op(c, PLUM_OP_POP, line);
     op1(c, PLUM_OP_GET_LOCAL, obj, line);
     c->fs->next_slot = saved;
@@ -2511,6 +2624,57 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
 static PlumTokenKind compound_operator(PlumTokenKind tok);
 
 /*
+ * obj.f = v and obj.f op= v with obj in a local: the local names the
+ * object, so nothing is copied out. obj.f += k and obj.f -= k on an int
+ * or float field, with k a literal or a local, is one instruction that
+ * changes the field in place (FIELD_ADD_INT_K, FIELD_SUB_FLOAT_L, ...).
+ */
+static void compile_local_field_assign(Compiler *c, const PlumStmt *s, uint16_t slot, int index,
+                                       bool weak) {
+    const PlumExpr *target = s->as.assign.target;
+    const PlumExpr *value = s->as.assign.value;
+    uint32_t line = s->span.line;
+    if (s->as.assign.op == PLUM_TOK_EQ) {
+        compile_as(c, value, target->ty);
+    } else {
+        PlumTokenKind tok = compound_operator(s->as.assign.op);
+        bool fl = ty_is(target->ty, PLUM_TY_FLOAT);
+        uint16_t from;
+        if (!weak && (tok == PLUM_TOK_PLUS || tok == PLUM_TOK_MINUS) &&
+            (fl || ty_is(target->ty, PLUM_TY_INT))) {
+            bool plus = tok == PLUM_TOK_PLUS;
+            PlumOpcode o = PLUM_OPCODE_COUNT;
+            uint16_t operand = 0;
+            if (value->kind == PLUM_EXPR_INT) {
+                o = fl ? (plus ? PLUM_OP_FIELD_ADD_FLOAT_K : PLUM_OP_FIELD_SUB_FLOAT_K)
+                       : (plus ? PLUM_OP_FIELD_ADD_INT_K : PLUM_OP_FIELD_SUB_INT_K);
+                operand = constant(c, fl ? plum_float((double)value->as.i) : plum_int(value->as.i),
+                                   value->span);
+            } else if (fl && value->kind == PLUM_EXPR_FLOAT) {
+                o = plus ? PLUM_OP_FIELD_ADD_FLOAT_K : PLUM_OP_FIELD_SUB_FLOAT_K;
+                operand = constant(c, plum_float(value->as.f), value->span);
+            } else if (plain_local(c, value, &from) &&
+                       (fl ? ty_is(value->ty, PLUM_TY_FLOAT) : ty_is(value->ty, PLUM_TY_INT))) {
+                o = fl ? (plus ? PLUM_OP_FIELD_ADD_FLOAT_L : PLUM_OP_FIELD_SUB_FLOAT_L)
+                       : (plus ? PLUM_OP_FIELD_ADD_INT_L : PLUM_OP_FIELD_SUB_INT_L);
+                operand = from;
+            }
+            if (o != PLUM_OPCODE_COUNT) {
+                op2(c, o, slot, (uint16_t)index, line);
+                plum_chunk_write_u16(chunk(c), operand, line);
+                return;
+            }
+        }
+        op2(c, PLUM_OP_GET_FIELD_L, slot, (uint16_t)index, line);
+        arithmetic(c, tok, NULL, target->ty, value, line);
+    }
+    if (weak) {
+        op(c, PLUM_OP_WEAK, line);
+    }
+    op2(c, PLUM_OP_SET_FIELD_L, slot, (uint16_t)index, line);
+}
+
+/*
  * obj.f = v and obj.f op= v. Objects are shared, so SET_FIELD changes the
  * one object every holder sees. The object is computed once.
  */
@@ -2523,6 +2687,11 @@ static void compile_field_assign(Compiler *c, const PlumStmt *s) {
         return;
     }
     uint32_t line = s->span.line;
+    uint16_t slot;
+    if (object_local(c, target->as.field.object, &slot)) {
+        compile_local_field_assign(c, s, slot, index, field_weak(tree, index));
+        return;
+    }
     int saved = c->fs->next_slot;
     uint16_t obj = new_local(c, NULL, s->span);
     compile_expr(c, target->as.field.object);
@@ -3080,6 +3249,17 @@ static PlumFunction *compile_program(Compiler *c, const PlumCompileModule *modul
         }
     }
 
+    /* Every method's function, so a direct call can name one compiled later. */
+    for (size_t m = 0; m < count; m++) {
+        const PlumProgram *program = modules[m].program;
+        for (size_t i = 0; i < program->count; i++) {
+            const PlumStmt *s = program->stmts[i];
+            if (s->kind == PLUM_STMT_TREE || s->kind == PLUM_STMT_TRAIT) {
+                declare_methods(c, s);
+            }
+        }
+    }
+
     /* Module functions exist before the first statement runs, so they can
      * be called before their declaration. */
     for (size_t m = 0; m < count; m++) {
@@ -3179,6 +3359,7 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
                                   PlumInterner *names) {
     Compiler c;
     compiler_init(&c, names);
+    c.whole_program = true; /* nothing compiled later can extend its trees */
     PlumFunction *main = compile_program(&c, modules, count, false);
 
     PlumCompiled out;
@@ -3196,6 +3377,7 @@ PlumCompiled plum_compile_modules(const PlumCompileModule *modules, size_t count
         out.methods[i] = c.methods.items[i].fn;
     }
     plum_array_free(&c.methods);
+    plum_array_free(&c.program_trees);
     plum_array_free(&c.user_trees);
     plum_map_free(&c.method_ids);
     /* the constants that use a tree info hold it now */
