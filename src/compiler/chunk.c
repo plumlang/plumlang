@@ -121,6 +121,15 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
         size_t next = at + 1 + 2 * (size_t)n;
         switch (op) {
         case PLUM_OP_CONST:
+        case PLUM_OP_ADD_INT_K:
+        case PLUM_OP_SUB_INT_K:
+        case PLUM_OP_MUL_INT_K:
+        case PLUM_OP_FLOORDIV_INT_K:
+        case PLUM_OP_MOD_INT_K:
+        case PLUM_OP_ADD_FLOAT_K:
+        case PLUM_OP_SUB_FLOAT_K:
+        case PLUM_OP_MUL_FLOAT_K:
+        case PLUM_OP_DIV_FLOAT_K:
             fprintf(out, " %u  ; ", a);
             print_constant(out, chunk->constants.items[a]);
             break;
@@ -133,6 +142,18 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
             }
             break;
         case PLUM_OP_JUMP:
+        case PLUM_OP_JUMP_IF_NOT_LT_INT:
+        case PLUM_OP_JUMP_IF_NOT_LE_INT:
+        case PLUM_OP_JUMP_IF_NOT_GT_INT:
+        case PLUM_OP_JUMP_IF_NOT_GE_INT:
+        case PLUM_OP_JUMP_IF_NOT_EQ_INT:
+        case PLUM_OP_JUMP_IF_NOT_NE_INT:
+        case PLUM_OP_JUMP_IF_NOT_LT_FLOAT:
+        case PLUM_OP_JUMP_IF_NOT_LE_FLOAT:
+        case PLUM_OP_JUMP_IF_NOT_GT_FLOAT:
+        case PLUM_OP_JUMP_IF_NOT_GE_FLOAT:
+        case PLUM_OP_JUMP_IF_NOT_EQ_FLOAT:
+        case PLUM_OP_JUMP_IF_NOT_NE_FLOAT:
         case PLUM_OP_JUMP_IF_FALSE:
         case PLUM_OP_JUMP_IF_FALSE_KEEP:
         case PLUM_OP_JUMP_IF_TRUE_KEEP:

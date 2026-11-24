@@ -18,11 +18,9 @@
 
 == area (1 parameter, 1 slot) ==
 0000    4  CONST 0  ; 3.14
-0003    |  GET_LOCAL 0
-0006    |  MUL_FLOAT
-0007    |  GET_LOCAL 0
-0010    |  MUL_FLOAT
-0011    |  RETURN
+0003    |  MUL_FLOAT_L 0
+0006    |  MUL_FLOAT_L 0
+0009    |  RETURN
 
 == connect (3 parameters, 3 slots) ==
 0000    6  GET_LOCAL 2

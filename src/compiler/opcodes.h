@@ -52,6 +52,14 @@
     X(GE_INT, 0, "a >= b")                                                                       \
     X(EQ_INT, 0, "a == b")                                                                       \
     X(NE_INT, 0, "a != b")                                                                       \
+    X(ADD_INT_K, 1, "a + int constant [a]")                                                      \
+    X(SUB_INT_K, 1, "a - int constant [a]")                                                      \
+    X(MUL_INT_K, 1, "a * int constant [a]")                                                      \
+    X(FLOORDIV_INT_K, 1, "a // int constant [a], which is above 0")                              \
+    X(MOD_INT_K, 1, "a % int constant [a], which is above 0")                                    \
+    X(ADD_INT_L, 1, "a + int local [a]")                                                         \
+    X(SUB_INT_L, 1, "a - int local [a]")                                                         \
+    X(MUL_INT_L, 1, "a * int local [a]")                                                         \
     /* Floats: IEEE 754 */                                                                       \
     X(ADD_FLOAT, 0, "a + b")                                                                     \
     X(SUB_FLOAT, 0, "a - b")                                                                     \
@@ -67,6 +75,14 @@
     X(GE_FLOAT, 0, "a >= b")                                                                     \
     X(EQ_FLOAT, 0, "a == b")                                                                     \
     X(NE_FLOAT, 0, "a != b")                                                                     \
+    X(ADD_FLOAT_K, 1, "a + float constant [a]")                                                  \
+    X(SUB_FLOAT_K, 1, "a - float constant [a]")                                                  \
+    X(MUL_FLOAT_K, 1, "a * float constant [a]")                                                  \
+    X(DIV_FLOAT_K, 1, "a / float constant [a]")                                                  \
+    X(ADD_FLOAT_L, 1, "a + float local [a]")                                                     \
+    X(SUB_FLOAT_L, 1, "a - float local [a]")                                                     \
+    X(MUL_FLOAT_L, 1, "a * float local [a]")                                                     \
+    X(DIV_FLOAT_L, 1, "a / float local [a]")                                                     \
     X(INT_TO_FLOAT, 0, "convert the top value")                                                  \
     /* Strings */                                                                                \
     X(CONCAT, 0, "a + b for strings")                                                            \
@@ -129,9 +145,22 @@
     X(JUMP_IF_TRUE_KEEP, 1, "jump forward [a] bytes if good, keeping the value")                 \
     X(JUMP_IF_NOT_NONE_KEEP, 1, "jump forward [a] bytes unless none, keeping the value")         \
     X(JUMP_IF_NONE_KEEP, 1, "jump forward [a] bytes if none, keeping the value")                 \
+    X(JUMP_IF_NOT_LT_INT, 1, "pop two ints; jump forward [a] bytes unless a < b")                \
+    X(JUMP_IF_NOT_LE_INT, 1, "pop two ints; jump forward [a] bytes unless a <= b")               \
+    X(JUMP_IF_NOT_GT_INT, 1, "pop two ints; jump forward [a] bytes unless a > b")                \
+    X(JUMP_IF_NOT_GE_INT, 1, "pop two ints; jump forward [a] bytes unless a >= b")               \
+    X(JUMP_IF_NOT_EQ_INT, 1, "pop two ints; jump forward [a] bytes unless a == b")               \
+    X(JUMP_IF_NOT_NE_INT, 1, "pop two ints; jump forward [a] bytes unless a != b")               \
+    X(JUMP_IF_NOT_LT_FLOAT, 1, "pop two floats; jump forward [a] bytes unless a < b")            \
+    X(JUMP_IF_NOT_LE_FLOAT, 1, "pop two floats; jump forward [a] bytes unless a <= b")           \
+    X(JUMP_IF_NOT_GT_FLOAT, 1, "pop two floats; jump forward [a] bytes unless a > b")            \
+    X(JUMP_IF_NOT_GE_FLOAT, 1, "pop two floats; jump forward [a] bytes unless a >= b")           \
+    X(JUMP_IF_NOT_EQ_FLOAT, 1, "pop two floats; jump forward [a] bytes unless a == b")           \
+    X(JUMP_IF_NOT_NE_FLOAT, 1, "pop two floats; jump forward [a] bytes unless a != b")           \
     X(LOOP, 1, "jump back [a] bytes")                                                            \
     X(FOR_RANGE, 3, "jump forward [c] if local [a] is past local [a+1] (<, or <= if [b])")       \
-    X(FOR_NEXT, 3, "unless [b] and local [a] == local [a+1]: add 1, jump back [c]")              \
+    X(FOR_NEXT, 3,                                                                               \
+      "if local [a] + 1 is within local [a+1] (<, or <= if [b]): add 1, jump back [c]")          \
     /* Errors */                                                                                 \
     X(TRY, 1, "until END_TRY: on an error, unwind and jump forward [a] with the error pushed")   \
     X(END_TRY, 1, "the last [a] tries are over")                                                 \

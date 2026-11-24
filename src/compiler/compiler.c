@@ -345,6 +345,84 @@ static PlumOpcode compare_op(PlumTokenKind tok, int kind /* 0 int, 1 float, 2 st
 }
 
 /*
+ * A variable the VM can read straight from the running function's slots:
+ * a local of this function that no closure captured (so it isn't in a
+ * cell). The _L instructions take it as their right operand.
+ */
+static bool plain_local(Compiler *c, const PlumExpr *e, uint16_t *slot) {
+    if (e->kind != PLUM_EXPR_NAME || plum_expr_native_constant(e) != NULL) {
+        return false;
+    }
+    const PlumSymbol *sym = e->symbol;
+    if (sym == NULL || sym->kind == PLUM_SYM_NATIVE || !sym->has_slot || sym->global ||
+        sym->captured || sym == c->fs->self || sym->function_depth != c->fs->depth) {
+        return false;
+    }
+    *slot = (uint16_t)sym->slot;
+    return true;
+}
+
+/*
+ * The right operand of an int or float operation as an operand of the
+ * instruction itself (ADD_INT_K, MUL_FLOAT_L, ...) when it is a literal or
+ * a plain local: one instruction instead of two. Emits it and returns
+ * true, or emits nothing and returns false. The checker has proven both
+ * operands' types; the left one is already on the stack, as a float if
+ * `fl`.
+ */
+static bool fused_right(Compiler *c, PlumTokenKind tok, bool fl, const PlumTy *lty,
+                        const PlumExpr *right, uint32_t line) {
+    /* rows: + - * / // %; columns: int constant, int local, float constant, float local */
+    static const PlumOpcode table[6][4] = {
+        {PLUM_OP_ADD_INT_K, PLUM_OP_ADD_INT_L, PLUM_OP_ADD_FLOAT_K, PLUM_OP_ADD_FLOAT_L},
+        {PLUM_OP_SUB_INT_K, PLUM_OP_SUB_INT_L, PLUM_OP_SUB_FLOAT_K, PLUM_OP_SUB_FLOAT_L},
+        {PLUM_OP_MUL_INT_K, PLUM_OP_MUL_INT_L, PLUM_OP_MUL_FLOAT_K, PLUM_OP_MUL_FLOAT_L},
+        {PLUM_OPCODE_COUNT, PLUM_OPCODE_COUNT, PLUM_OP_DIV_FLOAT_K, PLUM_OP_DIV_FLOAT_L},
+        {PLUM_OP_FLOORDIV_INT_K, PLUM_OPCODE_COUNT, PLUM_OPCODE_COUNT, PLUM_OPCODE_COUNT},
+        {PLUM_OP_MOD_INT_K, PLUM_OPCODE_COUNT, PLUM_OPCODE_COUNT, PLUM_OPCODE_COUNT},
+    };
+    int row = tok == PLUM_TOK_PLUS          ? 0
+              : tok == PLUM_TOK_MINUS       ? 1
+              : tok == PLUM_TOK_STAR        ? 2
+              : tok == PLUM_TOK_SLASH       ? 3
+              : tok == PLUM_TOK_SLASH_SLASH ? 4
+              : tok == PLUM_TOK_PERCENT     ? 5
+                                            : -1;
+    if (row < 0 || (!fl && !(int_like(lty) && int_like(right->ty))) ||
+        (fl && !int_like(lty) && !ty_is(lty, PLUM_TY_FLOAT))) {
+        return false;
+    }
+    uint16_t slot;
+    PlumOpcode o = PLUM_OPCODE_COUNT;
+    uint16_t operand = 0;
+    if (!fl && right->kind == PLUM_EXPR_INT) {
+        /* // and % by a constant above 0 can't fail: no zero or overflow check */
+        if (row < 4 || right->as.i > 0) {
+            o = table[row][0];
+            operand = constant(c, plum_int(right->as.i), right->span);
+        }
+    } else if (!fl && plain_local(c, right, &slot)) {
+        o = table[row][1];
+        operand = slot;
+    } else if (fl && (right->kind == PLUM_EXPR_FLOAT || right->kind == PLUM_EXPR_INT)) {
+        /* an int literal is converted here, as INT_TO_FLOAT would at run time */
+        double v = right->kind == PLUM_EXPR_FLOAT ? right->as.f : (double)right->as.i;
+        o = table[row][2];
+        if (o != PLUM_OPCODE_COUNT) {
+            operand = constant(c, plum_float(v), right->span);
+        }
+    } else if (fl && ty_is(right->ty, PLUM_TY_FLOAT) && plain_local(c, right, &slot)) {
+        o = table[row][3];
+        operand = slot;
+    }
+    if (o == PLUM_OPCODE_COUNT) {
+        return false;
+    }
+    op1(c, o, operand, line);
+    return true;
+}
+
+/*
  * left op right for arithmetic and bitwise operators (also compound
  * assignment): both operands are converted to the result's type as they
  * are computed. `left` is NULL when the left value is already pushed.
@@ -369,6 +447,9 @@ static void arithmetic(Compiler *c, PlumTokenKind tok, const PlumExpr *left, con
     if (fl && int_like(lty)) {
         op(c, PLUM_OP_INT_TO_FLOAT, line);
     }
+    if (fused_right(c, tok, fl, lty, right, line)) {
+        return;
+    }
     compile_expr(c, right);
     if (fl && int_like(right->ty)) {
         op(c, PLUM_OP_INT_TO_FLOAT, line);
@@ -382,6 +463,95 @@ static void arithmetic(Compiler *c, PlumTokenKind tok, const PlumExpr *left, con
         return;
     }
     op(c, arith_op(tok, fl), line);
+}
+
+/*
+ * Is `e` a comparison of two numbers (== != < <= > >=) that a typed
+ * instruction does? 0: as ints, 1: as floats (either operand a float),
+ * -1: no (strings, objects with compare or equals, anything else).
+ */
+static int number_comparison(const PlumExpr *e) {
+    if (e->kind != PLUM_EXPR_BINARY) {
+        return -1;
+    }
+    PlumTokenKind tok = e->as.binary.op;
+    const PlumExpr *l = e->as.binary.left, *r = e->as.binary.right;
+    bool ints = int_like(l->ty) && int_like(r->ty);
+    bool floats = !ints && (int_like(l->ty) || ty_is(l->ty, PLUM_TY_FLOAT)) &&
+                  (int_like(r->ty) || ty_is(r->ty, PLUM_TY_FLOAT));
+    switch (tok) {
+    case PLUM_TOK_EQ_EQ:
+    case PLUM_TOK_BANG_EQ:
+    case PLUM_TOK_LESS:
+    case PLUM_TOK_LESS_EQ:
+    case PLUM_TOK_GREATER:
+    case PLUM_TOK_GREATER_EQ:
+        /* numbers have no compare or equals method to call instead */
+        return ints ? 0 : floats ? 1 : -1;
+    default:
+        return -1;
+    }
+}
+
+/* Push both operands of a comparison, as floats when `floats`. */
+static void compile_compared(Compiler *c, const PlumExpr *l, const PlumExpr *r, bool floats,
+                             uint32_t line) {
+    compile_expr(c, l);
+    if (floats && int_like(l->ty)) {
+        op(c, PLUM_OP_INT_TO_FLOAT, line);
+    }
+    compile_expr(c, r);
+    if (floats && int_like(r->ty)) {
+        op(c, PLUM_OP_INT_TO_FLOAT, line);
+    }
+}
+
+typedef PLUM_ARRAY(size_t) Jumps;
+
+/*
+ * Compile `e` as the condition of an if or a while: add to `out` the
+ * jumps (to patch) taken when it is false. A comparison of two numbers
+ * compares and jumps in one instruction; `a and b` jumps out at the first
+ * false operand, with no bool left to pop. Anything else is computed and
+ * tested with JUMP_IF_FALSE.
+ */
+static void compile_cond(Compiler *c, const PlumExpr *e, Jumps *out) {
+    uint32_t line = e->span.line;
+    if (e->kind == PLUM_EXPR_BINARY && e->as.binary.op == PLUM_TOK_AND) {
+        compile_cond(c, e->as.binary.left, out);
+        compile_cond(c, e->as.binary.right, out);
+        return;
+    }
+    int kind = number_comparison(e);
+    if (kind < 0) {
+        compile_expr(c, e);
+        plum_array_push(out, emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line));
+        return;
+    }
+    static const PlumOpcode jumps[6][2] = {
+        {PLUM_OP_JUMP_IF_NOT_EQ_INT, PLUM_OP_JUMP_IF_NOT_EQ_FLOAT},
+        {PLUM_OP_JUMP_IF_NOT_NE_INT, PLUM_OP_JUMP_IF_NOT_NE_FLOAT},
+        {PLUM_OP_JUMP_IF_NOT_LT_INT, PLUM_OP_JUMP_IF_NOT_LT_FLOAT},
+        {PLUM_OP_JUMP_IF_NOT_LE_INT, PLUM_OP_JUMP_IF_NOT_LE_FLOAT},
+        {PLUM_OP_JUMP_IF_NOT_GT_INT, PLUM_OP_JUMP_IF_NOT_GT_FLOAT},
+        {PLUM_OP_JUMP_IF_NOT_GE_INT, PLUM_OP_JUMP_IF_NOT_GE_FLOAT},
+    };
+    PlumTokenKind tok = e->as.binary.op;
+    int row = tok == PLUM_TOK_EQ_EQ     ? 0
+              : tok == PLUM_TOK_BANG_EQ ? 1
+              : tok == PLUM_TOK_LESS    ? 2
+              : tok == PLUM_TOK_LESS_EQ ? 3
+              : tok == PLUM_TOK_GREATER ? 4
+                                        : 5;
+    compile_compared(c, e->as.binary.left, e->as.binary.right, kind == 1, line);
+    plum_array_push(out, emit_jump(c, jumps[row][kind], line));
+}
+
+static void patch_jumps(Compiler *c, Jumps *jumps, PlumSpan span) {
+    for (size_t i = 0; i < jumps->len; i++) {
+        patch_jump(c, jumps->items[i], span);
+    }
+    plum_array_free(jumps);
 }
 
 static void compile_binary(Compiler *c, const PlumExpr *e) {
@@ -438,17 +608,9 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
             return;
         }
         /* Numbers compare with a typed instruction; anything else, generically. */
-        bool ints = int_like(l->ty) && int_like(r->ty);
-        bool floats = !ints && (int_like(l->ty) || ty_is(l->ty, PLUM_TY_FLOAT)) &&
-                      (int_like(r->ty) || ty_is(r->ty, PLUM_TY_FLOAT));
-        compile_expr(c, l);
-        if (floats && int_like(l->ty)) {
-            op(c, PLUM_OP_INT_TO_FLOAT, line);
-        }
-        compile_expr(c, r);
-        if (floats && int_like(r->ty)) {
-            op(c, PLUM_OP_INT_TO_FLOAT, line);
-        }
+        int kind = number_comparison(e);
+        bool ints = kind == 0, floats = kind == 1;
+        compile_compared(c, l, r, floats, line);
         PlumOpcode o = ints     ? (eq ? PLUM_OP_EQ_INT : PLUM_OP_NE_INT)
                        : floats ? (eq ? PLUM_OP_EQ_FLOAT : PLUM_OP_NE_FLOAT)
                                 : (eq ? PLUM_OP_EQ : PLUM_OP_NE);
@@ -1751,11 +1913,11 @@ static void compile_expr(Compiler *c, const PlumExpr *e) {
         compile_call(c, e);
         return;
     case PLUM_EXPR_IF: {
-        compile_expr(c, e->as.if_.cond);
-        size_t to_else = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line);
+        Jumps to_else = {0};
+        compile_cond(c, e->as.if_.cond, &to_else);
         compile_as(c, e->as.if_.then, e->ty);
         size_t to_end = emit_jump(c, PLUM_OP_JUMP, line);
-        patch_jump(c, to_else, e->span);
+        patch_jumps(c, &to_else, e->span);
         compile_as(c, e->as.if_.otherwise, e->ty);
         patch_jump(c, to_end, e->span);
         return;
@@ -1985,11 +2147,11 @@ static void end_loop(Compiler *c, Loop *loop, PlumSpan span) {
 static void compile_while(Compiler *c, const PlumStmt *s) {
     Loop loop;
     begin_loop(c, &loop, false);
-    compile_expr(c, s->as.while_.cond);
-    size_t exit = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, s->span.line);
+    Jumps exit = {0};
+    compile_cond(c, s->as.while_.cond, &exit);
     compile_block(c, s->as.while_.body);
     emit_loop(c, loop.start, s->span);
-    patch_jump(c, exit, s->span);
+    patch_jumps(c, &exit, s->span);
     end_loop(c, &loop, s->span);
 }
 
@@ -2076,9 +2238,10 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
  * for i in a..b: i and a hidden end live in neighbouring slots.
  *
  *     i = a; end = b
- *   top: FOR_RANGE i  -> exit when i passes end
- *     body
- *   step: FOR_NEXT i  -> back to top (stops at an inclusive end first)
+ *     FOR_RANGE i  -> exit when i is already past end
+ *   body:
+ *     ...
+ *   step: FOR_NEXT i  -> i + 1, back to body while it is within end
  *   exit:
  */
 static void compile_for(Compiler *c, const PlumStmt *s) {
@@ -2104,10 +2267,10 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
 
     Loop loop;
     begin_loop(c, &loop, true);
-    size_t top = chunk(c)->code.len;
     op2(c, PLUM_OP_FOR_RANGE, var, inclusive, line);
     plum_chunk_write_u16(chunk(c), 0xFFFF, line);
     size_t exit_at = chunk(c)->code.len - 2;
+    size_t body = chunk(c)->code.len; /* FOR_NEXT checks the range itself */
     if (boxed) {
         op1(c, PLUM_OP_GET_LOCAL, var, line);
         op1(c, PLUM_OP_SET_LOCAL, user, line);
@@ -2118,7 +2281,7 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
 
     patch_all(c, loop.continues.items, loop.continues.len, s->span);
     op2(c, PLUM_OP_FOR_NEXT, var, inclusive, line);
-    size_t back = chunk(c)->code.len + 2 - top;
+    size_t back = chunk(c)->code.len + 2 - body;
     plum_chunk_write_u16(chunk(c), (uint16_t)(back <= 0xFFFF ? back : 0), line);
     if (back > 0xFFFF) {
         plum_diag_error(c->diags, s->span, "E0602",
@@ -2360,10 +2523,9 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
     case PLUM_STMT_IF:
     case PLUM_STMT_IF_PLANT: {
         int saved = c->fs->next_slot;
-        size_t to_else;
+        Jumps to_else = {0};
         if (s->kind == PLUM_STMT_IF) {
-            compile_expr(c, s->as.if_.cond);
-            to_else = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line);
+            compile_cond(c, s->as.if_.cond, &to_else);
         } else {
             /* if plant x = value: x holds the value; skip when it is none */
             compile_expr(c, s->as.if_.value);
@@ -2372,18 +2534,18 @@ static void compile_stmt(Compiler *c, const PlumStmt *s) {
             op1(c, PLUM_OP_GET_LOCAL, slot, line);
             op(c, PLUM_OP_IS_NONE, line);
             op(c, PLUM_OP_NOT, line);
-            to_else = emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line);
+            plum_array_push(&to_else, emit_jump(c, PLUM_OP_JUMP_IF_FALSE, line));
             box_if_captured(c, s->symbol, s->span);
         }
         compile_block(c, s->as.if_.then);
         c->fs->next_slot = saved;
         if (s->as.if_.otherwise != NULL) {
             size_t to_end = emit_jump(c, PLUM_OP_JUMP, line);
-            patch_jump(c, to_else, s->span);
+            patch_jumps(c, &to_else, s->span);
             compile_block(c, s->as.if_.otherwise);
             patch_jump(c, to_end, s->span);
         } else {
-            patch_jump(c, to_else, s->span);
+            patch_jumps(c, &to_else, s->span);
         }
         return;
     }
