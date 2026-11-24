@@ -202,8 +202,6 @@ PGO_TRAIN ?= sh tools/pgo-train.sh
 PGO_LTO   ?= 1
 # Clang instruments before it optimises, so the profile is the same with
 # or without LTO; its instrumented build is made without, which is quicker.
-# (Apple Clang's LTO builds fail the network tests: macOS releases are
-# built with PGO_LTO=0.)
 ifeq ($(IS_CLANG),yes)
   PGO_GEN_LTO ?= 0
 else
@@ -277,6 +275,7 @@ test: all $(UNIT_BIN)
 	@sh tests/bytecode-documented.sh
 	@sh tools/stdlib-docs.sh $(PLUM) --check
 	@sh tests/stdlib-embedded.sh
+	@sh tests/symbols.sh $(BUILD) $(BIN)
 	@sh tests/highlight.sh $(PLUM)
 	@sh tests/golden.sh $(PLUM)
 	@sh tests/golden.sh $(PLUM) examples
