@@ -21,10 +21,10 @@ plum lsp --stdio    # the same (some editors add the flag)
 | Document symbols | The outline: functions, trees and traits with their fields and methods, kinds with their cases, top-level variables, constants and imports. |
 | Formatting | The whole file in `plum fmt`'s layout (spec 14.1). A file with syntax errors is left alone. |
 | Find references | Every place in the package that names the same variable, parameter, function, tree, trait, kind, case, field, method or module alias: uses, imports (`seed ./beds { Bed }`, `beds.Bed`), keyword arguments (`Bed(plants: 4)` names the field `plants`) and, if asked, the declaration. |
+| Rename | Renames all of those at once, in every file of the package, open or not, as one edit. Built-ins (`drop`, `int`, `ValueError`), the standard library, keywords and a module's file name can't be renamed; the editor shows why. The new name must be a name and not a keyword. |
 | Signature help | While you type a call's arguments (after `(` and `,`): the signature of the function, method, constructor (`init`'s parameters, or the fields, parents' first), kind case, built-in or standard-library function, with the argument you are on highlighted; a keyword argument (`step: 2`) highlights the parameter it names. Works on a call you are still typing. |
 | Semantic tokens | Colour by meaning, for the whole file: what each name stands for (a parameter, a constant, a field, a case, a standard-library function, ...), and whether it is declared there; keywords, numbers, strings and comments too, so a file that doesn't parse is still coloured. The legend is below. |
 | Code actions | Quick fixes for diagnostics: **Add `seed math`** for an unknown name that is a standard module (E0301), or **Add `seed ./name`** when `name.plum` is beside the file, placed after the last `seed` (or after the comments the file starts with); **Prefix 'x' with '_' to keep it** for a name never used (W0502). |
-| Rename | Renames all of those at once, in every file of the package, open or not, as one edit. Built-ins (`drop`, `int`, `ValueError`), the standard library, keywords and a module's file name can't be renamed; the editor shows why. The new name must be a name and not a keyword. |
 
 ### Semantic token legend
 
@@ -85,6 +85,9 @@ Details:
   one, or when its input ends.
 
 ## Editors
+
+Where each editor shows the features beyond diagnostics, hover,
+definition, completion, symbols and formatting (which all of them show):
 
 | Feature | VS Code | Neovim (0.11) | Helix | Zed | Emacs (eglot) |
 |---|---|---|---|---|---|
