@@ -485,6 +485,7 @@ page in [docs/stdlib](stdlib/README.md).
 plum run program.plum [args...]    run a program (or a folder with plum.toml)
 plum check program.plum            report every error without running
 plum fmt files-or-folders...       format in place (--check, --stdout)
+plum fmt --stdin                   format standard input to standard output
 plum stdlib [module]               list the standard library
 plum lsp                           the language server for editors (lsp.md)
 plum run --check-leaks file.plum   report objects kept alive by cycles

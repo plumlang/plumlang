@@ -1229,7 +1229,7 @@ plum check program.plum             # check for errors without running
 plum test                           # run tests (Stage 5)
 plum fmt files-or-directories...    # format source files in place (14.1)
 plum fmt --check paths...           # ...change nothing; list files that would change
-plum fmt -                          # format standard input to standard output
+plum fmt --stdin                    # format standard input to standard output
 plum                                # interactive prompt, on a terminal (14.2)
 plum repl                           # the interactive prompt, also with piped input
 plum lsp                            # the language server, for editors (docs/lsp.md)
@@ -1245,7 +1245,11 @@ read.
 is given, and every `.plum` file under the directories it is given;
 `--check` changes nothing, lists the files that would change and exits 1 if
 there are any; `--stdout` writes the result to standard output instead of
-the file. A file with syntax errors is reported and left as it is (exit 1).
+the file. `--stdin` (or `-`) reads the source from standard input and writes
+the formatted source to standard output, for editors that pipe a buffer
+through a formatter. A file with syntax errors is reported and left as it
+is (exit 1); with `--stdin` the errors go to standard error and nothing is
+written to standard output.
 
 The layout:
 
