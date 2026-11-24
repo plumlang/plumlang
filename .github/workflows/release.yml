@@ -315,8 +315,29 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*
+      # The AUR is updated by hand (packaging/README.md): the summary shows
+      # the checksums and the files to push. Scoop, aqua and nixpkgs update
+      # themselves from the release.
       - name: Package-manager manifests
-        run: sh tools/release/packaging.sh "$VERSION" dist/SHA256SUMS packaging-out
+        run: |
+          sh tools/release/packaging.sh "$VERSION" dist/SHA256SUMS packaging-out
+          {
+            echo "## Package managers"
+            echo
+            echo "Checksums, and the AUR \`plum-bin\` files to push (packaging/README.md)."
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+            for f in PKGBUILD .SRCINFO; do
+              echo
+              echo "### $f"
+              echo
+              echo '```'
+              cat "packaging-out/aur/$f"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packaging
