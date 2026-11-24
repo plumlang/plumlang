@@ -813,9 +813,9 @@ every core (spec 12.5 to 12.11). Nothing reports them yet.
 
 A value that can't leave its isolate is given to a worker: captured by the
 function given to `workers.start`, held by a channel that function
-captures, or in the worker's result type. Tree objects, functions, tasks,
-workers, sockets and files stay in the isolate that made them (spec 12.6).
-Give the worker values, or `freeze` the object first.
+captures, or in the worker's result type. Tree objects, functions, tasks
+and workers stay in the isolate that made them (spec 12.6); sockets move
+instead (E0707). Give the worker values, or `freeze` the object first.
 
 ```plum
 plant acct = Account("Ada")
@@ -889,6 +889,25 @@ or calling a method that assigns one, directly or through another method
 plant config = freeze(Config("localhost", 8080))
 config.port = 9090                               # error
 plant moved = freeze(Config(config.host, 9090))  # fix
+```
+
+### E0707 (planned)
+
+A variable is used after the handle it holds (a `Connection`, `Listener`
+or `UdpSocket`) moved to another isolate: sent on a channel, captured by
+the function given to `workers.start`, or returned from a worker. A
+handle can't be copied, so the isolate that receives it owns it and the
+sender can't use it again (spec 12.6.3). Finish with the handle before it
+moves, or let the receiver do the rest.
+
+```plum
+plant conn = server.accept()
+conns.send(conn)
+drop(conn.remote())                  # error: conn has moved
+
+plant conn = server.accept()
+drop(conn.remote())                  # fix: use it first
+conns.send(conn)
 ```
 
 ## Packages

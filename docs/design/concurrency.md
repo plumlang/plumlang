@@ -1,11 +1,13 @@
 # Design note: concurrency on many cores
 
-Status: proposed, for issue
-[#150](https://github.com/plumlang/plumlang/issues/150). The rules
+Status: accepted for issue
+[#150](https://github.com/plumlang/plumlang/issues/150), with the
+maintainer's decisions of 2026-11-24 (listed at the end); two questions
+keep their proposed defaults until the maintainer confirms them. The rules
 themselves are in [spec.md](../spec.md), sections 12.5 to 12.11 (planned
 for 3.0); [#133](https://github.com/plumlang/plumlang/issues/133) builds
 them. This note says why the design is what it is, what it costs, what the
-2.3 VM work must keep possible, and what is still open.
+2.3 VM work must keep possible, and what was decided.
 
 ## Where Plumlang is today
 
@@ -21,7 +23,8 @@ them. This note says why the design is what it is, what it costs, what the
   (`plum_list_unique`, `plum_table_unique`).
 - **No global mutable state.** PREAMBLE 3.3 already puts every piece of
   run-time state in a `PlumVM`, so two VMs in one process share nothing
-  but the C library. An isolate is, nearly, a VM with a thread.
+  but the C library. An isolate is, nearly, a VM that a scheduler thread
+  runs.
 - **Tasks already don't share objects.** The checker refuses a tree
   object given to `spawn` (E0426, `check_spawn_args` in
   `src/check/typecheck.c`), and tasks talk through channels. Programs
@@ -82,7 +85,8 @@ quiescent-state reclamation for some objects.
 
 ### 4. Isolates (chosen)
 
-Each worker owns a heap and a VM on its own thread; isolates share nothing
+Each worker owns a heap and a VM; a pool of one thread per core runs the
+isolates, as Erlang's schedulers run its processes. Isolates share nothing
 changeable and talk through channels. Erlang processes, Dart isolates,
 JavaScript workers and Pony actors are all versions of this.
 
@@ -90,9 +94,9 @@ JavaScript workers and Pony actors are all versions of this.
 
 | System | What it does | What Plumlang takes |
 |---|---|---|
-| Erlang/BEAM | a heap per process; messages copied into the receiver's heap; binaries over 64 bytes shared by atomic count; errors travel through links and monitors | per-isolate heaps; copying as the default; big immutable data shared by count, which here is any frozen value; errors delivered to whoever waits |
+| Erlang/BEAM | a heap per process; messages copied into the receiver's heap; binaries over 64 bytes shared by atomic count; errors travel through links and monitors; many processes scheduled M:N over one scheduler thread per core, preempted after a budget of reductions; blocking work on dirty schedulers | per-isolate heaps; copying as the default; big immutable data shared by count, which here is any frozen value; errors delivered to whoever waits; the M:N scheduler, with steps for reductions and helper threads for dirty work |
 | Dart | `Isolate.run(closure)` copies what the closure captures; deeply immutable objects are shared; `Isolate.exit` hands its result over without copying | `workers.start(() => ...)` with captures copied at start; frozen values shared; the worker's result and error handed over whole (spec 12.8) |
-| JavaScript workers | structured clone copies; transferables (an `ArrayBuffer`) move, leaving the sender's copy empty | moving instead of copying, but only on the last use of a variable, so the sender never sees an emptied value |
+| JavaScript workers | structured clone copies; transferables (an `ArrayBuffer`, a `MessagePort`) move, leaving the sender's copy empty | moving instead of copying, but only on the last use of a variable, so the sender never sees an emptied value; handles move like transferables (spec 12.6.3); in the browser build, each worker *is* a Web Worker (spec 12.5.4) |
 | Pony | reference capabilities in the types: `iso` (unique, can be sent), `val` (immutable, can be shared), and more | `val` becomes `Frozen[T]`, in the types; uniqueness stays out of the types and is found at run time (count of 1 plus last use), to keep the type system small |
 
 ## Why isolates
@@ -121,9 +125,9 @@ the right trade.
 - **A module function, not a keyword.** `seed workers` and
   `workers.start(f)` rather than a `worker f()` statement. `worker` is a
   name programs already use for variables, and a keyword would break
-  them. Starting a worker is rare and costly (a thread, a heap), unlike
-  `spawn`, so a visible module call suits it; `spawn` is frequent and
-  cheap and earns its syntax. The checker treats `workers.start` as
+  them. Starting a worker costs more than `spawn` (a VM, a heap, its own
+  copy of the modules it uses) and is done less often, so a visible module
+  call suits it; `spawn` is frequent and cheap and earns its syntax. The checker treats `workers.start` as
   specially as it treats `spawn`, so nothing is lost in checking.
 - **A lambda, not arguments.** `workers.start(() => crunch(rows))` needs
   no variadic, generic signature: the captures are the arguments, checked
@@ -150,6 +154,37 @@ the right trade.
 - **The shared `tree` of the old 12.3 is dropped.** It was never
   implemented, and an object with atomic methods is a shared mutable heap
   by another name. Frozen values cover the read-only sharing it was for.
+- **Isolates are scheduled M:N, as on BEAM** (spec 12.5.3), not one OS
+  thread per worker. A thread per worker would make every worker cost a
+  stack of megabytes and a kernel thread, cap programs at a few hundred,
+  and leave fairness to the OS scheduler, which knows nothing of channel
+  waits. With a pool of one scheduler thread per core, a waiting worker
+  costs only its memory, thousands are fine, and a worker per connection
+  or per actor-like piece of state becomes a reasonable design. The price
+  is a scheduler in the runtime: run queues, preemption and a place for
+  calls that block, all below.
+- **Preemption counts steps.** The VM already counts calls and backward
+  jumps for `max_steps` (`src/vm/vm.c`); the scheduler reuses that
+  counter as BEAM uses reductions. An isolate is only paused there,
+  between instructions, where its whole state is in its `PlumVM` and none
+  on the C stack. Preemption is between isolates only: inside an isolate,
+  tasks still switch only when they wait (spec 12.4), so no code that is
+  correct today gains an interleaving it didn't have.
+- **Handles move** (spec 12.6.3). `http.serve` needs to hand sockets
+  between isolates wherever the OS can't spread connections over several
+  listeners, and once the runtime can do it, programs can too: an
+  acceptor and a crew of workers is a common shape. A handle is one thing
+  of the OS, so it moves rather than copies; the checker catches the
+  common misuse (E0707) and the runtime catches the rest by marking the
+  sender's handle moved.
+- **In the browser, a worker is a Web Worker** (spec 12.5.4). Each has
+  its own `plum.wasm` instance and linear memory, which is exactly an
+  isolate, so sending maps onto `postMessage` with a transferred buffer
+  and nothing needs `SharedArrayBuffer` or cross-origin isolation
+  headers, which many hosts of the playground can't set. Where Web
+  Workers are missing, the worker runs as an isolate on the page's one
+  thread, the M:N scheduler with one thread, so programs keep their
+  meaning and only lose parallelism.
 
 ## Performance
 
@@ -166,13 +201,42 @@ What to expect, to be confirmed by #133's benchmarks:
   no copying). Sharing a frozen value: one atomic increment. A copy: the
   value's size, like `structuredClone` or Erlang's message copy. Large
   data that many workers read should be frozen once.
-- **Channels between isolates.** A lock and, when a receiver sleeps, a
-  wakeup through the receiving isolate's poller (an eventfd, a pipe, or a
-  posted completion on Windows): microseconds, not nanoseconds. Workers
-  are for coarse work; per-item hand-offs should be batched into lists.
-- **Starting a worker.** A thread, a VM and loading the modules it uses:
-  tens to hundreds of microseconds. Start about one per core and keep
-  them.
+- **Channels between isolates.** A lock and, when the receiving isolate
+  has nothing else to run, putting it back on a run queue (and waking a
+  parked scheduler thread if one sleeps): around a microsecond, not
+  nanoseconds. Per-item hand-offs in a hot loop should still be batched
+  into lists.
+- **Starting a worker.** No thread is created: a `PlumVM`, a heap and
+  loading the modules it uses (their top-level code runs once per
+  isolate), so its cost is mostly those modules. Expect tens of
+  microseconds and a few tens of kilobytes for a worker that seeds
+  little. Thousands of workers are fine; only `workers.cores()` of them
+  run at any moment.
+- **Switching isolates.** A scheduler thread switching isolates swaps one
+  `PlumVM` pointer; the cost is the new isolate's data being cold in the
+  cache. The step budget (BEAM uses 4,000 reductions; #133 tunes ours
+  with benchmarks) keeps switches rare for busy isolates, and an isolate
+  that waits gives its thread up at once.
+- **Work stealing.** Each scheduler thread has its own run queue; an idle
+  one steals runnable isolates from the others, so no single lock sits on
+  the common path. An isolate that moves to another core moves its
+  working set with it; stealing only from a queue longer than one, and
+  preferring to resume an isolate on the thread it last ran on, keeps
+  that rare.
+- **Blocking calls.** DNS lookups, `os.run`, file reads and `ask` run on a
+  small pool of helper threads (BEAM's dirty I/O schedulers), so a slow
+  disk or resolver never takes a scheduler thread away from the other
+  isolates. The call's isolate waits as it does today. The hand-off costs
+  a few microseconds, far less than the calls themselves.
+- **Moving a handle.** A pointer and a descriptor change owner, with the
+  bytes it has buffered; on the poller side, re-registering the socket
+  for its new isolate. Microseconds, independent of what it has read.
+- **The browser.** A Web Worker is a thread of the JavaScript engine with
+  its own `plum.wasm` instance: starting one takes milliseconds and a few
+  megabytes, so there a program should start about
+  `workers.cores()` workers and keep them. Every crossing is a copy into
+  a transferred buffer, frozen values included (once per receiving
+  worker), since instances share no memory.
 - **HTTP.** With one isolate per core and nothing shared on the request
   path, throughput should scale nearly linearly with cores until the
   network or memory bandwidth limits it; #133's "done when" measures this
@@ -220,12 +284,37 @@ None of them needs to implement isolates; each must not close the door.
   counts per isolate and adds them up.
 - **No new global state.** Interning tables, caches and random states
   added at run time live in the VM (PREAMBLE 3.3).
+- **No state on the C stack between steps, and none in thread-locals.**
+  An isolate is paused at a step and may resume on another scheduler
+  thread (or, in the browser, after returning to the JavaScript event
+  loop), so the interpreter loop must be able to return to the scheduler
+  with everything in the `PlumVM`. Calls into the runtime that call back
+  into Plumlang (`map`, `filter`, `to_str`) hold C frames; the step
+  budget may run out inside them, and the pause then waits until they
+  return, as waiting already does (spec 12.4). `_Thread_local` caches
+  would follow the thread, not the isolate: keep per-isolate state in the
+  VM.
 
 ## What #133 changes, in outline
 
-- An isolate is today's `VM` plus a thread (pthreads, or the Windows
-  thread API, since C11 `<threads.h>` isn't everywhere), with its own
-  poller, timers and tasks.
+- An isolate is today's `VM`, with its own tasks and timers. A pool of
+  scheduler threads, one per core (pthreads, or the Windows thread API,
+  since C11 `<threads.h>` isn't everywhere), runs them: a run queue per
+  thread, work stealing between them, parking on a condition variable
+  when there is nothing to run. Handing an isolate from one thread to
+  another goes through a queue whose lock orders its memory, so the
+  isolate's plain counts stay correct.
+- The interpreter loop returns to the scheduler when the isolate's step
+  budget runs out (the `max_steps` counter, at calls and backward jumps)
+  or when all its tasks wait.
+- I/O readiness moves from a poller per VM to the runtime: one poll
+  thread (epoll, kqueue, or IOCP on Windows, where `WSAPoll` doesn't
+  share well between threads) turns readiness and timer expiry into run
+  queue entries for the isolate that owns the socket or timer. A
+  scheduler thread with nothing to run may poll without blocking first.
+- Calls that block in the OS (DNS lookups, `os.run`, file reads, `ask`)
+  go to a small pool of helper threads; their isolate waits and the
+  helper puts it back on a run queue when the call returns.
 - The compiled program (functions, tree infos, constants) is built once
   and made immortal: its objects are never counted, so every isolate can
   read them.
@@ -242,6 +331,29 @@ None of them needs to implement isolates; each must not close the door.
   code.
 - `stop()` sets a flag the worker checks where it already counts steps
   (`max_steps`: calls and backward jumps) and when it waits.
+- Handles (`Connection`, `Listener`, `UdpSocket`) get a "moved" state.
+  Sending one creates the receiver's handle with the descriptor, buffered
+  bytes and TLS context, marks the sender's moved (its uses throw the
+  closed-handle `NetError`, its waiting tasks wake with it), and
+  re-registers the socket with the poll thread for the new isolate. The
+  checker adds E0707: a use of a variable after a send, capture or return
+  that moved its handle.
+- `http.serve` opens a listener per isolate with `SO_REUSEPORT` on Linux
+  (`SO_REUSEPORT_LB` on FreeBSD); elsewhere it runs one accepting isolate
+  that moves each connection to the serving isolate with the fewest open
+  connections. On Linux, connections already queued on one isolate's
+  listener when it closes are lost, so `http.serve` keeps its listeners
+  open until the whole server stops.
+- The browser build (`src/wasm/`) starts a Web Worker per worker, sends
+  it the compiled `WebAssembly.Module` (which `postMessage` can carry)
+  and the program, and carries crossings as serialized bytes in a
+  transferred `ArrayBuffer`. A frozen value carries an id, so each
+  receiving instance keeps one copy of it and `==` between isolates still
+  compares identity. The VM's wait for events returns to the JavaScript
+  event loop instead of blocking, so the main isolate (on the page's
+  thread) can wait for a worker's message. Without Web Workers, all
+  isolates run on the page's thread with the one-thread scheduler, and the
+  first `workers.start` prints the note of spec 12.5.4.
 - Deadlock detection counts, under one lock, the isolates that have a
   task able to run or a wait that can end.
 - The checker gains a `sendable` test on types, built from the existing
@@ -249,47 +361,56 @@ None of them needs to implement isolates; each must not close the door.
   methods, for E0706.
 - Tests run under ThreadSanitizer as well as ASan and UBSan.
 
-## Open questions for the maintainer
+## Decisions (maintainer, 2026-11-24)
 
-1. **The API name.** `seed workers` with `workers.start(f)` (this
-   proposal), a keyword `worker f(x)` mirroring `spawn`, or a built-in
-   constructor `Worker(f)` like `Channel[T]()`?
-2. **Module variables.** This proposal keeps the main file's `plant`
-   variables out of workers (E0703) and loads imported modules once per
-   isolate. Alternatives: keep every module's variables out of worker
-   code, or re-run every module but the main file.
-3. **Objects on channels.** Not sendable unless frozen (this proposal).
-   Alternatives: deep-copy them (Dart), or move them when the checker
-   sees the send is the variable's last use (a light version of Pony's
-   `iso`).
-4. **Handing over results and errors with objects** (spec 12.8): keep, or
-   limit a worker's result to sendable types and send errors as
-   `WorkerError` only?
-5. **Copy or freeze on send.** The issue says a value that isn't unique is
-   deep-copied. The alternative freezes it in place: no copy ever, but
-   the sender's later counts on it become atomic. Copy is proposed.
-6. **`Frozen[T]` or a `frozen` modifier** like `weak`? And should `freeze`
-   of a value (not an object) exist at all, given it changes only speed?
-7. **The `shared` tree** of the old 12.3, never implemented, is dropped in
-   this pull request in favour of `Frozen[T]`. Agreed?
-8. **The cycle collector.** PREAMBLE 2.4 promises no garbage-collector
-   pause. Ship `--collect-cycles` as an opt-in (proposed), or leave it out
-   and rely on `weak` and `--check-leaks`?
-9. **Scheduling.** One thread per worker (proposed, simple), or many
-   isolates on a pool of one thread per core, as Erlang does, so that
-   thousands of workers are cheap?
-10. **`exit()` in a worker** ends the whole program (proposed), or only the
-    worker?
-11. **`stop()`.** Runs `finally` blocks and can't be caught (proposed), or a
-    catchable `StoppedError` thrown at the next safe point?
-12. **Handles between isolates.** On macOS and Windows, a shared listening
-    port doesn't spread connections well; `http.serve` may accept in one
-    isolate and hand sockets to others internally. Should moving a socket
-    to a worker be part of the language too?
-13. **The browser build** (`make wasm`) has no threads by default. Should
-    `workers.start` there run the worker as a task on the one thread, or
-    be an error?
-14. **Function values.** A top-level function captures nothing and could
-    cross safely, but its type, `() -> int`, doesn't say so. Leave
-    functions unsendable (proposed), or add a way to say "captures
-    nothing"?
+The questions this proposal left open, with what was decided. Questions 7
+and 8 weren't answered; they keep the proposed default, which the
+maintainer can still change.
+
+1. **The API name.** Decided: `seed workers` and `workers.start(f)`, as
+   proposed.
+2. **Module variables.** Decided as proposed: the main file's `plant`
+   variables stay out of workers (E0703); imported modules load once per
+   isolate.
+3. **Objects on channels.** Decided as proposed: not sendable unless
+   frozen.
+4. **Handing over results and errors with objects.** Decided as
+   proposed: a worker's result and error are handed over whole, objects
+   and trace included (spec 12.8).
+5. **Copy or freeze on send.** Decided: a value that isn't uniquely owned
+   is copied.
+6. **`Frozen[T]` or a `frozen` modifier.** Decided: `Frozen[T]`, a type,
+   and `freeze(x)` stays the way to make one, plain values included.
+7. **The `shared` tree** of the old 12.3. *Default, pending confirmation:*
+   dropped in favour of `Frozen[T]`, as proposed.
+8. **The cycle collector.** *Default, pending confirmation:* an optional
+   per-isolate collector, `--collect-cycles`, off by default, as proposed.
+9. **Scheduling.** Decided, changed from the proposal: M:N, as Erlang
+   does. Isolates run on a pool of one scheduler thread per core, with
+   preemption by step budget and blocking calls on helper threads (spec
+   12.5.3; "Choices inside the model" and "Performance" above).
+10. **`exit()` in a worker.** Decided as proposed: it ends the whole
+    program.
+11. **`stop()`.** Decided as proposed: it takes effect at the next call,
+    loop turn or wait, runs `finally` blocks, can't be caught, and
+    `wait()` throws `StoppedError`.
+12. **Handles between isolates.** Decided, changed from the proposal:
+    moving a handle is part of the language. `Connection`, `Listener` and
+    `UdpSocket` move, the sender can't use them after (E0707, and a
+    run-time check), and `http.serve` uses `SO_REUSEPORT` listeners per
+    isolate on Linux and FreeBSD, and one accepting isolate that moves
+    connections elsewhere (spec 12.6.3, 12.11).
+13. **The browser build.** Decided, changed from the proposal: each worker
+    runs in a Web Worker of its own, with no shared memory and no
+    cross-origin isolation headers; where Web Workers are missing, the
+    worker runs on the page's thread with a note (spec 12.5.4).
+14. **Function values.** Decided as proposed: functions stay unsendable.
+15. **Error codes.** Decided as proposed: a new range, E07xx.
+
+## Still open
+
+Only the two defaults above wait for the maintainer's confirmation:
+
+- **7.** Dropping the never-implemented `shared` tree of the old 12.3.
+- **8.** Shipping `--collect-cycles` as an opt-in, off by default, rather
+  than leaving it out and relying on `weak` and `--check-leaks`.
