@@ -16,6 +16,8 @@ Format for a new entry:
 
 ## Unreleased
 
+- **Language** (#161): block comments `#[ ... ]#`, which span lines and nest; one never closed is E0140 at its `#[`. Doc comments: `##` lines directly before a `branch`, `tree`, `trait`, `kind`, `root`, field, method or kind case document it, and a file's first `##` lines document the module; the text is Markdown. `#[` at the start of a comment now opens a block comment, so an old `#[...` line comment needs a space (`# [...`). Spec section 2.2.
+- **Tools** (#161): `plum fmt` keeps block comments as written and writes `##text` as `## text`; `plum lsp` shows doc comments on hover, and a module's doc on its `seed`; semantic tokens mark `##` comments with the `documentation` modifier, and the "add `seed`" quick fix goes after a leading block comment. `parser/doc.h` finds them for other tools (`plum doc`, #131).
 - **Stdlib**: a `uuid` module (#154): `v4()` from the system's secure random source, `v7()` time-ordered (each one a program makes sorts after the one before, even within a millisecond), `parse` (either case, no hyphens, `{braces}` or `urn:uuid:`), `is_valid`, `version`, `variant`, `compare`, `timestamp` (of a v7) and the constants `NIL` and `MAX`. `docs/stdlib/uuid.md`, golden tests.
 - **Licence**: Plumlang is now Apache-2.0, with the Plumlang Commercial License as an option
   (`Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0`). v2.1.4 and earlier stay as released.

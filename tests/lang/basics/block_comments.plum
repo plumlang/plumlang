@@ -1,0 +1,43 @@
+# Block comments, nested, and doc comments in every place: a `##` line
+# documents the declaration right after it; anywhere else it is an
+# ordinary comment.
+
+## A constant.
+root LIMIT = 3
+
+#[
+drop("commented out")
+#[ drop("nested") ]#
+]#
+
+## A tree.
+tree Bed {
+    ## A field.
+    rows: int  ## after a field: an ordinary comment
+
+    ## A method.
+    branch plants() -> int => self.rows * LIMIT
+}
+
+## A kind.
+kind Weather {
+    ## A case.
+    Sun
+    Rain
+}
+
+## A function.
+branch water(w: Weather) -> str {
+    ## Not before a declaration: an ordinary comment.
+    plant how = match w {
+        Sun => "a lot"   #[ thirsty ]#
+        Rain => "none"
+    }
+    return how
+}
+
+## Not before anything.
+
+drop(Bed(2).plants(), #[ an argument ]# water(Weather.Sun), water(Weather.Rain))
+drop("#[ in a string ]#", "## too")
+## At the end of the file.

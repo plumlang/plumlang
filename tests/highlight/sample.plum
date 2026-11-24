@@ -2,6 +2,10 @@
 # the tricky corners of strings. Grammars for editors test against it
 # (tests/highlight/README.md). `plum check` accepts it.
 
+#[ A block comment spans lines,
+   #[ nests ]#,
+   and "strings", plant and # mean nothing in it ]#
+
 seed math
 seed json as j
 
@@ -25,7 +29,8 @@ plant escapes = "tab\t newline\n quote\" backslash\\ braces\{\} nul\0 plum\u{1F3
 plant greeting = "Hello, {name}! 2 + 2 = {2 + 2}"
 plant formats = "{ratio:.2} {count:5} {name:<10}| {LIMIT:x} {LIMIT:b} {ratio:>8.3}"
 plant nested = "first: {{"a": 1, "b": 2}["a"]} inner: {"x{name}y"}"
-plant hash = "# not a comment"  # but this is
+plant hash = "# not a comment"                   # but this is
+plant block = "#[ not a comment ]# ## nor this"  #[ but this is ]#
 plant poem = """
     Roses are "red",
     {name} is {len(name)} letters, {ratio:.1}
@@ -63,7 +68,9 @@ trait Named {
     branch shout() -> str => self.name() + "!"
 }
 
+## A doc comment: **Markdown**, shown on hover.
 tree Node : Named {
+    ## Documents the field.
     value: int
     parent: weak Node? = none
     branch name() -> str => "node {self.value}"
@@ -73,6 +80,7 @@ tree Leaf : Node {
     branch name() -> str => "leaf " + super.name()
 }
 
+### Three hashes: an ordinary comment.
 branch area(s: Shape) -> float {
     return match s {
         Circle(r) => math.PI * r ** 2
@@ -117,5 +125,5 @@ plant parent_name = node.parent?.name() ?? "orphan"
 plant job = spawn ((n: int) => n * 2)(21)
 drop(job.wait(), j.parse("1"))
 
-drop(scores, numbers, floats, flags, escapes, greeting, formats, nested, hash, poem)
+drop(scores, numbers, floats, flags, escapes, greeting, formats, nested, hash, block, poem)
 drop(math_ops, bits, tests, safe, label, parent_name)

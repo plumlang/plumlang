@@ -1,0 +1,4 @@
+tests/lang/lexer/error_block_comment.plum:4:14: error[E0140]: block comment is never closed; add ']#' (block comments nest, so each '#[' inside one needs its own ']#')
+4 | plant b = 2  #[ this one opens here
+  |              ^~
+1 error

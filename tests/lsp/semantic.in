@@ -6,5 +6,8 @@
 # A file that doesn't parse still gets its keywords, strings and comments.
 {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":2},"contentChanges":[{"text":"plant x = (\"a\" # open\n"}]}}
 {"jsonrpc":"2.0","id":3,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"@ROOT@/main.plum"}}}
-{"jsonrpc":"2.0","id":4,"method":"shutdown"}
+# Doc comments get the documentation modifier; a block comment, a token per line.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":3},"contentChanges":[{"text":"## Doc: the documentation modifier.\nroot A = 1 #[ a block\n  over two lines ]#\n# plain\n"}]}}
+{"jsonrpc":"2.0","id":4,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"@ROOT@/main.plum"}}}
+{"jsonrpc":"2.0","id":5,"method":"shutdown"}
 {"jsonrpc":"2.0","method":"exit"}

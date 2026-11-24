@@ -15,7 +15,7 @@ plum lsp --stdio    # the same (some editors add the flag)
 | Capability | What you get |
 |---|---|
 | Diagnostics | Every error and warning `plum check` reports, with the same code (`E0402`, `W0502`, ...), message and place, on opening a file and on every change. A file you import that isn't open gets its own diagnostics too. |
-| Hover | The type of the name or expression under the cursor; the signature of functions, methods and standard-library functions, with their one-line documentation; a tree's, trait's or kind's header; a field's declaration. |
+| Hover | The type of the name or expression under the cursor; the signature of functions, methods and standard-library functions, with their one-line documentation; a tree's, trait's or kind's header; a field's declaration. A declaration's doc comment (its `##` lines, spec 2.2) follows, as Markdown; on a `seed` of a file, the module's own doc comment. |
 | Go to definition | Local variables, parameters, loop names, functions, trees, traits, kinds and their cases, fields and methods (through the receiver's type, parents included), and names imported from other files: `seed ./shapes { Circle }`, `shapes.area`, and the `./shapes` of the `seed` itself. |
 | Completion | The names in scope at the cursor (locals, parameters, top-level names, imports, built-ins and keywords). After a `.`: a tree's fields and methods, the methods of `list`, `map`, `set`, `str`, `Json`, tasks, channels and sockets, a kind's cases, and the functions and constants of a standard module or the names a file module exports. |
 | Document symbols | The outline: functions, trees and traits with their fields and methods, kinds with their cases, top-level variables, constants and imports. |
@@ -45,13 +45,14 @@ so every theme already has colours for them.
 | `function` | a `branch`, a built-in function (`drop`, `len`) or a standard-library function |
 | `method` | a method of a tree or trait, and a method of `str`, `list`, `map`, ... |
 | `keyword` | `plant`, `branch`, `if`, `good`, `none`, `self`, ... |
-| `string`, `number`, `comment` | literals and `#` comments |
+| `string`, `number`, `comment` | literals, and `#`, `##` and `#[ ... ]#` comments |
 
 | Modifier | When |
 |---|---|
 | `declaration` | where the name is declared |
 | `readonly` | a `root` constant, or a standard-library constant (`math.PI`) |
 | `defaultLibrary` | built into Plumlang: built-in functions, types and errors, and the standard library |
+| `documentation` | a `##` doc comment |
 
 Details:
 
@@ -156,6 +157,7 @@ scope = "source.plum"
 file-types = ["plum"]
 roots = ["plum.toml"]
 comment-token = "#"
+block-comment-tokens = { start = "#[", end = "]#" }
 indent = { tab-width = 4, unit = "    " }
 language-servers = ["plum"]
 auto-format = true

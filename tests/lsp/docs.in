@@ -1,0 +1,37 @@
+# Hover shows doc comments (## lines) as Markdown, from this file and
+# from a seeded one, and a module's own doc on its seed path.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/docs.plum","languageId":"plum","version":1,"text":"seed ./lib/garden { Bed }\n\n## The largest number of plants.\n## Markdown: **bold**, `code`.\nroot LIMIT = 10\n\n## A place in the garden.\ntree Spot {\n    ## How far east.\n    x: int\n    ## Its name.\n    branch name() -> str => \"spot {self.x}\"\n}\n\n## Light.\nkind Light {\n    ## Full sun.\n    Sun\n    Shade\n}\n\n## Not a doc: a blank line follows.\n\nbranch plain() -> int => LIMIT\nplant s = Spot(1)\ndrop(s.name(), s.x, plain(), Light.Sun, Bed(2).rows, LIMIT)\n"}}}
+# hover: seed path: the module's doc
+{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":0,"character":7}}}
+# hover: Bed, from the module
+{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":0,"character":20}}}
+# hover: LIMIT, declared
+{"jsonrpc":"2.0","id":4,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":4,"character":5}}}
+# hover: Spot, declared
+{"jsonrpc":"2.0","id":5,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":7,"character":5}}}
+# hover: field x, declared
+{"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":9,"character":4}}}
+# hover: method name, declared
+{"jsonrpc":"2.0","id":7,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":11,"character":11}}}
+# hover: Light, declared
+{"jsonrpc":"2.0","id":8,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":15,"character":5}}}
+# hover: case Sun, declared
+{"jsonrpc":"2.0","id":9,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":17,"character":4}}}
+# hover: case Shade: no doc
+{"jsonrpc":"2.0","id":10,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":18,"character":4}}}
+# hover: plain: a blank line cuts the doc off
+{"jsonrpc":"2.0","id":11,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":23,"character":7}}}
+# hover: s.name()
+{"jsonrpc":"2.0","id":12,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":25,"character":7}}}
+# hover: s.x
+{"jsonrpc":"2.0","id":13,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":25,"character":17}}}
+# hover: Light.Sun
+{"jsonrpc":"2.0","id":14,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":25,"character":35}}}
+# hover: Bed
+{"jsonrpc":"2.0","id":15,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":25,"character":40}}}
+# hover: LIMIT, used
+{"jsonrpc":"2.0","id":16,"method":"textDocument/hover","params":{"textDocument":{"uri":"@ROOT@/docs.plum"},"position":{"line":25,"character":53}}}
+{"jsonrpc":"2.0","id":17,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

@@ -11,7 +11,7 @@ and on the web: [tree-sitter-plum](https://github.com/plumlang/tree-sitter-plum)
 | File | What |
 |---|---|
 | `keywords.txt` | Every keyword, one per line: the lexer's table in `src/lexer/lexer.c`, printed by `tools/keywords.sh`. |
-| `sample.plum` | Every keyword, every literal form, interpolation with formats and nested braces, `"""` strings, `#` in strings and comments, every operator. `plum check` accepts it. |
+| `sample.plum` | Every keyword, every literal form, interpolation with formats and nested braces, `"""` strings, `#` in strings and comments, nested `#[ ... ]#` block comments (one spanning lines), `##` doc comments, `#[` and `##` inside strings, every operator. `plum check` accepts it. |
 
 `tests/highlight.sh` (part of `make test`) fails when the list and the
 lexer disagree, or when the sample misses a keyword or a kind of literal.

@@ -7,7 +7,8 @@
 #      (tools/keywords.sh), and `plum` lexes every listed word as a keyword;
 #   2. tests/highlight/sample.plum uses every keyword as a keyword, and every
 #      kind of literal token: INT, FLOAT, STRING, STRING_HEAD/MID/TAIL,
-#      FORMAT, and a """ string;
+#      FORMAT, a """ string, a nested #[ ]# block comment, a ## doc
+#      comment and #[ inside a string;
 #   3. the sample checks without errors and is formatted.
 #
 # Editor grammars (tree-sitter-plum, the VS Code grammar, zed-plum,
@@ -59,6 +60,9 @@ for kind in INT FLOAT STRING STRING_HEAD STRING_MID STRING_TAIL FORMAT; do
 done
 grep -q ' EOF' "$tmp/tokens" || fail "plum tokens failed on sample.plum"
 grep -q '"""' "$dir/sample.plum" || fail "sample.plum has no \"\"\" string"
+grep -q '#\[.*#\[.*\]#' "$dir/sample.plum" || fail "sample.plum has no nested #[ ]# block comment"
+grep -q '^ *## ' "$dir/sample.plum" || fail "sample.plum has no ## doc comment"
+grep -q '"[^"]*#\[[^"]*"' "$dir/sample.plum" || fail "sample.plum has no #[ inside a string"
 
 # 3. It is a valid, formatted program.
 "$PLUM" check "$dir/sample.plum" >"$tmp/check" 2>&1 || { fail "plum check fails on sample.plum:"; sed 's/^/    /' "$tmp/check"; }
