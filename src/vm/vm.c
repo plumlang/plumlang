@@ -2207,7 +2207,7 @@ static bool execute(VM *vm) {
  * with plum_as_int, store with plum_set_int and let go of the boxed ints
  * they consumed. Both paths give the same results and the same errors.
  */
-#define OVERFLOW(a, symbol, b)                                                        \
+#define INT_OVERFLOW_ERROR(a, symbol, b)                                              \
     FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
          (long long)(a), symbol, (long long)(b))
 /* r = x fn y, when x and y are inline ints and so is the result. Two
@@ -2335,7 +2335,7 @@ static bool execute(VM *vm) {
         uint16_t k_ = READ_U16();                              \
         int64_t a = plum_as_int(SLOT(n_)), b = (int16_t)k_, r; \
         if (fn(a, b, &r)) {                                    \
-            OVERFLOW(a, symbol, b);                            \
+            INT_OVERFLOW_ERROR(a, symbol, b);                  \
         }                                                      \
         PUSH_INT(r);                                           \
     } while (0)
@@ -3879,7 +3879,7 @@ static bool execute(VM *vm) {
 #undef JUMP_UNLESS_FLOAT
 #undef JUMP_UNLESS_INT_K
 #undef JUMP_UNLESS_FLOAT_K
-#undef OVERFLOW
+#undef INT_OVERFLOW_ERROR
 #undef INT_FAST
 #undef DROP_X
 #undef DROP_Y
