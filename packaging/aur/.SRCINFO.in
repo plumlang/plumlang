@@ -1,0 +1,21 @@
+pkgbase = plum-bin
+	pkgdesc = Small, fast, memory-safe programming language (prebuilt static binary)
+	pkgver = @VERSION@
+	pkgrel = 1
+	url = https://plum.elixpo.com
+	arch = x86_64
+	arch = aarch64
+	arch = riscv64
+	license = @LICENSE@
+	provides = plum
+	conflicts = plum
+	options = !strip
+	options = !debug
+	source_x86_64 = https://github.com/plumlang/plumlang/releases/download/v@VERSION@/plum-@VERSION@-linux-x86_64.tar.gz
+	sha256sums_x86_64 = @SHA_linux-x86_64@
+	source_aarch64 = https://github.com/plumlang/plumlang/releases/download/v@VERSION@/plum-@VERSION@-linux-arm64.tar.gz
+	sha256sums_aarch64 = @SHA_linux-arm64@
+	source_riscv64 = https://github.com/plumlang/plumlang/releases/download/v@VERSION@/plum-@VERSION@-linux-riscv64.tar.gz
+	sha256sums_riscv64 = @SHA_linux-riscv64@
+
+pkgname = plum-bin
