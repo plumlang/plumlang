@@ -1,0 +1,7 @@
+a module variable was used before its `plant` line ran: declare it above the code that calls this function
+a module variable was used before its `plant` line ran: declare it above the code that calls this function
+14 16 -10
+integer overflow: 9223372036854775807 + 1 doesn't fit in an int
+integer overflow: 9223372036854775807 + 1 doesn't fit in an int
+integer overflow: -9223372036854775808 - 1 doesn't fit in an int
+-9223372036854775808

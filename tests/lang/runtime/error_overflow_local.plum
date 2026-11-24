@@ -1,0 +1,9 @@
+# Overflow in an instruction that reads its right operand from a local:
+# the same error, at the line of the operation.
+branch grow(n: int, by: int) -> int {
+    plant total = n
+    total = total * by
+    return total
+}
+drop(grow(3, 4))
+drop(grow(4611686018427387904, 2))

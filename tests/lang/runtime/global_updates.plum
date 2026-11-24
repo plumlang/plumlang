@@ -1,0 +1,36 @@
+# += and -= on an int module variable change it in place (GLOBAL_ADD_INT_K,
+# GLOBAL_ADD_INT_L, ...): the same results and errors as reading, adding
+# and storing it.
+branch bump(by: int) {
+    hits += 1
+    total += by
+    total = total - 1
+    left -= by
+}
+branch early() {
+    try { later += 1 } catch e: Error { drop(e.message) }
+    try { later -= 1 } catch e: Error { drop(e.message) }
+}
+early()
+
+plant hits = 0
+plant total = 10
+plant left = 0
+for i in 1..=4 {
+    bump(i)
+    hits += i
+}
+drop(hits, total, left)
+
+plant big = 9223372036854775806
+branch push_big(by: int) {
+    try { big += by } catch e: OverflowError { drop(e.message) }
+}
+push_big(1)
+push_big(1)
+try { big += 1 } catch e: OverflowError { drop(e.message) }
+big = -big - 1
+try { big -= 1 } catch e: OverflowError { drop(e.message) }
+drop(big)
+
+plant later = 0
