@@ -1859,6 +1859,46 @@ static void unwind_to(VM *vm, size_t to) {
     }
 }
 
+/*
+ * Copy a value field by field. The typed instructions write only a
+ * value's number, in place; a whole-value (16-byte) read of it right after
+ * would wait for that store to retire (a failed store-to-load forward),
+ * which costs more than the instruction itself.
+ */
+static inline void copy_value(PlumValue *to, const PlumValue *from) {
+    to->type = from->type;
+    to->as = from->as;
+}
+
+/* Put `v` in the variable at `to`, giving up the value it held. */
+static inline void store_value(PlumValue *to, const PlumValue *v) {
+    if (to->type == PLUM_VAL_OBJ) {
+        PlumValue old = *to;
+        copy_value(to, v);
+        plum_release(old);
+    } else {
+        copy_value(to, v);
+    }
+}
+
+/* Make room to push one value. Growing may move the stack, so take any
+ * pointer into it (a local's slot) after this. */
+static inline void reserve_one(VM *vm) {
+    if (vm->top == vm->capacity) {
+        grow(vm, vm->top + 1);
+    }
+}
+
+/* Push a copy of the variable at `from`, with a new reference, once
+ * reserve_one made room. */
+static inline void push_copy(VM *vm, const PlumValue *from) {
+    PlumValue *to = &vm->stack[vm->top++];
+    copy_value(to, from);
+    if (to->type == PLUM_VAL_OBJ) {
+        to->as.obj->refcount++;
+    }
+}
+
 /* Read a 16-bit operand and move past it. */
 static inline uint16_t read_u16(const uint8_t **ip) {
     uint16_t v = plum_chunk_read_u16(*ip);
@@ -2028,14 +2068,16 @@ static bool execute(VM *vm) {
         case PLUM_OP_DUP:
             push(vm, plum_retain(*peek(vm, 0)));
             break;
-        case PLUM_OP_GET_LOCAL:
-            push(vm, plum_retain(SLOT(READ_U16())));
+        case PLUM_OP_GET_LOCAL: {
+            uint16_t n = READ_U16();
+            reserve_one(vm);
+            push_copy(vm, &SLOT(n));
             break;
+        }
         case PLUM_OP_SET_LOCAL: {
             uint16_t n = READ_U16();
-            PlumValue v = pop(vm);
-            plum_release(SLOT(n));
-            SLOT(n) = v;
+            vm->top--;
+            store_value(&SLOT(n), &vm->stack[vm->top]);
             break;
         }
         case PLUM_OP_BOX_LOCAL: {
@@ -2082,14 +2124,14 @@ static bool execute(VM *vm) {
         case PLUM_OP_GET_GLOBAL: {
             uint16_t n = READ_U16();
             CHECK_GLOBAL(n);
-            push(vm, plum_retain(vm->globals[n]));
+            reserve_one(vm);
+            push_copy(vm, &vm->globals[n]);
             break;
         }
         case PLUM_OP_SET_GLOBAL: {
             uint16_t n = READ_U16();
-            PlumValue v = pop(vm);
-            plum_release(vm->globals[n]);
-            vm->globals[n] = v;
+            vm->top--;
+            store_value(&vm->globals[n], &vm->stack[vm->top]);
             break;
         }
 
