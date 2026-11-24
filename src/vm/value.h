@@ -56,11 +56,29 @@ typedef enum PlumMadeKind {
     PLUM_MADE_COUNT
 } PlumMadeKind;
 
-/* The header every heap object starts with. */
+/*
+ * The header every heap object starts with. The count is a naturally
+ * aligned word of its own, with no other bits packed into it, so that it
+ * can one day be changed atomically for a frozen object
+ * (docs/design/concurrency.md).
+ */
 typedef struct PlumObj {
     uint32_t refcount;
-    uint8_t type; /* PlumObjType */
+    uint8_t type;  /* PlumObjType */
+    uint8_t flags; /* PLUM_OBJ_FROZEN */
 } PlumObj;
+
+/*
+ * A frozen object is never changed in place, whatever its count reads:
+ * copy-on-write always copies it. The compiler freezes its constant
+ * strings.
+ */
+#define PLUM_OBJ_FROZEN 0x01u
+
+/* Is the holder of this one reference its only owner, free to change it in place? */
+static inline bool plum_obj_unique(const PlumObj *o) {
+    return o->refcount == 1 && (o->flags & PLUM_OBJ_FROZEN) == 0;
+}
 
 typedef struct PlumValue {
     PlumValueType type;
@@ -72,13 +90,21 @@ typedef struct PlumValue {
     } as;
 } PlumValue;
 
-/* Immutable UTF-8 text. `chars` points just past the struct, NUL-terminated. */
+/*
+ * Immutable UTF-8 text. `chars` points just past the struct, NUL-terminated,
+ * with room for `cap` bytes before the NUL. A string only ever has more
+ * room than its length when `+=` grew it in place, which it does only when
+ * the string has one owner and isn't frozen (plum_string_append): to
+ * everyone else a string never changes. Nothing caches a string's hash.
+ */
 typedef struct PlumString {
     PlumObj obj;
     size_t len;
     char *chars;
     size_t char_count; /* characters (code points); valid once `counted` */
     bool counted;
+    uint32_t cap; /* bytes `chars` can hold when more than `len` (a str made by
+                   * `+=` is at most PLUM_MAX_STRING, which fits) */
 } PlumString;
 
 /*
@@ -297,6 +323,16 @@ void plum_release(PlumValue v);
 PlumString *plum_string_new(const char *s, size_t len);
 /* A new string of `len` bytes for the caller to fill; chars[len] is NUL. */
 PlumString *plum_string_alloc(size_t len);
+/* The same with room to grow to `cap` bytes in place. */
+PlumString *plum_string_alloc_room(size_t len, size_t cap);
+/*
+ * Append the strings parts[0..n) to the string in `*slot`, whose new length
+ * the caller has checked is at most PLUM_MAX_STRING. When `*slot` is its
+ * only owner and it isn't frozen, its buffer grows in place, half as much
+ * again each time, and may move; otherwise `*slot` gets a new string
+ * (copy-on-write). The parts are only read; one may be the string itself.
+ */
+void plum_string_append(PlumValue *slot, const PlumValue *parts, size_t n);
 
 /* The number of characters in `s`, counted once and remembered. A string
  * with as many characters as bytes is ASCII, so indexing it is direct. */

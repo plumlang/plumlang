@@ -2533,6 +2533,30 @@ static bool execute(VM *vm) {
             break;
         }
 
+        case PLUM_OP_APPEND_LOCAL:
+        case PLUM_OP_APPEND_GLOBAL: {
+            uint16_t n = READ_U16();
+            uint16_t count = READ_U16();
+            if (op == PLUM_OP_APPEND_GLOBAL) {
+                CHECK_GLOBAL(n);
+            }
+            PlumValue *place = op == PLUM_OP_APPEND_GLOBAL ? &vm->globals[n] : &SLOT(n);
+            const PlumValue *parts = &vm->stack[vm->top - count];
+            size_t total = plum_as_string(*place)->len;
+            for (uint16_t i = 0; i < count; i++) {
+                total = plum_add_size(total, plum_as_string(parts[i])->len);
+            }
+            if (total > PLUM_MAX_STRING) {
+                FAIL(PLUM_ERROR_VALUE,
+                     "+: the text would be longer than %zu bytes, the most a "
+                     "str can hold",
+                     PLUM_MAX_STRING);
+            }
+            plum_string_append(place, parts, count);
+            unwind_to(vm, vm->top - count);
+            break;
+        }
+
         case PLUM_OP_BUILD_MAP: {
             uint16_t n = READ_U16(); /* pairs: key, value, key, value ... */
             PlumTable *table = plum_table_new(false, vm->seed);
