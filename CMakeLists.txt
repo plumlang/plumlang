@@ -5,6 +5,7 @@
 #
 #   cmake -B build && cmake --build build --config Release
 #   cmake -B build -DPLUM_SANITIZE=ON       (GCC/Clang: ASan + UBSan)
+#   cmake -B build -DPLUM_LTO=ON            link-time optimisation (MSVC: /GL and /LTCG)
 #   ctest --test-dir build -C Release
 
 cmake_minimum_required(VERSION 3.16)
@@ -15,6 +16,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 option(PLUM_SANITIZE "Build with AddressSanitizer and UBSan (GCC/Clang)" OFF)
+option(PLUM_LTO "Link-time optimisation, for release builds (MSVC: /GL and /LTCG)" OFF)
 
 # Everything but the command-line front end is a static library, which the
 # plum binary and the unit tests both link (src/wasm/bindings.c is built
@@ -108,6 +110,21 @@ foreach(target plumcore plum plum_unit_tests)
     endif()
   endif()
 endforeach()
+
+# The release builds for Windows use it (.github/workflows/release.yml).
+# Profile-guided optimisation is in the Makefile only (make release-pgo):
+# MSVC's needs its own runtime DLL while training, and the ARM64 build is
+# cross-compiled, so it cannot be trained on the machine that builds it.
+if(PLUM_LTO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT PLUM_IPO_OK OUTPUT PLUM_IPO_ERROR LANGUAGES C)
+  if(PLUM_IPO_OK)
+    set_property(TARGET plum_mbedtls plumcore plum plum_unit_tests
+                 PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+  else()
+    message(WARNING "PLUM_LTO: link-time optimisation is not supported here: ${PLUM_IPO_ERROR}")
+  endif()
+endif()
 
 enable_testing()
 add_test(NAME unit COMMAND plum_unit_tests)

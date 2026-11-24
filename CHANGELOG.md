@@ -30,6 +30,7 @@ Format for a new entry:
 - **Tools**: `plum lsp` signature help (#114): the signature of the call being typed, with the argument under the cursor (by position or by keyword) highlighted, for functions, methods, constructors, kind cases, built-ins and the standard library.
 - **Tools**: `plum lsp` semantic tokens (#114): the whole file coloured by meaning (modules, types, trees, traits, kinds and cases, parameters, variables, fields, functions, methods; declarations, constants and what is built in), with keywords, numbers, strings and comments, in the protocol's standard legend.
 - **Tools**: `plum lsp` quick fixes (#114): "Add `seed math`" (or `seed ./name` for a file beside it) for an unknown name that is a module, and "Prefix 'x' with '_'" for a name never used (W0502).
+- **Performance**: release binaries are built with link-time and profile-guided optimisation (`make release-pgo`, trained on `bench/` and `examples/` by `tools/pgo-train.sh`): method dispatch (`cart`, `dispatch`) 17% faster than `-O2`, collatz, fib, jsondoc and words 11–12%, nothing slower. Linux x86_64 and arm64 get both; macOS arm64 PGO alone (Apple Clang's LTO builds fail the network tests), riscv64 LTO alone, and Windows MSVC's LTCG (`cmake -DPLUM_LTO=ON`). `make release-lto` is LTO alone. Measurements in `bench/README.md` (#115).
 
 ## v2.1.4 — 2026-11-16
 

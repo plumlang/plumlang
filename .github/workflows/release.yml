@@ -79,16 +79,22 @@ jobs:
         with:
           platforms: riscv64
       # A static binary against musl: it runs on any Linux, whatever its libc.
-      # Under emulation the full suite is too slow; the examples still run.
+      # Built with LTO and PGO (make release-pgo, bench/README.md). Under
+      # emulation the full suite and a training run are too slow: LTO only,
+      # and the examples still run.
       - name: Build and test (static, musl)
         run: |
           docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src \
             -e COMMIT="${GITHUB_SHA::7}" -e FULL="${{ !matrix.emulated }}" alpine:3.22 sh -euc '
               apk add --no-cache build-base git > /dev/null
               git config --global --add safe.directory /src
-              LDFLAGS=-static make -j"$(nproc)" COMMIT="$COMMIT"
-              if [ "$FULL" = true ]; then LDFLAGS=-static make test COMMIT="$COMMIT"
-              else sh tests/golden.sh ./plum examples; fi
+              if [ "$FULL" = true ]; then
+                LDFLAGS=-static make -j"$(nproc)" release-pgo COMMIT="$COMMIT"
+                LDFLAGS=-static make test LTO=1 PGO=use COMMIT="$COMMIT"
+              else
+                LDFLAGS=-static make -j"$(nproc)" release-lto COMMIT="$COMMIT"
+                sh tests/golden.sh ./plum examples
+              fi
               strip plum
               ./plum version'
       - run: sh tools/release/package.sh plum ${{ matrix.target }} dist
@@ -115,10 +121,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # No LTO: with Apple Clang, LTO builds fail the network tests
+      # (bench/README.md). arm64 gets PGO, trained on this runner; x86_64
+      # (cross-compiled, so it can't be trained here) plain -O2.
       - name: Build and test (arm64)
         run: |
-          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}"
-          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" test
+          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" PGO_LTO=0 release-pgo
+          make CC="clang -arch arm64" COMMIT="${GITHUB_SHA::7}" PGO=use test
           cp plum plum-arm64
       - name: Build (x86_64)
         run: |
@@ -178,7 +187,8 @@ jobs:
         with:
           persist-credentials: false
       # The C runtime linked in statically: plum.exe needs no redistributable.
-      - run: cmake -S . -B build -A ${{ matrix.arch }} -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      # LTO (/GL, /LTCG); no PGO with MSVC (CMakeLists.txt says why).
+      - run: cmake -S . -B build -A ${{ matrix.arch }} -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPLUM_LTO=ON
       - run: cmake --build build --config Release
       - if: matrix.test
         run: ctest --test-dir build -C Release --output-on-failure

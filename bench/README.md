@@ -31,7 +31,9 @@ python3 bench/run.py --lua luajit      # a particular Lua
 python3 bench/run.py --json out.json   # also write the results as JSON
 ```
 
-Results depend on the machine; compare runs on the same one.
+Results depend on the machine; compare runs on the same one. The release
+binaries are built with `make release-pgo` (LTO and PGO, below); build
+that to compare with what users run.
 
 ## Results
 
@@ -126,14 +128,44 @@ these numbers are partly the clients'.
 
 ## What was tried
 
-Each change was measured with `bench/run.py --runs 7` and kept only if it
-helped.
+Each change was measured with `bench/run.py --runs 7` (the LTO and PGO
+rows: `--runs 5`, Linux x86_64, GCC 15.2) and kept only if it helped.
 
 | Change | Result | Kept |
 |---|---|---|
 | Typed `==` / `!=` for numbers (`EQ_INT`, `EQ_FLOAT`) instead of a generic comparison | collatz 1.41 s → 1.27 s, loop 0.30 s → 0.28 s | yes |
 | Computed-goto dispatch (GCC/Clang) instead of `switch` | no difference (collatz 1.27 s → 1.32 s, within noise): GCC's jump table is already well predicted | no |
 | Compiler-computed stack bound, so `push` skips its capacity check | no difference: the check is a perfectly predicted branch | no |
+| Link-time optimisation alone (`-flto`, `make release-lto`) | mixed: jsondoc 0.236 s → 0.192 s and strings 0.150 s → 0.136 s (the stdlib's C inlined into the VM's calls), but cart, dispatch and loop 3–5% slower | only as part of PGO, and where PGO can't run |
+| Profile-guided optimisation alone (`-fprofile-use`, no LTO) | collatz −11%, fib −9%, jsondoc −9%, strings −8%; dispatch and cart within noise | no: LTO + PGO does more |
+| LTO + PGO (`make release-pgo`, trained by `tools/pgo-train.sh` on bench/ and examples/) | cart −17%, dispatch −17%, collatz −12%, fib −12%, jsondoc −11%, words −11%, strings −9%; loop, mandelbrot and textbuild unchanged; nothing slower | yes, for release binaries |
+
+LTO and PGO, Plumlang alone (`--plum-only`), fastest of five runs, the
+four builds measured one after another:
+
+| Build | cart | collatz | dispatch | fib | jsondoc | loop | mandelbrot | strings | textbuild | words |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `make` (`-O2`) | 0.397 s | 1.302 s | 0.307 s | 0.064 s | 0.236 s | 0.273 s | 0.337 s | 0.150 s | 0.320 s | 0.302 s |
+| `make release-lto` | 0.411 s | 1.318 s | 0.319 s | 0.062 s | 0.192 s | 0.288 s | 0.347 s | 0.136 s | 0.320 s | 0.289 s |
+| PGO without LTO | 0.384 s | 1.165 s | 0.302 s | 0.058 s | 0.214 s | 0.269 s | 0.347 s | 0.138 s | 0.322 s | 0.297 s |
+| `make release-pgo` (LTO + PGO) | 0.328 s | 1.140 s | 0.255 s | 0.056 s | 0.211 s | 0.271 s | 0.341 s | 0.136 s | 0.320 s | 0.270 s |
+
+PGO lays the run loop out for the paths the training ran; LTO lets it also
+inline hot calls across files, which is where the method-dispatch gain
+(`dispatch`, `cart`) comes from: PGO alone leaves those as they were.
+`loop`, `mandelbrot` and `textbuild` spend their time in a few
+instructions that `-O2` already lays out well, or in `memcpy`.
+
+Release builds use it where the build machine can run the training:
+Linux x86_64 and arm64 (GCC; Clang on Linux passes the whole suite too).
+Linux riscv64 (built under emulation) gets LTO only. macOS gets no LTO
+for now (arm64 gets PGO alone, x86_64 is cross-compiled and plain): with
+Apple Clang, every LTO build (LTO alone, LTO + PGO, and the
+instrumented LTO build) aborts in the network tests (`pointer being freed
+was not allocated`), while the plain, PGO-only and ASan + UBSan builds
+pass; that is still to be tracked down. Windows gets
+MSVC's LTCG (`-DPLUM_LTO=ON`) and no PGO, as MSVC's needs its own runtime
+DLL while training and the ARM64 build is cross-compiled.
 
 Method calls cost what function calls do (`dispatch` and `fib` both run
 level with Python): finding the method is one table lookup, and the time
