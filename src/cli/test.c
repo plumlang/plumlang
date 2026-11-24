@@ -463,6 +463,7 @@ static void print_indented(const char *text, const char *indent) {
 static void report(TestRun *run, const char *path, const Test *test, const Outcome *o,
                    unsigned call_line) {
     Failure f;
+    memset(&f, 0, sizeof f);
     bool parsed = !o->passed && o->errors != NULL && parse_failure(o->errors, path, call_line, &f);
     /* Without a runtime error's report: exit(n), a task's failure, ... */
     char exited[64];
