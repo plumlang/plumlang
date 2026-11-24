@@ -71,7 +71,14 @@ closure captured (which lives in a cell) uses the plain instructions.
 
 An interpolated string pushes the text of each part and joins them with
 one `BUILD_STRING`; so does a chain of `+` on strings (`a + b + "{c}"`),
-rather than making a new string for every `+`.
+rather than making a new string for every `+`. A part that is an int or
+a bool with no format, or a str with none, is pushed as it is, and
+`BUILD_TEXT` joins the parts instead: a constant string, one letter per
+part (`s` str, `i` int, `b` bool), says what each one is, and it writes
+the text of the ints and bools straight into the result, with no string
+made for each (#122). Their text can't fail or run code, so making it at
+the end changes nothing a program sees; a part with a format, or of any
+other type, still gets its own `TO_STRING`, in order.
 
 `s += text` and `s = s + text`, on a str local or module variable, push
 the pieces of `text` the same way and then `APPEND_LOCAL` or
@@ -84,6 +91,34 @@ The compiler freezes its constant strings. A module variable uses
 `APPEND_GLOBAL` only when computing `text` makes no call, which could
 change the variable before it is read; a captured variable (in a cell)
 and a field use the plain instructions.
+
+## References
+
+Every value on the stack or in a slot holds a reference to its object
+(spec 11.2), so pushing a local's copy counts one and popping it lets
+it go. Some instructions avoid that (#122):
+
+| Form | Example | Instead of |
+|---|---|---|
+| A list, str or map read in its local slot, not pushed | `xs[i]`: `INDEX_LIST_LL`; `xs[i + 1]`: `INDEX_LIST_L`; `len(s)`: `LEN_L` | `GET_LOCAL`, ..., `INDEX_LIST` or `CALL_BUILTIN len` |
+| A local's last read moves it | `f(xs)` where `xs` isn't read again: `MOVE_LOCAL` | `GET_LOCAL` |
+
+Only the running function can assign to its locals (a closure's
+variable lives in a cell, and uses the plain instructions), so a local
+read after its index is computed is still the same list.
+
+`MOVE_LOCAL` pushes the value and leaves none in the slot. After a
+function is compiled, a liveness analysis of its bytecode
+(`src/compiler/moves.c`) turns into `MOVE_LOCAL` each `GET_LOCAL` after
+which no path reads that slot before writing it; inside a `try`, the
+handler counts as a path from every instruction. A list passed on its
+last use then reaches the function with one owner, which changes it in
+place instead of copying it first, and nothing is counted or released
+for the copy. It is done only for slots that hold numbers, strings and
+collections of them: freeing an object can be seen (its weak references
+read none, a file closes), and the program must not see it happen before
+the variable goes. `RETURN_LOCAL` always moves: the slot goes with the
+frame.
 
 ## Range loops
 
