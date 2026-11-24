@@ -1,0 +1,6 @@
+# Imports the module, but no open file imports this one.
+seed ./garden/beds { Bed, make_bed }
+
+branch count(b: Bed) -> int => b.plants
+
+drop(count(make_bed(plants: 3)))

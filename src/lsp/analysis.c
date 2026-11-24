@@ -409,20 +409,35 @@ typedef enum OccKind {
     OCC_FIELD_DECL,  /* a field in a tree */
     OCC_METHOD_DECL, /* a method's name in a tree or trait */
     OCC_CASE_DECL,   /* a case in a kind */
+    OCC_PARAM_DECL,  /* a parameter of a case: Circle(radius: float) */
     OCC_SEED_PATH,   /* the module a seed names */
     OCC_SEED_NAME,   /* a name a seed imports: seed math { sqrt } */
+    OCC_ARG,         /* a keyword argument's name: f(size: 2) */
     OCC_EXPR,        /* an expression, for its type */
 } OccKind;
 
 typedef struct Occ {
     OccKind kind;
     size_t start, end;    /* the name, in the file's text */
-    const char *name;     /* SYMBOL, MEMBER, SEED_NAME */
+    const char *name;     /* SYMBOL, MEMBER, SEED_NAME, ARG */
     PlumSymbol *symbol;   /* SYMBOL */
-    const PlumExpr *expr; /* MEMBER (the a.b), EXPR */
-    const PlumStmt *stmt; /* FIELD/METHOD/CASE_DECL: the tree or kind; SEED_*: the seed */
-    const void *item;     /* FIELD_DECL: PlumField, METHOD_DECL: PlumBranch, CASE_DECL: PlumCase */
+    const PlumExpr *expr; /* MEMBER (the a.b), ARG (the call), EXPR */
+    const PlumStmt *stmt; /* *_DECL: the tree or kind; SEED_*: the seed */
+    const void *item;     /* FIELD_DECL: PlumField, METHOD_DECL: PlumBranch, CASE_DECL: PlumCase,
+                             PARAM_DECL: PlumParam, ARG: PlumArg */
 } Occ;
+
+/* The `seed` module named text[0, len) in a program, or NULL. */
+static PlumSymbol *find_module(const PlumProgram *p, const char *name, size_t len) {
+    for (size_t i = 0; i < p->count; i++) {
+        PlumSymbol *sym = p->stmts[i]->symbol;
+        if (p->stmts[i]->kind == PLUM_STMT_SEED && sym != NULL && sym->kind == PLUM_SYM_MODULE &&
+            strlen(sym->name) == len && memcmp(sym->name, name, len) == 0) {
+            return sym;
+        }
+    }
+    return NULL;
+}
 
 typedef struct Walk {
     const PlumModule *m;
@@ -510,6 +525,19 @@ static void walk_expr(Walk *w, const PlumExpr *e) {
         size_t n = strlen(e->as.name);
         size_t from = end >= n && end - n >= e->span.offset ? end - n : e->span.offset;
         visit_name(w, OCC_SYMBOL, e->as.name, from, end, e->symbol, NULL, NULL);
+        /* and `shapes` is the module it came from */
+        size_t q = e->span.offset;
+        while (q < from && is_name_char(w->m->text[q])) {
+            q++;
+        }
+        PlumSymbol *mod =
+            q > e->span.offset && q < from
+                ? find_module(&w->m->program, w->m->text + e->span.offset, q - e->span.offset)
+                : NULL;
+        if (mod != NULL) {
+            Occ o = {OCC_SYMBOL, e->span.offset, q, mod->name, mod, NULL, NULL, NULL};
+            w->visit(w, &o);
+        }
         break;
     }
     case PLUM_EXPR_INTERP:
@@ -547,7 +575,18 @@ static void walk_expr(Walk *w, const PlumExpr *e) {
     case PLUM_EXPR_CALL:
         walk_expr(w, e->as.call.callee);
         for (size_t i = 0; i < e->as.call.arg_count; i++) {
-            walk_expr(w, e->as.call.args[i].value);
+            const PlumArg *arg = &e->as.call.args[i];
+            if (arg->name != NULL) {
+                long at = find_word(w->m->text, w->m->len, arg->span.offset,
+                                    span_end(arg->span, w->m->len), arg->name);
+                if (at >= 0) {
+                    Occ o = {OCC_ARG,   (size_t)at, (size_t)at + strlen(arg->name),
+                             arg->name, NULL,       e,
+                             NULL,      arg};
+                    w->visit(w, &o);
+                }
+            }
+            walk_expr(w, arg->value);
         }
         break;
     case PLUM_EXPR_INDEX:
@@ -616,20 +655,30 @@ static void walk_branch(Walk *w, const PlumBranch *b, const PlumStmt *tree, Plum
     walk_expr(w, b->arrow);
 }
 
-static void walk_seed(Walk *w, const PlumStmt *s) {
-    const char *text = w->m->text;
-    size_t start = s->span.offset;
-    size_t end = span_end(s->span, w->m->len);
+/* Where a seed's path is in its text (after `seed`, before any `as` or
+ * `{`); false if it isn't there. */
+static bool seed_path_at(const PlumModule *m, const PlumStmt *s, size_t *at, size_t *end) {
+    size_t stop = span_end(s->span, m->len);
     const char *path = s->as.seed.path;
     size_t n = path != NULL ? strlen(path) : 0;
-    /* the path: after `seed`, before any `as` or `{` */
-    for (size_t i = start + 4; n > 0 && i + n <= end; i++) {
-        if (memcmp(text + i, path, n) == 0) {
-            Occ o = {OCC_SEED_PATH, i, i + n, path, NULL, NULL, s, NULL};
-            w->visit(w, &o);
-            start = i + n;
-            break;
+    for (size_t i = (size_t)s->span.offset + 4; n > 0 && i + n <= stop; i++) {
+        if (memcmp(m->text + i, path, n) == 0) {
+            *at = i;
+            *end = i + n;
+            return true;
         }
+    }
+    return false;
+}
+
+static void walk_seed(Walk *w, const PlumStmt *s) {
+    size_t start = s->span.offset;
+    size_t end = span_end(s->span, w->m->len);
+    size_t at = 0, after = 0;
+    if (seed_path_at(w->m, s, &at, &after)) {
+        Occ o = {OCC_SEED_PATH, at, after, s->as.seed.path, NULL, NULL, s, NULL};
+        w->visit(w, &o);
+        start = after;
     }
     if (s->as.seed.alias != NULL) {
         visit_name(w, OCC_SYMBOL, s->as.seed.alias, start, end, s->symbol, NULL, NULL);
@@ -732,7 +781,10 @@ static void walk_stmt(Walk *w, const PlumStmt *s) {
             visit_name(w, OCC_CASE_DECL, c->name, c->span.offset, span_end(c->span, w->m->len),
                        NULL, s, c);
             for (size_t k = 0; k < c->param_count; k++) {
-                walk_type(w, c->params[k].type);
+                const PlumParam *p = &c->params[k];
+                visit_name(w, OCC_PARAM_DECL, p->name, p->span.offset, span_end(p->span, w->m->len),
+                           NULL, s, p);
+                walk_type(w, p->type);
             }
         }
         break;
@@ -1102,6 +1154,8 @@ static void describe(Buf *b, const PlumLspAnalysis *a, const Occ *o) {
         }
         break;
     }
+    case OCC_PARAM_DECL:
+    case OCC_ARG:
     case OCC_EXPR:
         break;
     }
@@ -1145,6 +1199,254 @@ void plum_lsp_hover(PlumJsonWriter *w, const PlumLspAnalysis *a, size_t offset) 
     write_module_range(w, a->main, start, end);
     plum_jw_object_end(w);
     plum_array_free(&b);
+}
+
+/* ------------------------------------------------------------------ */
+/* Where names are declared                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * References and rename ask, for each name in a file, which declaration
+ * it stands for: a file and the place of the declared name in it. Two
+ * names stand for the same thing when those are the same, which holds
+ * across files, each checked on its own.
+ */
+typedef struct Place {
+    const PlumModule *m;
+    size_t start, end;
+} Place;
+
+typedef enum PlaceKind {
+    PLACE_OK,
+    PLACE_NONE,    /* nothing there, or a name that isn't declared */
+    PLACE_BUILTIN, /* drop, int, ValueError, ... */
+    PLACE_STDLIB,  /* a standard module, or one of its functions */
+    PLACE_FILE,    /* a file module's own name: the file */
+} PlaceKind;
+
+/* `name` as a word in a span of `m`. */
+static PlaceKind name_place(const PlumModule *m, PlumSpan span, const char *name, Place *out) {
+    long at = m != NULL && name != NULL
+                  ? find_word(m->text, m->len, span.offset, span_end(span, m->len), name)
+                  : -1;
+    if (at < 0) {
+        return PLACE_NONE;
+    }
+    out->m = m;
+    out->start = (size_t)at;
+    out->end = (size_t)at + strlen(name);
+    return PLACE_OK;
+}
+
+/* The file a file module's seed loads, or NULL for a standard module. */
+static const PlumModule *seed_file(const PlumLspAnalysis *a, const PlumStmt *s) {
+    const PlumModule *file =
+        s->as.seed.exports != NULL ? module_with_exports(a, s->as.seed.exports) : NULL;
+    return file != NULL && file->path[0] != '<' ? file : NULL;
+}
+
+static PlaceKind symbol_place(const PlumLspAnalysis *a, const PlumSymbol *sym, Place *out) {
+    if (sym == NULL || strcmp(sym->name, "self") == 0) {
+        return PLACE_NONE;
+    }
+    if (sym->kind == PLUM_SYM_BUILTIN_FUNC || sym->kind == PLUM_SYM_BUILTIN_TYPE ||
+        sym->span.line == 0) {
+        return PLACE_BUILTIN;
+    }
+    if (sym->kind == PLUM_SYM_NATIVE) {
+        return PLACE_STDLIB;
+    }
+    if (sym->kind == PLUM_SYM_MODULE) {
+        const PlumStmt *s = sym->decl;
+        if (s == NULL) {
+            return PLACE_NONE;
+        }
+        if (s->as.seed.alias != NULL) {
+            /* `seed ./shapes as sh`: the name is the alias, after the path */
+            const PlumModule *m = module_of(a, s, a->main);
+            size_t at = 0, after = s->span.offset;
+            seed_path_at(m, s, &at, &after);
+            PlumSpan rest = {(uint32_t)after, (uint32_t)(span_end(s->span, m->len) - after), 0, 0};
+            return name_place(m, rest, s->as.seed.alias, out);
+        }
+        const PlumModule *file = seed_file(a, s);
+        if (file == NULL) {
+            return PLACE_STDLIB;
+        }
+        out->m = file;
+        out->start = out->end = 0;
+        return PLACE_FILE;
+    }
+    const PlumModule *m = module_of(a, sym->decl, a->main);
+    if (sym->kind == PLUM_SYM_CASE && sym->owner != NULL) {
+        m = module_of(a, sym->owner->decl, a->main);
+    }
+    return name_place(m, sym->span, sym->name, out);
+}
+
+/* a.b: the declaration of b. */
+static PlaceKind member_place(const PlumLspAnalysis *a, const PlumExpr *e, Place *out) {
+    const PlumExpr *obj = e->as.field.object;
+    const char *name = e->as.field.name;
+    if (name == NULL) {
+        return PLACE_NONE;
+    }
+    if (obj != NULL && obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL) {
+        if (obj->symbol->kind == PLUM_SYM_KIND) {
+            const PlumCase *c = find_case(obj->symbol, name);
+            return c != NULL
+                       ? name_place(module_of(a, obj->symbol->decl, a->main), c->span, name, out)
+                       : PLACE_NONE;
+        }
+        if (obj->symbol->kind == PLUM_SYM_MODULE && native_module_of(obj->symbol) != NULL) {
+            return PLACE_STDLIB;
+        }
+    }
+    const PlumSymbol *tree = tree_of(obj != NULL ? obj->ty : NULL);
+    const PlumSymbol *owner = NULL;
+    const PlumField *f = tree != NULL ? find_field(tree, name, &owner) : NULL;
+    if (f != NULL) {
+        return name_place(module_of(a, owner->decl, a->main), f->span, name, out);
+    }
+    const PlumBranch *m = tree != NULL ? find_method(tree, name, &owner, 0) : NULL;
+    if (m != NULL) {
+        return name_place(module_of(a, owner->decl, a->main), m->span, name, out);
+    }
+    if (tree != NULL && tree->decl == NULL) {
+        return PLACE_BUILTIN; /* a built-in error's message */
+    }
+    bool method = false;
+    if (obj != NULL && obj->ty != NULL && plum_callee_native(e, &method) != NULL) {
+        return PLACE_STDLIB;
+    }
+    return PLACE_NONE;
+}
+
+/* `name` among parameters declared in module `m`. */
+static PlaceKind param_place(const PlumModule *m, const PlumParam *params, size_t count,
+                             const char *name, Place *out) {
+    for (size_t i = 0; i < count; i++) {
+        if (params[i].name != NULL && strcmp(params[i].name, name) == 0) {
+            return name_place(m, params[i].span, name, out);
+        }
+    }
+    return PLACE_NONE;
+}
+
+/* A tree's constructor parameter: init's, or a field. */
+static PlaceKind constructor_place(const PlumLspAnalysis *a, const PlumSymbol *tree,
+                                   const char *name, Place *out) {
+    const PlumSymbol *owner = NULL;
+    const PlumBranch *init = find_method(tree, "init", &owner, 0);
+    if (init != NULL) {
+        return param_place(module_of(a, owner->decl, a->main), init->params, init->param_count,
+                           name, out);
+    }
+    const PlumField *f = find_field(tree, name, &owner);
+    if (f != NULL) {
+        return name_place(module_of(a, owner->decl, a->main), f->span, name, out);
+    }
+    return tree->decl == NULL ? PLACE_BUILTIN : PLACE_NONE;
+}
+
+/* f(size: 2): the parameter (or field) `size` is. */
+static PlaceKind arg_place(const PlumLspAnalysis *a, const PlumExpr *call, const char *name,
+                           Place *out) {
+    const PlumExpr *callee = call->as.call.callee;
+    if (callee == NULL) {
+        return PLACE_NONE;
+    }
+    const PlumSymbol *kind = NULL;
+    const char *case_name = NULL;
+    if (callee->kind == PLUM_EXPR_NAME && callee->symbol != NULL) {
+        const PlumSymbol *sym = callee->symbol;
+        switch (sym->kind) {
+        case PLUM_SYM_FUNC:
+            if (sym->decl != NULL && sym->decl->kind == PLUM_STMT_BRANCH) {
+                const PlumBranch *b = &sym->decl->as.branch;
+                return param_place(module_of(a, sym->decl, a->main), b->params, b->param_count,
+                                   name, out);
+            }
+            return PLACE_NONE;
+        case PLUM_SYM_TREE:
+            return constructor_place(a, sym, name, out);
+        case PLUM_SYM_CASE:
+            kind = sym->owner;
+            case_name = sym->name;
+            break;
+        case PLUM_SYM_BUILTIN_FUNC:
+        case PLUM_SYM_BUILTIN_TYPE:
+            return PLACE_BUILTIN;
+        case PLUM_SYM_NATIVE:
+            return PLACE_STDLIB;
+        default:
+            return PLACE_NONE;
+        }
+    } else if (callee->kind == PLUM_EXPR_FIELD && callee->as.field.name != NULL) {
+        const PlumExpr *obj = callee->as.field.object;
+        if (obj != NULL && obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+            obj->symbol->kind == PLUM_SYM_KIND) {
+            kind = obj->symbol;
+            case_name = callee->as.field.name;
+        } else {
+            const PlumSymbol *tree = tree_of(obj != NULL ? obj->ty : NULL);
+            const PlumSymbol *owner = NULL;
+            const PlumBranch *m =
+                tree != NULL ? find_method(tree, callee->as.field.name, &owner, 0) : NULL;
+            if (m != NULL) {
+                return param_place(module_of(a, owner->decl, a->main), m->params, m->param_count,
+                                   name, out);
+            }
+            Place ignored;
+            return member_place(a, callee, &ignored) == PLACE_STDLIB ? PLACE_STDLIB : PLACE_NONE;
+        }
+    }
+    const PlumCase *c = kind != NULL ? find_case(kind, case_name) : NULL;
+    if (c == NULL) {
+        return PLACE_NONE;
+    }
+    return param_place(module_of(a, kind->decl, a->main), c->params, c->param_count, name, out);
+}
+
+/* What an occurrence in module `m` (of analysis `a`) stands for. */
+static PlaceKind occ_place(const PlumLspAnalysis *a, const PlumModule *m, const Occ *o,
+                           Place *out) {
+    switch (o->kind) {
+    case OCC_SYMBOL:
+        return symbol_place(a, o->symbol, out);
+    case OCC_MEMBER:
+        return member_place(a, o->expr, out);
+    case OCC_FIELD_DECL:
+    case OCC_METHOD_DECL:
+    case OCC_CASE_DECL:
+    case OCC_PARAM_DECL:
+        out->m = m;
+        out->start = o->start;
+        out->end = o->end;
+        return PLACE_OK;
+    case OCC_SEED_PATH: {
+        const PlumModule *file = seed_file(a, o->stmt);
+        if (file == NULL) {
+            return PLACE_STDLIB;
+        }
+        out->m = file;
+        out->start = out->end = 0;
+        return PLACE_FILE;
+    }
+    case OCC_SEED_NAME: {
+        void *found = NULL;
+        const PlumMap *exports = o->stmt->as.seed.exports;
+        if (exports != NULL && plum_map_get(exports, o->name, strlen(o->name), &found)) {
+            return symbol_place(a, found, out);
+        }
+        return exports == NULL ? PLACE_STDLIB : PLACE_NONE;
+    }
+    case OCC_ARG:
+        return arg_place(a, o->expr, o->name, out);
+    case OCC_EXPR:
+        break;
+    }
+    return PLACE_NONE;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1240,8 +1542,17 @@ void plum_lsp_definition(PlumJsonWriter *w, const PlumLspAnalysis *a, size_t off
     case OCC_FIELD_DECL:
     case OCC_METHOD_DECL:
     case OCC_CASE_DECL:
+    case OCC_PARAM_DECL:
         write_location(w, a->main, o->start, o->end, namer);
         return;
+    case OCC_ARG: {
+        Place p;
+        if (arg_place(a, o->expr, o->name, &p) == PLACE_OK) {
+            write_location(w, p.m, p.start, p.end, namer);
+            return;
+        }
+        break;
+    }
     case OCC_SEED_PATH:
         if (o->stmt->as.seed.exports != NULL) {
             const PlumModule *m = module_with_exports(a, o->stmt->as.seed.exports);
@@ -1264,6 +1575,154 @@ void plum_lsp_definition(PlumJsonWriter *w, const PlumLspAnalysis *a, size_t off
         break;
     }
     plum_jw_null(w);
+}
+
+/* ------------------------------------------------------------------ */
+/* References and rename                                               */
+/* ------------------------------------------------------------------ */
+
+static bool is_keyword(const char *word, size_t len) {
+    const char *k;
+    for (size_t i = 0; (k = plum_keyword_at(i)) != NULL; i++) {
+        if (strlen(k) == len && memcmp(k, word, len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool plum_lsp_target(const PlumLspAnalysis *a, size_t offset, PlumLspTarget *t) {
+    memset(t, 0, sizeof *t);
+    const PlumModule *main = a->main;
+    Finder f = find_at(main, offset);
+    if (!f.has_name) {
+        size_t from = offset < main->len ? offset : main->len, to = from;
+        while (from > 0 && is_name_char(main->text[from - 1])) {
+            from--;
+        }
+        while (to < main->len && is_name_char(main->text[to])) {
+            to++;
+        }
+        if (to > from && is_keyword(main->text + from, to - from)) {
+            snprintf(t->no_rename, sizeof t->no_rename,
+                     "'%.*s' is a keyword; only names can be renamed", (int)(to - from),
+                     main->text + from);
+        } else {
+            snprintf(t->no_rename, sizeof t->no_rename, "there is no name here to rename");
+        }
+        return false;
+    }
+    const Occ *o = &f.name;
+    int n = (int)(o->end - o->start);
+    const char *word = main->text + o->start;
+    Place p;
+    switch (occ_place(a, main, o, &p)) {
+    case PLACE_OK:
+        break;
+    case PLACE_FILE: {
+        const char *slash = strrchr(p.m->path, '/');
+        snprintf(t->no_rename, sizeof t->no_rename,
+                 "'%.*s' is the file %s; rename the file, or name the module with `seed ... as`", n,
+                 word, slash != NULL ? slash + 1 : p.m->path);
+        break;
+    }
+    case PLACE_BUILTIN:
+        snprintf(t->no_rename, sizeof t->no_rename,
+                 "'%.*s' is built into Plumlang; it can't be renamed", n, word);
+        return false;
+    case PLACE_STDLIB:
+        snprintf(t->no_rename, sizeof t->no_rename,
+                 "'%.*s' belongs to the standard library; it can't be renamed", n, word);
+        return false;
+    case PLACE_NONE:
+        snprintf(t->no_rename, sizeof t->no_rename,
+                 "'%.*s' isn't declared anywhere, so there is nothing to rename", n, word);
+        return false;
+    }
+    t->path = plum_strdup(p.m->path);
+    t->start = p.start;
+    t->end = p.end;
+    t->name = p.end > p.start ? plum_strndup(p.m->text + p.start, p.end - p.start) : NULL;
+    t->at_start = o->start;
+    t->at_end = o->end;
+    return true;
+}
+
+void plum_lsp_target_free(PlumLspTarget *t) {
+    plum_free(t->path);
+    plum_free(t->name);
+    t->path = NULL;
+    t->name = NULL;
+}
+
+typedef struct Refs {
+    const PlumLspAnalysis *a;
+    const PlumLspTarget *t;
+    bool declaration;
+    PlumLspRanges *out;
+} Refs;
+
+static void refs_visit(Walk *w, const Occ *o) {
+    Refs *r = w->ctx;
+    const PlumLspTarget *t = r->t;
+    if (o->kind == OCC_EXPR) {
+        return;
+    }
+    /* only a name spelled as the declared one can stand for it */
+    size_t n = t->name != NULL ? strlen(t->name) : 0;
+    if (t->name != NULL &&
+        (o->end - o->start != n || memcmp(w->m->text + o->start, t->name, n) != 0)) {
+        return;
+    }
+    Place p;
+    PlaceKind k = occ_place(r->a, w->m, o, &p);
+    if ((k != PLACE_OK && k != PLACE_FILE) || p.start != t->start ||
+        !plum_lsp_same_path(p.m->path, t->path)) {
+        return;
+    }
+    if (!r->declaration && p.m == w->m && p.start == o->start) {
+        return;
+    }
+    for (size_t i = 0; i < r->out->len; i++) {
+        if (r->out->items[i].start == o->start) {
+            return;
+        }
+    }
+    PlumLspRange range = {o->start, o->end};
+    plum_array_push(r->out, range);
+}
+
+static int by_start(const void *x, const void *y) {
+    size_t a = ((const PlumLspRange *)x)->start, b = ((const PlumLspRange *)y)->start;
+    return a < b ? -1 : a > b;
+}
+
+void plum_lsp_references(const PlumLspAnalysis *a, const PlumLspTarget *t, bool declaration,
+                         PlumLspRanges *out) {
+    Refs r = {a, t, declaration, out};
+    Walk w = {a->main, refs_visit, &r, 0};
+    for (size_t i = 0; i < a->main->program.count; i++) {
+        walk_stmt(&w, a->main->program.stmts[i]);
+    }
+    qsort(out->items, out->len, sizeof *out->items, by_start);
+}
+
+bool plum_lsp_valid_name(const char *name, size_t len, char *why, size_t size) {
+    bool ok = len > 0 && !(name[0] >= '0' && name[0] <= '9');
+    for (size_t i = 0; ok && i < len; i++) {
+        ok = is_name_char(name[i]);
+    }
+    if (!ok) {
+        snprintf(why, size,
+                 "'%.*s' isn't a name: use letters, digits and '_', not starting with a digit",
+                 (int)(len < 64 ? len : 64), name);
+        return false;
+    }
+    if (is_keyword(name, len) || (len == 1 && name[0] == '_')) {
+        snprintf(why, size, "'%.*s' is a keyword; choose another name", (int)len, name);
+        return false;
+    }
+    return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1869,18 +2328,6 @@ static void member_visit(Walk *w, const Occ *o) {
         strcmp(o->expr->as.field.name, PLACEHOLDER) == 0) {
         *found = o->expr;
     }
-}
-
-/* The `seed` module named text[0, len) in a program, or NULL. */
-static const PlumSymbol *find_module(const PlumProgram *p, const char *name, size_t len) {
-    for (size_t i = 0; i < p->count; i++) {
-        const PlumSymbol *sym = p->stmts[i]->symbol;
-        if (p->stmts[i]->kind == PLUM_STMT_SEED && sym != NULL && sym->kind == PLUM_SYM_MODULE &&
-            strlen(sym->name) == len && memcmp(sym->name, name, len) == 0) {
-            return sym;
-        }
-    }
-    return NULL;
 }
 
 static void member_items(Items *items, const PlumLspAnalysis *a, const char *text, size_t len,

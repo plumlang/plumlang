@@ -1,0 +1,45 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+# pkg/main.plum is open, and imports pkg/garden/beds.plum (on disk only);
+# pkg/tools.plum imports it too, and is found by looking through the package.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum","languageId":"plum","version":1,"text":"seed ./garden/beds as beds\n\nplant bed = beds.Bed(plants: 4, width: 2.0)\nplant total = bed.plants + beds.make_bed(plants: 1).plants\ndrop(total, bed.area(), beds.Soil.Sand(grain: 0.5), len(\"x\"))\n\nbranch grow(by: int) -> int {\n    plant next = total + by\n    return next\n}\ndrop(grow(by: 2))\n"}}}
+# references: the field plants, in three files (keyword arguments of the constructor too)
+{"jsonrpc":"2.0","id":2,"method":"textDocument/references","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":3,"character":18},"context":{"includeDeclaration":true}}}
+# references: make_bed, without its declaration
+{"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":3,"character":32},"context":{"includeDeclaration":false}}}
+# references: a local variable
+{"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":8,"character":11},"context":{"includeDeclaration":true}}}
+# references: the parameter by, and the keyword argument naming it
+{"jsonrpc":"2.0","id":5,"method":"textDocument/references","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":6,"character":12},"context":{"includeDeclaration":true}}}
+# references: the module, through its alias
+{"jsonrpc":"2.0","id":6,"method":"textDocument/references","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":2,"character":12},"context":{"includeDeclaration":true}}}
+# references: a built-in has none
+{"jsonrpc":"2.0","id":7,"method":"textDocument/references","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":4,"character":52},"context":{"includeDeclaration":true}}}
+# prepareRename: a function
+{"jsonrpc":"2.0","id":8,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":3,"character":32}}}
+# prepareRename: a keyword
+{"jsonrpc":"2.0","id":9,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":2,"character":0}}}
+# prepareRename: a built-in
+{"jsonrpc":"2.0","id":10,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":4,"character":52}}}
+# prepareRename: the seed's path names a file
+{"jsonrpc":"2.0","id":11,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":0,"character":7}}}
+# prepareRename: nothing there
+{"jsonrpc":"2.0","id":12,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":1,"character":0}}}
+# rename: the field plants, across the package
+{"jsonrpc":"2.0","id":13,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":3,"character":52},"newName":"seedlings"}}
+# rename: make_bed's parameter plants, not the field: Bed(plants: plants) keeps the field's name
+{"jsonrpc":"2.0","id":14,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":3,"character":41},"newName":"count"}}
+# rename: a case's parameter
+{"jsonrpc":"2.0","id":15,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":4,"character":39},"newName":"size"}}
+# rename: the alias
+{"jsonrpc":"2.0","id":16,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":3,"character":27},"newName":"b"}}
+# rename: a local
+{"jsonrpc":"2.0","id":17,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":7,"character":10},"newName":"after"}}
+# rename: not a name
+{"jsonrpc":"2.0","id":18,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":7,"character":10},"newName":"2x"}}
+# rename: a keyword
+{"jsonrpc":"2.0","id":19,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":7,"character":10},"newName":"tree"}}
+# rename: a built-in
+{"jsonrpc":"2.0","id":20,"method":"textDocument/rename","params":{"textDocument":{"uri":"@ROOT@/pkg/main.plum"},"position":{"line":4,"character":52},"newName":"size"}}
+{"jsonrpc":"2.0","id":21,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

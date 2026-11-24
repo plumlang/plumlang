@@ -1,0 +1,5 @@
+# A package for the language server's rename and references tests.
+[package]
+name = "beds"
+version = "0.1.0"
+entry = "main.plum"

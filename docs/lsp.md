@@ -20,6 +20,8 @@ plum lsp --stdio    # the same (some editors add the flag)
 | Completion | The names in scope at the cursor (locals, parameters, top-level names, imports, built-ins and keywords). After a `.`: a tree's fields and methods, the methods of `list`, `map`, `set`, `str`, `Json`, tasks, channels and sockets, a kind's cases, and the functions and constants of a standard module or the names a file module exports. |
 | Document symbols | The outline: functions, trees and traits with their fields and methods, kinds with their cases, top-level variables, constants and imports. |
 | Formatting | The whole file in `plum fmt`'s layout (spec 14.1). A file with syntax errors is left alone. |
+| Find references | Every place in the package that names the same variable, parameter, function, tree, trait, kind, case, field, method or module alias: uses, imports (`seed ./beds { Bed }`, `beds.Bed`), keyword arguments (`Bed(plants: 4)` names the field `plants`) and, if asked, the declaration. |
+| Rename | Renames all of those at once, in every file of the package, open or not, as one edit. Built-ins (`drop`, `int`, `ValueError`), the standard library, keywords and a module's file name can't be renamed; the editor shows why. The new name must be a name and not a keyword. |
 
 Details:
 
@@ -35,6 +37,16 @@ Details:
   whose names don't all resolve has no types, so completion after a dot
   then offers nothing for values, but still offers a module's members and
   a kind's cases.
+- **The package.** References and rename look through every `.plum` file
+  under the nearest directory up with a `plum.toml` (hidden directories
+  skipped), every open file and every file an open file imports. Without
+  a `plum.toml`, the `.plum` files beside the file take the package's
+  place. Each file is checked on its own, and two names are the same
+  thing when they lead to the same declaration, so a local `count` in
+  one function is never confused with another's.
+- **Methods are renamed where they are declared.** A tree's method that
+  overrides its parent's (or implements a trait's) is its own
+  declaration: renaming one leaves the others as they are.
 - **Positions** are in UTF-16 code units, the protocol's default.
 - **Robustness.** Malformed JSON, a message without `Content-Length`,
   unknown methods (answered with `MethodNotFound`, `-32601`) and requests
@@ -43,6 +55,11 @@ Details:
   one, or when its input ends.
 
 ## Editors
+
+| Feature | VS Code | Neovim (0.11) | Helix | Zed | Emacs (eglot) |
+|---|---|---|---|---|---|
+| Find references | Shift+F12 | `grr` | `gr` | Alt+Shift+F12 | `M-?` |
+| Rename | F2 | `grn` | `Space r` | F2 | `M-x eglot-rename` |
 
 The server needs only the path of `plum`; with `plum` on your `PATH`, the
 command is `plum lsp`. Associate the `.plum` extension with a `plum`
@@ -164,6 +181,13 @@ costs exactly what it did before.
 Completion after a dot checks the file once more with a placeholder name
 after the dot, so the value before the dot has a type even while the
 line is incomplete.
+
+References and rename start from the declaration the name at the cursor
+leads to: its file and the place of its name there. Every file of the
+package is then checked (open files are already) and walked the same
+way, and each name leading to that same place is a reference. A name
+spelled differently can't be one, so most names are skipped without
+looking them up.
 
 The tests are recorded sessions: `tests/lsp/*.in`, run by `tests/lsp.sh`
 and compared with `tests/lsp/*.out`.
