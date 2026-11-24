@@ -185,6 +185,8 @@ Published packages (the full list is at [plum.elixpo.com/docs/ecosystem](https:/
 | [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) | npm | `plum` as WebAssembly for Node and the browser |
 | [Plumlang](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) | VS Code Marketplace, [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang) | The editor extension |
 | [`plumlang/tap/plum`](https://github.com/plumlang/homebrew-tap) | Homebrew | `brew install plumlang/tap/plum` |
+| [`plumlang/plumlang`](https://github.com/aquaproj/aqua-registry/tree/main/pkgs/plumlang/plumlang) | aqua, mise | `aqua g -i plumlang/plumlang`, `mise use aqua:plumlang/plumlang` |
+| `plum` | Nix / NixOS | In review ([NixOS/nixpkgs#592489](https://github.com/NixOS/nixpkgs/pull/592489)); build today with [`packaging/nix`](packaging/README.md#nixpkgs) |
 | [`plumlang/setup-plum@v1`](https://github.com/plumlang/setup-plum) | GitHub Actions | Installs `plum` in CI |
 
 ## Repositories

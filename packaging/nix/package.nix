@@ -1,11 +1,11 @@
-# Plumlang for nixpkgs, built from source: pkgs/by-name/pl/plum/package.nix.
+# Plumlang for Nix: the same package as nixpkgs' pkgs/by-name/pl/plum/package.nix,
+# submitted in https://github.com/NixOS/nixpkgs/pull/592489 (in review).
+# Until it lands, build it from a clone of this repository:
 #
-# Not submitted yet: v2.1.4 is under the Plumlang Commercial License only
-# (unfree, and it may not be redistributed, so Hydra could not build it).
-# Submit from the first Apache-2.0 release (2.2.0): set `version`, replace
-# `hash` with the one `nix build` reports, and build it on Linux and macOS.
-# After that, nixpkgs' update bot (r-ryantm) bumps it for each release.
-# See packaging/README.md.
+#   nix-build -E 'with import <nixpkgs> {}; callPackage ./packaging/nix/package.nix {}'
+#
+# The only difference from the nixpkgs copy is `maintainers`, which names an
+# entry that exists only in nixpkgs' maintainer list.
 {
   lib,
   stdenv,
@@ -17,16 +17,19 @@ stdenv.mkDerivation (finalAttrs: {
   pname = "plum";
   version = "2.2.0";
 
+  strictDeps = true;
+  __structuredAttrs = true;
+
   src = fetchFromGitHub {
     owner = "plumlang";
     repo = "plumlang";
     tag = "v${finalAttrs.version}";
-    hash = lib.fakeHash;
+    hash = "sha256-th1RCqG5UnJ/pgvNCkLeNbUImRjLU7vvvp3vsP1UNeM=";
   };
 
   # The Makefile asks git for the commit `plum version` prints; there is no
   # .git in the source, so give it the tag.
-  makeFlags = [ "COMMIT=v${finalAttrs.version}" ];
+  makeFlags = [ "COMMIT=${finalAttrs.src.tag}" ];
 
   enableParallelBuilding = true;
 
@@ -43,9 +46,7 @@ stdenv.mkDerivation (finalAttrs: {
   meta = {
     description = "Small, fast, memory-safe programming language";
     homepage = "https://plum.elixpo.com";
-    changelog = "https://github.com/plumlang/plumlang/blob/v${finalAttrs.version}/CHANGELOG.md";
-    # Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0: the commercial
-    # licence is an alternative, so Apache-2.0 alone applies to nixpkgs.
+    changelog = "https://github.com/plumlang/plumlang/blob/${finalAttrs.src.tag}/CHANGELOG.md";
     license = lib.licenses.asl20;
     mainProgram = "plum";
     maintainers = [ ];

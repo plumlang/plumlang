@@ -22,8 +22,8 @@ LicenseRef-Plumlang-Commercial-1.0`.
 | `npm/` | npm `@plumlang/plumlang` | `.github/workflows/npm.yml` | Each release |
 | `aur/` | AUR `plum-bin` | Pushed by hand (below) | By hand, each release |
 | `scoop/` | Scoop | The Extras bucket, once it accepts Plumlang (below) | Scoop's `checkver` / `autoupdate` |
-| `aqua/` | aqua and mise (`aqua:plumlang/plumlang`) | A pull request on aquaproj/aqua-registry | aqua-registry's Renovate |
-| `nix/` | nixpkgs `plum` | A pull request on NixOS/nixpkgs, from 2.2.0 | nixpkgs' update bot |
+| `aqua/` | aqua and mise (`aqua:plumlang/plumlang`) | In aquaproj/aqua-registry (merged, #65136) | aqua-registry's Renovate |
+| `nix/` | nixpkgs `plum` | NixOS/nixpkgs#592489 (in review) | nixpkgs' update bot |
 
 ## AUR: `plum-bin`
 
@@ -67,28 +67,34 @@ reads the hashes from the release's `SHA256SUMS`.
 `aqua/registry.yaml` and `aqua/pkg.yaml` are the files for
 `pkgs/plumlang/plumlang/` in
 [aquaproj/aqua-registry](https://github.com/aquaproj/aqua-registry),
-scaffolded with `argd s plumlang/plumlang` as its guide requires. Once that
-pull request is merged:
+scaffolded with `argd s plumlang/plumlang` as its guide requires. They are
+in the registry (aquaproj/aqua-registry#65136):
 
 ```sh
 aqua g -i plumlang/plumlang      # aqua
 mise use aqua:plumlang/plumlang  # mise
 ```
 
-aqua-registry's Renovate picks up new releases by itself. Until then, mise
-installs from the GitHub releases directly: `mise use
+aqua-registry's Renovate picks up new releases by itself. mise can also
+install from the GitHub releases directly: `mise use
 github:plumlang/plumlang`. A short name in mise's own registry (`mise use
 plum`) is only given to tools with thousands of stars, and is requested in
 a mise Discussion, not a pull request.
 
 ## nixpkgs
 
-`nix/package.nix` builds `plum` from source, for
-`pkgs/by-name/pl/plum/package.nix` in nixpkgs. It waits for 2.2.0: 2.1.4's
-licence makes it unfree and forbids redistribution, so Hydra could not
-build or cache it. Before submitting, set the version and hash, build it
-with `nix-build -A plum` on Linux and macOS, and add the maintainer to
-`maintainers/maintainer-list.nix`. nixpkgs asks whether a package will be
-used beyond a handful of people, and its contribution policy requires
-disclosing automated help in commits (an `Assisted-by:` trailer) and
-keeping pull request text the author's own.
+`nix/package.nix` builds `plum` from source. It is the package submitted to
+nixpkgs as `pkgs/by-name/pl/plum/package.nix` in NixOS/nixpkgs#592489 (in
+review), except that it leaves `maintainers` empty. Until it is merged,
+build it from a clone:
+
+```sh
+nix-build -E 'with import <nixpkgs> {}; callPackage ./packaging/nix/package.nix {}'
+./result/bin/plum version
+```
+
+Once it is in nixpkgs: `nix profile install nixpkgs#plum`, or `plum` in
+`environment.systemPackages` on NixOS. Keep this file in step with the
+nixpkgs copy when reviewers ask for changes. nixpkgs' contribution policy
+requires disclosing automated help in commits (an `Assisted-by:` trailer)
+and keeping pull request text and replies the author's own.
