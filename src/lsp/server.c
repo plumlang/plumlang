@@ -69,7 +69,7 @@ typedef struct Server {
 /* Messages                                                            */
 /* ------------------------------------------------------------------ */
 
-static void send(Server *s, PlumJsonWriter *w) {
+static void send_message(Server *s, PlumJsonWriter *w) {
     size_t len = 0;
     const char *text = plum_jw_text(w, &len);
     fprintf(s->out, "Content-Length: %zu\r\n\r\n", len);
@@ -98,7 +98,7 @@ static void send_error(Server *s, const PlumJson *id, int code, const char *mess
     plum_jw_string(&w, message);
     plum_jw_object_end(&w);
     plum_jw_object_end(&w);
-    send(s, &w);
+    send_message(s, &w);
     plum_jw_free(&w);
 }
 
@@ -275,7 +275,7 @@ static void publish(Server *s, const char *uri, const char *diagnostics) {
     w.after_key = false;
     plum_jw_object_end(&w);
     plum_jw_object_end(&w);
-    send(s, &w);
+    send_message(s, &w);
     plum_jw_free(&w);
 }
 
@@ -900,7 +900,7 @@ static void rename_request(Server *s, const PlumJson *id, const PlumJson *params
         plum_lsp_lines_free(&lines);
     }
     plum_jw_object_end(&w);
-    send(s, &w);
+    send_message(s, &w);
     plum_jw_free(&w);
     plum_lsp_target_free(&t);
 }
@@ -917,7 +917,7 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
         plum_jw_key(&w, "result");
         initialize_result(&w);
         plum_jw_object_end(&w);
-        send(s, &w);
+        send_message(s, &w);
         plum_jw_free(&w);
         return;
     }
@@ -932,7 +932,7 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
         plum_jw_key(&w, "result");
         plum_jw_null(&w);
         plum_jw_object_end(&w);
-        send(s, &w);
+        send_message(s, &w);
         plum_jw_free(&w);
         return;
     }
@@ -1010,7 +1010,7 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
         formatting(&w, d);
     }
     plum_jw_object_end(&w);
-    send(s, &w);
+    send_message(s, &w);
     plum_jw_free(&w);
 }
 

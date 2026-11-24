@@ -40,7 +40,7 @@ machine can run the training (`make release-pgo`; the gain is in
 | `plum-X.Y.Z-linux-x86_64.tar.gz` | Alpine (musl), x86_64 | Static: runs on any Linux. LTO + PGO. Full test suite. |
 | `plum-X.Y.Z-linux-arm64.tar.gz` | Alpine (musl), arm64 | Static. LTO + PGO. Full test suite. |
 | `plum-X.Y.Z-linux-riscv64.tar.gz` | Alpine (musl), riscv64 under QEMU | Static. LTO. Examples only (emulation is slow). |
-| `plum-X.Y.Z-macos-universal.tar.gz` | macOS, arm64 + x86_64 | macOS 11 or later. arm64: PGO, full test suite. No LTO yet ([bench/README.md](../bench/README.md)). |
+| `plum-X.Y.Z-macos-universal.tar.gz` | macOS, arm64 + x86_64 | macOS 11 or later. arm64: LTO + PGO, full test suite. x86_64 (cross-compiled): LTO. |
 | `plum-X.Y.Z-windows-x86_64.zip` | MSVC, x64 | Static C runtime. LTCG. Full test suite. |
 | `plum-X.Y.Z-windows-arm64.zip` | MSVC, ARM64 (cross-compiled) | Static C runtime. LTCG. |
 | `plum-X.Y.Z-wasm.tar.gz` | Emscripten (`make wasm`) | `plum.js` and `plum.wasm` for the browser ([playground.md](playground.md)). Checked against the native build under Node. |
