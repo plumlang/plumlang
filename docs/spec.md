@@ -1679,6 +1679,7 @@ Modules are imported with `seed`. The 1.0 library is planned as:
 | `utf8` | code points; checking and repairing UTF-8 |
 | `csv` | read and write comma-separated values |
 | `uuid` | unique identifiers (RFC 9562): random v4, time-ordered v7 |
+| `semver` | semantic versions and version ranges |
 | `test` | assertions and a test runner (`plum test`) |
 
 Each module is documented in `docs/stdlib/` as it lands, and `plum stdlib`
