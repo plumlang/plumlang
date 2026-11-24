@@ -12,11 +12,14 @@ each one, with an example that causes it and the fix.
 | E05xx | Control flow |
 | W05xx | Control-flow warnings (the program still runs) |
 | E06xx | Compiling to bytecode |
+| E07xx | Workers and frozen values (planned for 3.0: spec 12.5 to 12.11) |
 | E09xx | Packages: `plum.toml`, `plum.lock`, seeding packages and the `plum add` family ([orchard.md](orchard.md)) |
 
 Codes never change meaning. A retired code is marked retired, not reused.
+A planned code is reserved for a feature the spec describes but `plum`
+doesn't have yet; the compiler doesn't report it until the feature lands.
 `make test` checks that every code in the compiler is documented here and
-that every code documented here is still used.
+that every code documented here is still used, retired or planned.
 
 ## Characters
 
@@ -800,6 +803,93 @@ like `plant f = (x: float) => math.sqrt(x)`.
 A limit of the bytecode format: a function with more than 65,535 constants
 or local variables, or a block or loop too long to jump over. Split the
 function into smaller ones.
+
+## Workers and frozen values (planned for 3.0)
+
+These codes are reserved for workers, the isolates that let a program use
+every core (spec 12.5 to 12.11). Nothing reports them yet.
+
+### E0701 (planned)
+
+A value that can't leave its isolate is given to a worker: captured by the
+function given to `workers.start`, held by a channel that function
+captures, or in the worker's result type. Tree objects, functions, tasks,
+workers, sockets and files stay in the isolate that made them (spec 12.6).
+Give the worker values, or `freeze` the object first.
+
+```plum
+plant acct = Account("Ada")
+workers.start(() => report(acct))              # error: acct is an object
+workers.start(() => report_balance(acct.balance))  # fix: give it the value
+```
+
+### E0702 (planned)
+
+`workers.start` (or `http.serve`) given something other than the name of
+a top-level function or a lambda written in the call, or a function that
+takes parameters. The checker must see the function to know what it
+captures.
+
+```plum
+plant job = () => crunch(rows)
+workers.start(job)                       # error: a variable
+workers.start(() => crunch(rows))        # fix
+```
+
+### E0703 (planned)
+
+Code that runs in a worker uses a module variable (`plant`) of the
+program's main file, or a `root` there that holds an unfrozen object.
+Those live in the main isolate; a worker has its own memory and doesn't
+run the main file's top-level code (spec 12.5). Pass the value in, or
+make it a `root`.
+
+```plum
+plant limit = 10
+branch work() -> int => limit * 2        # error when work runs in a worker
+workers.start(work)
+
+root LIMIT = 10
+branch work() -> int => LIMIT * 2        # fix
+```
+
+### E0704 (planned)
+
+The function given to `workers.start` assigns to a variable it captured.
+The worker got a copy of that variable when it started, so the change
+would never reach the code that started it. Return the result, or send it
+on a channel.
+
+```plum
+plant total = 0
+workers.start(() => { total = sum(rows) })      # error
+plant w = workers.start(() => sum(rows))        # fix
+total = w.wait()
+```
+
+### E0705 (planned)
+
+`freeze` given something that can't be frozen: a function, a task, a
+worker, a channel, a socket or file, or an object of a tree with a `weak`
+field (anywhere inside it). Frozen values never change and can be read by
+every isolate at once (spec 12.7); these things change by their nature.
+
+```plum
+freeze(node)            # error: Node has a weak field, parent
+freeze(node.name)       # fine: a str
+```
+
+### E0706 (planned)
+
+A change to a frozen object (a `Frozen[T]`): assigning one of its fields,
+or calling a method that assigns one, directly or through another method
+(spec 12.7). Make a new object with the change instead.
+
+```plum
+plant config = freeze(Config("localhost", 8080))
+config.port = 9090                               # error
+plant moved = freeze(Config(config.host, 9090))  # fix
+```
 
 ## Packages
 

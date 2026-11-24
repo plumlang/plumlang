@@ -6,7 +6,9 @@ the tests and the implementation in the same pull request (PREAMBLE 2.5).
 
 Sections marked **(Stage N)** describe behaviour that lands with that stage
 of the [roadmap](https://github.com/plumlang/plumlang/issues/36); until then
-the compiler reports them as not yet supported.
+the compiler reports them as not yet supported. Sections marked **(planned
+for 3.0)** are the agreed design for a later release: nothing in them is
+implemented yet, and their examples don't run with today's `plum`.
 
 ## 1. Design principles
 
@@ -704,6 +706,7 @@ These are always available without `seed`:
 | `type_of(x) -> str` | the type's name, for messages and debugging |
 | `assert(cond: bool, message: str = "")` | throw an `AssertError` if `cond` is `bad` |
 | `exit(code: int = 0)` | end the program |
+| `freeze(x)` | a frozen copy of `x`, which every worker can read at once (planned for 3.0, section 12.7) |
 
 `drop` is an ordinary function, not a statement: it is always called with
 parentheses, `drop("hi")`.
@@ -1185,10 +1188,8 @@ written the same way whether or not it runs in a task: there is no
 ### 12.3 Sharing between tasks
 
 Tasks do not share variables. A task gets its own copy of the values it is
-given, and tree objects cannot be passed to a task (a compile error) unless
-the tree is marked `shared`, which allows only fields that are themselves
-values and makes each method call atomic. Tasks communicate through
-channels:
+given, and tree objects cannot be passed to a task (a compile error,
+E0426). Tasks communicate through channels:
 
 ```plum
 plant ch = Channel[int]()
@@ -1201,8 +1202,9 @@ spawn (() => {
 for n in ch { drop(n) }          # 0 1 2
 ```
 
-So there are no data races by construction. All tasks run on one operating
-system thread in 1.0; using several cores is planned after 1.0.
+So there are no data races by construction. All the tasks of a program run
+on one operating system thread, taking turns; workers (section 12.5,
+planned for 3.0) use the other cores.
 
 ### 12.4 Taking turns
 
@@ -1221,6 +1223,439 @@ The program ends when its own code ends, stopping the tasks still running.
 A task's error is thrown by `wait()`; one that nothing waited for is
 printed when the program ends, and the exit code is 1. When every task
 waits and nothing can wake them, the program ends with a deadlock error.
+
+### 12.5 Workers: every core (planned for 3.0)
+
+Sections 12.5 to 12.11 are the design for multicore Plumlang (issue
+[#150](https://github.com/plumlang/plumlang/issues/150), built by
+[#133](https://github.com/plumlang/plumlang/issues/133)); why it looks
+this way is in [design/concurrency.md](design/concurrency.md).
+
+Tasks take turns on one thread, so they wait well but compute on one
+core. To compute on more, a program starts **workers**. A worker is an
+**isolate**: its own memory, its own tasks, and its own thread of the
+operating system. Isolates share no variables and no changeable objects,
+so two workers never change the same thing at once and nothing needs a
+lock. Every program starts with one isolate, the **main isolate**, which
+runs the program's own code.
+
+| | Task (`spawn`) | Worker (`workers.start`) |
+|---|---|---|
+| Runs | taking turns with the other tasks of its isolate | at the same time as other workers, on another core |
+| Costs | a few kilobytes; thousands are fine | a thread and memory of its own; about one per core |
+| Shares | channels with the tasks of its isolate | channels and frozen values (12.7), nothing else |
+| Good for | waiting: network, files, timers | computing |
+
+`spawn` doesn't change: it starts a task on the isolate that calls it. A
+worker can spawn tasks of its own, which run on the worker's thread.
+
+```plum
+seed workers
+
+branch is_prime(n: int) -> bool {
+    if n < 2 { return bad }
+    plant d = 2
+    while d * d <= n {
+        if n % d == 0 { return bad }
+        d += 1
+    }
+    return good
+}
+
+branch count_primes(lo: int, hi: int) -> int {
+    plant n = 0
+    for k in lo..hi {
+        if is_prime(k) { n += 1 }
+    }
+    return n
+}
+
+plant halves = [
+    workers.start(() => count_primes(0, 5_000_000)),
+    workers.start(() => count_primes(5_000_000, 10_000_000)),
+]
+plant total = 0
+for h in halves { total += h.wait() }
+drop(total)                    # 664579, in about half the time of one core
+```
+
+#### 12.5.1 Starting a worker
+
+Workers come from a standard module, not a keyword: `seed workers`.
+
+| Call | What it does |
+|---|---|
+| `workers.start(f: () -> T) -> Worker[T]` | start a worker that runs `f()`; the caller keeps going |
+| `workers.cores() -> int` | how many cores the machine has, to choose how many workers to start |
+| `w.wait() -> T` | the worker's result once it ends; if it failed, its error is thrown here (12.8) |
+| `w.done() -> bool` | has the worker ended? |
+| `w.stop()` | ask the worker to stop (12.9) |
+
+`f` is the name of a top-level function with no parameters, or a lambda
+written in the call (E0702), so the checker can see everything the worker
+starts with. Whatever the lambda captures is copied into the worker as it
+starts, as if sent through a channel (12.6): each captured value must be
+able to cross (E0701), and the lambda can't assign to a captured variable
+(E0704), since the worker has its own copy and the change would never
+reach the code that started it. Return the result instead, or send it.
+
+```plum
+plant rows = load_rows()
+plant total = 0.0
+
+workers.start(() => { total = sum(rows) })     # error E0704
+plant w = workers.start(() => sum(rows))       # fine: rows is copied in
+total = w.wait()
+```
+
+`wait()` pauses only the task that waits, as with tasks (12.2): the
+isolate's other tasks keep running.
+
+#### 12.5.2 What a worker sees
+
+A worker runs the same program as the main isolate, with memory of its
+own:
+
+- The program's functions, trees, traits and kinds are all there.
+- The main file's top-level code never runs again in a worker. Its `root`
+  constants are there, read from the main isolate's values, which are
+  frozen (12.7); one whose line hasn't run yet is the `Error` of 6.1. Its
+  module variables (`plant`), and any `root` that holds an unfrozen
+  object, are not: code that runs in a worker can't use them (E0703).
+  Pass what the worker needs, or make it a `root`. A use the checker can't
+  see, through a function value, is a runtime `Error`.
+- A module brought in with `seed` is loaded again in each isolate that
+  uses it: its top-level code runs once per isolate, and each worker has
+  its own copies of its variables.
+
+```plum
+seed workers
+
+root SCALE = 3               # fine in a worker: a frozen root
+plant calls = 0              # a variable of the main isolate
+
+branch triple(n: int) -> int => n * SCALE
+
+branch triple_and_count(n: int) -> int {
+    calls += 1               # error E0703 when this runs in a worker
+    return n * SCALE
+}
+
+drop(workers.start(() => triple(14)).wait())    # 42
+```
+
+### 12.6 Sending values between isolates (planned for 3.0)
+
+A `Channel[T]` carries values between isolates as it does between tasks.
+A worker gets a channel by capturing it in its start function; both
+isolates then hold the same channel, and either can send, receive or
+close it. `for x in ch`, capacities and closing work as in 12.4, and
+waiting on a channel pauses only the waiting task.
+
+```plum
+seed fs
+seed workers
+
+plant paths = Channel[str](capacity: 100)
+plant sizes = Channel[int]()
+
+plant crew: list[Worker[none]] = []
+for _ in 0..workers.cores() {
+    crew.push(workers.start(() => {
+        for path in paths { sizes.send(len(fs.read(path))) }
+    }))
+}
+
+for p in ["a.txt", "b.txt", "c.txt"] { paths.send(p) }
+paths.close()
+for _ in 0..3 { drop(sizes.receive()) }
+```
+
+#### 12.6.1 What crosses is a copy
+
+A value sent to another isolate arrives as a copy, as values always do
+(11.1): changing it on one side is never seen on the other. The runtime
+skips the copying where it can, and which way it goes never changes what
+the program means, only how fast it runs:
+
+- **Moved**, when nothing else in the sending isolate holds the value: a
+  `send` that is the last use of a variable hands over the memory as it
+  is, with no copying, whatever its size.
+- **Shared**, when the value is frozen (12.7): only a count goes up.
+- **Copied**, otherwise, all the way down.
+
+```plum
+plant rows = build_rows()      # a list of a million floats
+out.send(rows)                 # rows isn't used again: moved, nothing copied
+
+plant names = ["Ada", "Grace"]
+out_names.send(names)
+drop(names)                    # names is used after: the channel gets a copy
+```
+
+#### 12.6.2 What can cross
+
+A type that can cross between isolates is **sendable**. The checker
+checks it wherever a value enters another isolate: what a start function
+captures (and the channels it captures carry), and a worker's result.
+
+| Type | Sendable |
+|---|---|
+| `int`, `float`, `bool`, `byte`, `none`, `str` | yes |
+| `list[T]`, `set[T]`, `map[K, V]`, `T?`, a `kind` | when everything they hold is |
+| `Frozen[T]` (12.7) | yes: shared, never copied |
+| `Channel[T]` | when `T` is; both isolates then hold the same channel |
+| tree and trait objects | no: an object is shared by everyone who holds it (8.3), and two cores changing one object is a data race. Send its values, or freeze it |
+| functions and lambdas | no: a function value may capture variables. Send a `kind` that says what to do |
+| `Task[T]`, `Worker[T]` | no: they belong to the isolate that started them |
+| sockets, listeners and other handles | no: they belong to the isolate that opened them |
+
+A type that isn't sendable is a compile error where it would cross
+(E0701):
+
+```plum
+tree Account {
+    owner: str
+    balance: float = 0.0
+}
+
+plant acct = Account("Ada")
+workers.start(() => drop(acct.balance))       # error E0701: an Account can't cross
+plant balance = acct.balance
+workers.start(() => drop(balance))            # fine: a float
+```
+
+### 12.7 Frozen values (planned for 3.0)
+
+A **frozen** value never changes again, so every isolate can read it at
+the same time without a copy.
+
+`freeze(x)` returns a frozen copy of `x`, all the way down: every list,
+map and object inside it is frozen too. When nothing else holds `x` (its
+last use) the copy is skipped and `x` itself is frozen. The result has
+`x`'s type with every tree or trait type in it wrapped in `Frozen[...]`:
+`freeze(Config(...))` is a `Frozen[Config]`, and freezing a
+`list[Account]` gives a `list[Frozen[Account]]`.
+
+Freezing a value (a number, string, list, map, set or kind) changes
+nothing the program can see, since values never change under their holder
+anyway (11.1); it only makes sending the value free. A list made from a
+frozen one, with `push` say, is a new list and isn't frozen.
+
+A `Frozen[T]` object reads like a `T`: its fields, the methods that don't
+change it, printing, `==` and `is`. Changing it is a compile error
+(E0706): assigning a field, or calling a method that assigns one, itself
+or through another method. A function that takes a `T` can't be given a
+`Frozen[T]`, since it might change it; write the parameter as
+`Frozen[T]`.
+
+```plum
+tree Config {
+    host: str
+    port: int
+    branch url() -> str => "http://{self.host}:{self.port}"
+    branch move_to(port: int) { self.port = port }
+}
+
+plant config = freeze(Config("localhost", 8080))   # a Frozen[Config]
+drop(config.url())          # http://localhost:8080
+config.port = 9090          # error E0706: config is frozen
+config.move_to(9090)        # error E0706: move_to changes the object
+```
+
+A frozen object sent to workers is the same object in every isolate:
+nothing is copied, and `==` on a tree without `equals` (identity) is
+`good` between them.
+
+```plum
+seed workers
+
+root SETTINGS = freeze(Config("db.local", 5432))
+
+branch connect_all() -> str => SETTINGS.url()    # fine: a frozen root
+
+plant w = workers.start(connect_all)
+drop(w.wait())              # http://db.local:5432
+```
+
+Some values are frozen without asking: literals and the program's own
+code, and the value of every `root` constant that isn't an unfrozen
+object. A `root` that holds an object is frozen only by writing
+`freeze`, as above, so existing programs keep their meaning.
+
+Some things can't be frozen (E0705), because changing is what they are
+for: functions, tasks, workers, channels, sockets and other handles, and
+objects of a tree with a `weak` field anywhere inside. A `weak` field
+can't hold a `Frozen` object either (E0425): `Frozen[T]` is not a tree
+type.
+
+### 12.8 Errors in workers (planned for 3.0)
+
+An error a worker doesn't catch ends the worker, and `w.wait()` throws it
+in the isolate that waits, with the trace of where it happened in the
+worker, as `task.wait()` does (12.1).
+
+The error, and a worker's result, are **handed over** whole: the worker
+has ended, so nothing in it can use them again, and they arrive as the
+same trees with the same fields, objects included. This is why a worker's
+result type may hold tree objects though a channel's can't; it still
+can't hold functions, tasks, workers or handles (E0701). An error with a
+field that can't be handed over (it holds a function, task or handle)
+arrives as a `WorkerError` instead, whose message names the error's tree
+and repeats its message.
+
+```plum
+seed workers
+
+tree BadRow : Error {
+    line: int
+}
+
+branch check(rows: list[str]) -> int {
+    for i, row in rows.enumerate() {
+        if row == "" { throw BadRow("an empty row", i + 1) }
+    }
+    return len(rows)
+}
+
+plant rows = ["a", "", "c"]
+plant w = workers.start(() => check(rows))
+try {
+    drop(w.wait())
+} catch e: BadRow {
+    drop("line {e.line}: {e.message}")       # line 2: an empty row
+}
+```
+
+A worker's error that nothing waited for is printed when the program
+ends, with the line that started the worker, and the exit code is 1, as for
+tasks (12.4). Inside a worker, its own tasks follow 12.4: their errors
+reach the worker's code through `wait()`.
+
+### 12.9 Stopping, and the end of a program (planned for 3.0)
+
+- A worker ends when its start function returns or throws. Tasks it
+  spawned that are still running are stopped then, as at the end of a
+  program (12.4).
+- `w.stop()` asks a worker to stop. At its next call, loop turn or wait,
+  the worker unwinds: `finally` blocks run, no `catch` catches it, and its
+  tasks stop. `w.wait()` then throws a `StoppedError`. Stopping a worker
+  that has ended does nothing. A long call into the runtime (sorting a big
+  list, say) finishes before the worker stops.
+- Dropping the last reference to a `Worker` doesn't stop it, as with
+  tasks.
+- Ending a worker doesn't close its channels: close a channel when you
+  are done sending, and receivers in other isolates see the end.
+- The program ends when the main isolate's own code ends; workers still
+  running are stopped, as tasks are. `exit(code)` anywhere, in a worker
+  too, ends the whole program at once.
+- When every task of every isolate waits and nothing can wake any of
+  them, the program ends with a deadlock error, as in 12.4.
+
+```plum
+seed workers
+seed time
+
+plant w = workers.start(() => {
+    while good { crunch_next() }
+})
+time.sleep(5.0)
+w.stop()
+try {
+    w.wait()
+} catch e: StoppedError {
+    drop("stopped after 5 seconds")
+}
+```
+
+### 12.10 Memory in isolates (planned for 3.0)
+
+Each isolate counts the references to its own values as today, without
+the atomic instructions that cores need to share a count; values freed in
+one isolate never wait for another. Only frozen values, which isolates
+share, have their counts changed atomically. A program that starts no
+workers runs as fast as it did before workers existed.
+
+Memory is still freed the moment nothing refers to it (11.2), and a cycle
+of objects is still a leak inside its isolate, broken with `weak` (11.3).
+`--check-leaks` and `--mem-stats` cover every isolate, naming the worker
+a leaked object belongs to. Frozen objects that form a cycle are never
+freed; `--check-leaks` reports them too.
+
+`plum run --collect-cycles` turns on a **cycle collector** in each
+isolate: from time to time it finds the objects of that isolate kept
+alive only by cycles among themselves, and frees them (their sockets and
+files close). It is off by default, since it costs time and its pauses,
+though short, are not zero. It looks only at its own isolate: never at
+frozen values, never at another isolate, so one worker's collection never
+stops another. `weak` stays the way to write code that doesn't leak.
+
+```plum
+tree Peer {
+    name: str
+    other: Peer? = none          # strong both ways: a cycle
+}
+
+plant a = Peer("a")
+plant b = Peer("b")
+a.other = b
+b.other = a
+# Without --collect-cycles, a and b leak when the program lets go of them;
+# with it, the collector frees both. `other: weak Peer? = none` needs neither.
+```
+
+### 12.11 net.http on every core (planned for 3.0)
+
+`http.serve(make_app, port = 8080, host = "0.0.0.0", workers = 0)` serves
+HTTP from several isolates at once: `workers` of them, or one per core
+when it is 0. Each isolate calls `make_app()` to build its own server
+(routes, middleware and all), and every isolate listens on the same port;
+the operating system spreads new connections over them. Inside an
+isolate, each connection is served by a task of its own, as with
+`app.listen`.
+
+`make_app` follows the rules of a start function (12.5.1): a top-level
+function, or a lambda written in the call whose captures can cross.
+`app.listen` keeps serving from one isolate.
+
+```plum
+seed net.http
+
+branch make_app() -> http.Server {
+    plant app = http.server()
+    app.get("/hello/:name", (req) => http.text("Hello, {req.params["name"]}!"))
+    return app
+}
+
+http.serve(make_app, port: 8080)          # one isolate per core
+```
+
+Handlers on different isolates share no variables: a counter in a module
+counts the requests of its own isolate only. Keep state the isolates share
+in a database, or in one worker the others reach through channels,
+captured by `make_app`:
+
+```plum
+seed net.http
+seed workers
+
+plant hits = Channel[str](capacity: 1000)
+
+workers.start(() => {
+    plant counts: map[str, int] = {:}
+    for path in hits { counts[path] = (counts.get(path) ?? 0) + 1 }
+})
+
+http.serve(() => {
+    plant app = http.server()
+    app.use((req, next) => {
+        hits.send(req.path)
+        return next(req)
+    })
+    app.get("/", (req) => http.text("hi"))
+    return app
+}, port: 8080)
+```
 
 ## 13. The standard library
 
@@ -1261,7 +1696,9 @@ app.get("/hello/:name", (req) => http.text("Hello, {req.params["name"]}!"))
 app.listen(8080)
 ```
 
-Each connection runs in its own task (section 12). `docs/stdlib/net.http.md`
+Each connection runs in its own task (section 12), and `http.serve` will
+run a server on every core (section 12.11, planned for 3.0).
+`docs/stdlib/net.http.md`
 describes the server (routes with `:params`, middleware, static files) and
 the client (`http.get`, `http.post_json`, ...). Some standard modules, like
 `net.http`, are written in Plumlang and built into `plum`.
