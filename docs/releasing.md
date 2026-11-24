@@ -83,8 +83,11 @@ organisation), and print a notice and skip when they are not.
 | npm | `NPM_TOKEN`: an npm automation token that can publish to the `@plumlang` scope | Create the `plumlang` organisation on npm. The `npm` job (`.github/workflows/npm.yml`) publishes the release's `plum-X.Y.Z-wasm.tar.gz` as [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang), with provenance. To publish a release again, or one tagged before the secret was set: Actions > npm > Run workflow, with the tag. |
 | winget | `WINGET_TOKEN`: a classic token with `public_repo`, for the account that opens pull requests on `microsoft/winget-pkgs` | None; the first submission is reviewed by the winget maintainers. Users then run `winget install Elixpo.Plumlang`. |
 
-The Homebrew formula and the winget manifests are generated from the
-templates in [`packaging/`](../packaging/) by
-`tools/release/packaging.sh`, and attached to the workflow run as the
-`packaging` artifact even when the secrets are missing, so they can be
-submitted by hand.
+The Homebrew formula, the winget manifests, the AUR `plum-bin` package and
+the Scoop manifest are generated from the templates in
+[`packaging/`](../packaging/) by `tools/release/packaging.sh`, and attached
+to the workflow run as the `packaging` artifact even when the secrets are
+missing, so they can be submitted by hand. The AUR has no token: push its
+`PKGBUILD` and `.SRCINFO`, which the publish job's summary also shows, as
+[`packaging/README.md`](../packaging/README.md) describes, with Scoop,
+aqua, mise and nixpkgs.
