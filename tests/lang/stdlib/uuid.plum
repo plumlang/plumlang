@@ -1,0 +1,97 @@
+# uuid: the form of v4 and v7 identifiers (version and variant bits),
+# v7 ordering and its time, parsing the accepted forms, comparing, and
+# what parse rejects.
+seed uuid
+seed time
+
+branch shape_ok(id: str) -> bool {
+    if len(id) != 36 {
+        return bad
+    }
+    for i in 0..36 {
+        plant c = id[i]
+        if i == 8 or i == 13 or i == 18 or i == 23 {
+            if c != "-" {
+                return bad
+            }
+        } else if not "0123456789abcdef".contains(c) {
+            return bad
+        }
+    }
+    return good
+}
+
+# v4: 36 characters, version 4, the RFC variant (8, 9, a or b), all different
+plant seen: set[str] = set([uuid.NIL])
+plant v4_ok = good
+for i in 0..500 {
+    plant id = uuid.v4()
+    if not shape_ok(id) or id[14] != "4" or not "89ab".contains(id[19]) {
+        v4_ok = bad
+    }
+    if uuid.version(id) != 4 or uuid.variant(id) != "rfc" {
+        v4_ok = bad
+    }
+    seen.add(id)
+}
+drop("v4:", v4_ok, len(seen) - 1)
+
+# v7: version 7, each sorting after the one before, its time close to now
+plant before = time.now() * 1000.0
+plant last = uuid.NIL
+plant v7_ok = good
+plant ordered = good
+for i in 0..2000 {
+    plant id = uuid.v7()
+    if not shape_ok(id) or id[14] != "7" or not "89ab".contains(id[19]) {
+        v7_ok = bad
+    }
+    if not (id > last) or uuid.compare(id, last) != 1 or uuid.compare(last, id) != -1 {
+        ordered = bad
+    }
+    last = id
+}
+plant after = time.now() * 1000.0
+plant stamp = uuid.timestamp(last)
+drop("v7:", v7_ok, ordered, uuid.version(last), uuid.variant(last))
+drop("time:", float(stamp) >= before - 1.0 and float(stamp) <= after + 1000.0)
+
+# a known v7 (RFC 9562 appendix A.6) and v4 (A.3)
+plant rfc7 = "017F22E2-79B0-7CC3-98C4-DC0C0C07398F"
+drop(uuid.parse(rfc7), uuid.version(rfc7), uuid.timestamp(rfc7))
+drop(uuid.parse("919108f7-52d1-4320-9bac-f847db4148a8"), uuid.version("919108f7-52d1-4320-9bac-f847db4148a8"))
+
+# the accepted forms, all parsing to the same
+for text in ["6ba7b810-9dad-11d1-80b4-00c04fd430c8", "6BA7B810-9DAD-11D1-80B4-00C04FD430C8",
+             "6ba7b8109dad11d180b400c04fd430c8", "\{6ba7b810-9dad-11d1-80b4-00c04fd430c8\}",
+             "urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8"] {
+    drop(uuid.parse(text), uuid.is_valid(text))
+}
+drop(uuid.version("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), uuid.variant("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
+
+# NIL and MAX, and the other variants
+drop(uuid.NIL, uuid.MAX, uuid.version(uuid.NIL), uuid.version(uuid.MAX))
+drop(uuid.variant(uuid.NIL), uuid.variant(uuid.MAX), uuid.variant("00000000-0000-0000-c000-000000000000"))
+drop(uuid.compare(uuid.NIL, uuid.MAX), uuid.compare(uuid.MAX, uuid.NIL), uuid.compare("ABCDEF00-0000-0000-0000-000000000000", "abcdef00000000000000000000000000"))
+
+# sorting v7 identifiers as text sorts them by time
+plant ids = [uuid.v7(), uuid.v7(), uuid.v7()]
+plant shuffled = [ids[2], ids[0], ids[1]]
+drop(shuffled.sorted() == ids)
+
+# what parse rejects
+for broken in ["", "6ba7b810-9dad-11d1-80b4-00c04fd430c", "6ba7b810-9dad-11d1-80b4-00c04fd430c8a",
+               "6ba7b8109-dad-11d1-80b4-00c04fd430c8", "6ba7b810-9dad-11d1-80b4-00c04fd430cg",
+               "\{6ba7b810-9dad-11d1-80b4-00c04fd430c8", "6ba7b810 9dad 11d1 80b4 00c04fd430c8"] {
+    drop(uuid.is_valid(broken))
+    try {
+        drop(uuid.parse(broken))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+try {
+    drop(uuid.timestamp("919108f7-52d1-4320-9bac-f847db4148a8"))
+} catch e: ValueError {
+    drop(e.message)
+}

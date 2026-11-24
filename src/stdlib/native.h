@@ -183,5 +183,6 @@ extern const PlumNativeModule plum_module_base64;
 extern const PlumNativeModule plum_module_hex;
 extern const PlumNativeModule plum_module_utf8;
 extern const PlumNativeModule plum_module_csv;
+extern const PlumNativeModule plum_module_uuid;
 
 #endif /* PLUM_STDLIB_NATIVE_H */
