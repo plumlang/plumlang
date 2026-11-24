@@ -1,0 +1,31 @@
+# An int field changed in place overflows with the same error, line and
+# calls as any int addition (#119).
+tree Meter {
+    reading: int = 9223372036854775800
+    branch tick(by: int) {
+        self.reading += 1
+        self.reading += by
+    }
+}
+tree Loud : Meter {
+    branch shout() {
+        self.tick(100)
+    }
+}
+
+plant m = Loud()
+m.tick(2)
+drop(m.reading)
+try {
+    m.shout()
+} catch e: OverflowError {
+    drop(e.message)
+}
+m.reading = 9223372036854775807
+try {
+    m.tick(0)
+} catch e: OverflowError {
+    drop(e.message)
+}
+m.reading = 9223372036854775750
+m.shout()

@@ -94,6 +94,45 @@ the body while the new `i` is still in the range, so each time round runs
 one loop instruction. It checks before adding, so a range ending at the
 largest int (`a..=b`) cannot overflow.
 
+## Fields and method calls
+
+An object stores its fields in one array, the parent tree's fields first,
+so a field's position is fixed for its tree and every tree extending it:
+`obj.x` is `GET_FIELD` with that position, never a lookup by name. When
+the object is in a local slot of the running function (`self`, a
+parameter, a variable no closure captured), the instruction names the
+slot too, and nothing is pushed or counted for the object:
+
+| Form | Example | Instead of |
+|---|---|---|
+| `GET_FIELD_L` | `self.r` | `GET_LOCAL`, `GET_FIELD` |
+| `SET_FIELD_L` | `self.w = side` | `GET_LOCAL`, value, `SET_FIELD` |
+| `FIELD_ADD_INT_K`, `FIELD_SUB_FLOAT_L`, ... | `self.count += 1`, `self.total -= x` | `GET_LOCAL`, `GET_LOCAL`, `GET_FIELD`, `ADD_INT_K`, `SET_FIELD` |
+
+The in-place forms exist for `+=` and `-=` on an int or float field, with
+an int or float literal or local on the right; they give the same results
+and errors, at the same line, as the plain instructions. Anything else
+(`?.`, a weak field, an object that isn't in a plain local) uses
+`GET_FIELD` and `SET_FIELD`.
+
+Every method name has a number, and every tree a table from those numbers
+to the functions its objects run: its own methods, then its parent's,
+then its traits' defaults. `INVOKE` takes the method from the table of
+the object's own tree, so an override or a trait's implementation is
+found with one array index, whatever the variable's type. When the
+compiler knows which function will run, the call names it directly:
+`CALL_METHOD n` calls the program's method function `n`, with no table.
+That is the case when the receiver's type is a tree and no tree in the
+whole program that extends it overrides the method, and for `super` and
+`init` calls. A trait's type, an overridden method and code typed in the
+REPL (a later entry may add a tree that overrides) keep `INVOKE`.
+
+A method's frame has the object as slot 0 (`self`) and its arguments in
+the next slots, where the caller pushed them; nothing sits under the
+object (a plain function call has the function there), and the result
+takes the object's place. Bytecode is never changed while it runs: there
+are no inline caches to write, so isolates can share it (#150).
+
 ## Instructions
 
 Jump distances are relative to the instruction after the jump. Generated
@@ -217,55 +256,66 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 112 | `NEW_OBJECT` | 2 | an object of tree constant [a] from its [b] fields on the stack |
 | 113 | `GET_FIELD` | 1 | field [a] of the object on top |
 | 114 | `SET_FIELD` | 1 | object.field [a] = value (shared: every holder sees it) |
-| 115 | `IS_TREE` | 1 | is the top value an object of tree constant [a] or one extending it |
-| 116 | `WEAK` | 0 | the top value as a weak reference (an object's weak box; none stays none) |
-| 117 | `UNWEAK` | 0 | a weak reference's object, or none if it is gone |
-| 118 | `IS_TRAIT` | 1 | does the top value's tree have the trait named by constant [a] |
-| 119 | `INVOKE` | 2 | call method [a] of the object under [b] arguments, the object as self |
-| 120 | `INVOKE_FROM` | 3 | call tree constant [a]'s method [b] (super, init) with [c] arguments |
-| 121 | `EQ` | 0 | a == b, for any two values |
-| 122 | `NE` | 0 | a != b, for any two values |
-| 123 | `NOT` | 0 | not a |
-| 124 | `IS_NONE` | 0 | a == none |
-| 125 | `JUMP` | 1 | jump forward [a] bytes |
-| 126 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
-| 127 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
-| 128 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
-| 129 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
-| 130 | `JUMP_IF_NONE_KEEP` | 1 | jump forward [a] bytes if none, keeping the value |
-| 131 | `JUMP_IF_NOT_LT_INT` | 1 | pop two ints; jump forward [a] bytes unless a < b |
-| 132 | `JUMP_IF_NOT_LE_INT` | 1 | pop two ints; jump forward [a] bytes unless a <= b |
-| 133 | `JUMP_IF_NOT_GT_INT` | 1 | pop two ints; jump forward [a] bytes unless a > b |
-| 134 | `JUMP_IF_NOT_GE_INT` | 1 | pop two ints; jump forward [a] bytes unless a >= b |
-| 135 | `JUMP_IF_NOT_EQ_INT` | 1 | pop two ints; jump forward [a] bytes unless a == b |
-| 136 | `JUMP_IF_NOT_NE_INT` | 1 | pop two ints; jump forward [a] bytes unless a != b |
-| 137 | `JUMP_IF_NOT_LT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a < b |
-| 138 | `JUMP_IF_NOT_LE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a <= b |
-| 139 | `JUMP_IF_NOT_GT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a > b |
-| 140 | `JUMP_IF_NOT_GE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a >= b |
-| 141 | `JUMP_IF_NOT_EQ_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a == b |
-| 142 | `JUMP_IF_NOT_NE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a != b |
-| 143 | `JUMP_IF_NOT_LT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a < constant [a] |
-| 144 | `JUMP_IF_NOT_LE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a <= constant [a] |
-| 145 | `JUMP_IF_NOT_GT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a > constant [a] |
-| 146 | `JUMP_IF_NOT_GE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a >= constant [a] |
-| 147 | `JUMP_IF_NOT_EQ_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a == constant [a] |
-| 148 | `JUMP_IF_NOT_NE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a != constant [a] |
-| 149 | `JUMP_IF_NOT_LT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a < constant [a] |
-| 150 | `JUMP_IF_NOT_LE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a <= constant [a] |
-| 151 | `JUMP_IF_NOT_GT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a > constant [a] |
-| 152 | `JUMP_IF_NOT_GE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a >= constant [a] |
-| 153 | `JUMP_IF_NOT_EQ_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a == constant [a] |
-| 154 | `JUMP_IF_NOT_NE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a != constant [a] |
-| 155 | `LOOP` | 1 | jump back [a] bytes |
-| 156 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 157 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
-| 158 | `END_TRY` | 1 | the last [a] tries are over |
-| 159 | `THROW` | 0 | throw the error on top |
-| 160 | `CALL` | 1 | call the function under [a] arguments |
-| 161 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 162 | `SPAWN` | 1 | a task running the function under [a] arguments; push the task |
-| 163 | `CALL_NATIVE` | 2 | call standard-library function [a] with [b] arguments |
-| 164 | `RETURN` | 0 | return the top value |
-| 165 | `RETURN_NONE` | 0 | return none |
+| 115 | `GET_FIELD_L` | 2 | field [b] of the object in local [a] |
+| 116 | `SET_FIELD_L` | 2 | pop into field [b] of the object in local [a] |
+| 117 | `FIELD_ADD_INT_K` | 3 | int field [b] of the object in local [a] += int constant [c] |
+| 118 | `FIELD_SUB_INT_K` | 3 | int field [b] of the object in local [a] -= int constant [c] |
+| 119 | `FIELD_ADD_INT_L` | 3 | int field [b] of the object in local [a] += int local [c] |
+| 120 | `FIELD_SUB_INT_L` | 3 | int field [b] of the object in local [a] -= int local [c] |
+| 121 | `FIELD_ADD_FLOAT_K` | 3 | float field [b] of the object in local [a] += float constant [c] |
+| 122 | `FIELD_SUB_FLOAT_K` | 3 | float field [b] of the object in local [a] -= float constant [c] |
+| 123 | `FIELD_ADD_FLOAT_L` | 3 | float field [b] of the object in local [a] += float local [c] |
+| 124 | `FIELD_SUB_FLOAT_L` | 3 | float field [b] of the object in local [a] -= float local [c] |
+| 125 | `IS_TREE` | 1 | is the top value an object of tree constant [a] or one extending it |
+| 126 | `WEAK` | 0 | the top value as a weak reference (an object's weak box; none stays none) |
+| 127 | `UNWEAK` | 0 | a weak reference's object, or none if it is gone |
+| 128 | `IS_TRAIT` | 1 | does the top value's tree have the trait named by constant [a] |
+| 129 | `INVOKE` | 2 | call method [a] of the object under [b] arguments, the object as self |
+| 130 | `INVOKE_FROM` | 3 | call tree constant [a]'s method [b] (super, init) with [c] arguments |
+| 131 | `CALL_METHOD` | 2 | call program method [a], found when compiling, the object under [b] args |
+| 132 | `EQ` | 0 | a == b, for any two values |
+| 133 | `NE` | 0 | a != b, for any two values |
+| 134 | `NOT` | 0 | not a |
+| 135 | `IS_NONE` | 0 | a == none |
+| 136 | `JUMP` | 1 | jump forward [a] bytes |
+| 137 | `JUMP_IF_FALSE` | 1 | pop; jump forward [a] bytes if bad |
+| 138 | `JUMP_IF_FALSE_KEEP` | 1 | jump forward [a] bytes if bad, keeping the value |
+| 139 | `JUMP_IF_TRUE_KEEP` | 1 | jump forward [a] bytes if good, keeping the value |
+| 140 | `JUMP_IF_NOT_NONE_KEEP` | 1 | jump forward [a] bytes unless none, keeping the value |
+| 141 | `JUMP_IF_NONE_KEEP` | 1 | jump forward [a] bytes if none, keeping the value |
+| 142 | `JUMP_IF_NOT_LT_INT` | 1 | pop two ints; jump forward [a] bytes unless a < b |
+| 143 | `JUMP_IF_NOT_LE_INT` | 1 | pop two ints; jump forward [a] bytes unless a <= b |
+| 144 | `JUMP_IF_NOT_GT_INT` | 1 | pop two ints; jump forward [a] bytes unless a > b |
+| 145 | `JUMP_IF_NOT_GE_INT` | 1 | pop two ints; jump forward [a] bytes unless a >= b |
+| 146 | `JUMP_IF_NOT_EQ_INT` | 1 | pop two ints; jump forward [a] bytes unless a == b |
+| 147 | `JUMP_IF_NOT_NE_INT` | 1 | pop two ints; jump forward [a] bytes unless a != b |
+| 148 | `JUMP_IF_NOT_LT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a < b |
+| 149 | `JUMP_IF_NOT_LE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a <= b |
+| 150 | `JUMP_IF_NOT_GT_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a > b |
+| 151 | `JUMP_IF_NOT_GE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a >= b |
+| 152 | `JUMP_IF_NOT_EQ_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a == b |
+| 153 | `JUMP_IF_NOT_NE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a != b |
+| 154 | `JUMP_IF_NOT_LT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a < constant [a] |
+| 155 | `JUMP_IF_NOT_LE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a <= constant [a] |
+| 156 | `JUMP_IF_NOT_GT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a > constant [a] |
+| 157 | `JUMP_IF_NOT_GE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a >= constant [a] |
+| 158 | `JUMP_IF_NOT_EQ_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a == constant [a] |
+| 159 | `JUMP_IF_NOT_NE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a != constant [a] |
+| 160 | `JUMP_IF_NOT_LT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a < constant [a] |
+| 161 | `JUMP_IF_NOT_LE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a <= constant [a] |
+| 162 | `JUMP_IF_NOT_GT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a > constant [a] |
+| 163 | `JUMP_IF_NOT_GE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a >= constant [a] |
+| 164 | `JUMP_IF_NOT_EQ_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a == constant [a] |
+| 165 | `JUMP_IF_NOT_NE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a != constant [a] |
+| 166 | `LOOP` | 1 | jump back [a] bytes |
+| 167 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 168 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
+| 169 | `END_TRY` | 1 | the last [a] tries are over |
+| 170 | `THROW` | 0 | throw the error on top |
+| 171 | `CALL` | 1 | call the function under [a] arguments |
+| 172 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 173 | `SPAWN` | 1 | a task running the function under [a] arguments; push the task |
+| 174 | `CALL_NATIVE` | 2 | call standard-library function [a] with [b] arguments |
+| 175 | `RETURN` | 0 | return the top value |
+| 176 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

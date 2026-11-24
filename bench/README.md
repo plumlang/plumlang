@@ -46,25 +46,29 @@ Plumlang is faster.
 
 | Benchmark | plum | python3 | | lua | | node | |
 |---|---|---|---|---|---|---|---|
-| cart | 0.307 s | 0.498 s | 1.62x | 0.332 s | 1.08x | 0.038 s | 0.12x |
-| collatz | 0.581 s | 2.278 s | 3.92x | 0.759 s | 1.31x | 0.246 s | 0.42x |
-| dispatch | 0.264 s | 0.283 s | 1.07x | 0.264 s | 1.00x | 0.033 s | 0.13x |
-| fib | 0.049 s | 0.059 s | 1.19x | 0.049 s | 1.00x | 0.025 s | 0.50x |
-| jsondoc | 0.239 s | 0.236 s | 0.99x | - | | 0.119 s | 0.50x |
-| loop | 0.199 s | 0.702 s | 3.52x | 0.189 s | 0.95x | 0.048 s | 0.24x |
-| mandelbrot | 0.159 s | 0.876 s | 5.49x | 0.196 s | 1.23x | 0.033 s | 0.21x |
-| strings | 0.142 s | 0.167 s | 1.17x | 0.128 s | 0.90x | 0.046 s | 0.32x |
+| cart | 0.142 s | 0.505 s | 3.55x | 0.339 s | 2.39x | 0.039 s | 0.28x |
+| collatz | 0.583 s | 2.361 s | 4.05x | 0.768 s | 1.32x | 0.250 s | 0.43x |
+| dispatch | 0.089 s | 0.286 s | 3.20x | 0.268 s | 3.00x | 0.034 s | 0.38x |
+| fib | 0.046 s | 0.059 s | 1.29x | 0.050 s | 1.08x | 0.026 s | 0.58x |
+| jsondoc | 0.250 s | 0.248 s | 0.99x | - | | 0.128 s | 0.51x |
+| loop | 0.206 s | 0.750 s | 3.64x | 0.192 s | 0.93x | 0.050 s | 0.25x |
+| mandelbrot | 0.155 s | 0.887 s | 5.73x | 0.200 s | 1.29x | 0.035 s | 0.23x |
+| strings | 0.149 s | 0.167 s | 1.12x | 0.130 s | 0.87x | 0.050 s | 0.34x |
 | textbuild | 0.046 s | 0.312 s | 6.71x | 0.307 s | 6.62x | 0.057 s | 1.23x |
-| words | 0.274 s | 0.310 s | 1.13x | 0.188 s | 0.69x | 0.261 s | 0.95x |
+| words | 0.287 s | 0.317 s | 1.10x | 0.190 s | 0.66x | 0.263 s | 0.92x |
 
-(`textbuild` was measured again after #148, fastest of five runs.)
+(`textbuild` was measured after #148, the rest after #119, fastest of
+five runs each.)
+
 Plumlang is ahead of CPython or within 1% of it on every benchmark, and
-3.5 to 5.5 times faster on integer and float arithmetic (`loop`,
-`collatz`, `mandelbrot`). It is level with Lua's interpreter on calls
-(`fib`, `dispatch`), ahead of it on `collatz`, `mandelbrot` and `cart`,
-and behind it by up to 1.46 times on `words`, where the time goes into
-hashing and allocating strings. Node.js compiles hot code to machine code
-(V8's JIT), which an interpreter doesn't; `words` is where it is closest.
+3.5 to 5.7 times faster on integer and float arithmetic (`loop`,
+`collatz`, `mandelbrot`) and on method calls (`dispatch`, `cart`). It is
+three times as fast as Lua's interpreter on method calls (`dispatch`) and
+2.4 times on `cart`, level with it on function calls (`fib`), ahead on
+`collatz` and `mandelbrot`, and behind it by up to 1.5 times on `words`,
+where the time goes into hashing and allocating strings. Node.js compiles
+hot code to machine code (V8's JIT), which an interpreter doesn't; `words`
+is where it is closest.
 
 ## In CI
 
@@ -137,7 +141,10 @@ computed-goto dispatch were measured with `bench/run.py --runs 7`; the
 LTO and PGO rows with `--runs 5` (Linux x86_64, GCC 15.2); the rows for
 typed operands (#118) with the best of several runs of each benchmark
 during development, and their totals below with
-`bench/run.py --runs 5 --plum-only`, on the machine above.
+`bench/run.py --runs 5 --plum-only`, on the machine above. The rows for
+fields and method calls (#119) are single runs of `make` builds of each
+step, or cycles from `perf stat -r 5` where the step was too small for
+one run to show; their totals are below.
 
 | Change | Result | Kept |
 |---|---|---|
@@ -159,6 +166,16 @@ during development, and their totals below with
 | The running frame's slot base and constant array kept in local variables | no difference: they are spilled to the stack like the frame pointer | no |
 | Computed-goto dispatch again, with the typed operands in | within noise: loop 0.20 s → 0.19 s, mandelbrot 0.16 s → 0.15 s, dispatch 0.26 s → 0.27 s, cart 0.30 s → 0.31 s | no |
 | `+=` on a str variable adds to its buffer in place when the variable is its only owner and the string isn't frozen, the buffer growing by half each time (`APPEND_LOCAL`, `APPEND_GLOBAL`, #148); a chain of str `+` joined by one `BUILD_STRING` | textbuild 0.325 s → 0.051 s (`--runs 7`); with 200,000 lines instead of 20,000, 57.4 s (one run) → 0.46 s (fastest of seven), where CPython 3.14 takes 50.4 s; the rest within noise (table below) | yes |
+| Fields of an object in a local by slot (`GET_FIELD_L`, `SET_FIELD_L`), `+=` / `-=` on an int or float field in place (`FIELD_ADD_INT_K`, ...), and direct calls of methods no tree overrides (`CALL_METHOD`) (#119) | dispatch 0.30 s → 0.155 s, cart 0.335 s → 0.238 s: `Tally.add` is 3 instructions instead of 15, and `self.r` no longer counts a reference to `self` | yes |
+| `INVOKE` shifting the arguments with a loop instead of `memmove` | no difference: GCC turns the loop back into a `memmove` call | no |
+| A return dropping references inline while something else still holds the object; a new frame's locals set without a capacity check each | dispatch 0.155 s → 0.128 s, cart 0.238 s → 0.209 s | yes |
+| A method's frame without the function under the object: slot 0 is the object, and the result takes its place, so nothing is shifted | dispatch 0.128 s → 0.117 s, cart 0.209 s → 0.189 s | yes |
+| The usual method call (no limits, room on the stack, the frame segment there) inline in the run loop | dispatch 0.117 s → 0.103 s, cart 0.189 s → 0.168 s | yes |
+| A return reading the result and the locals a field at a time (the result was often just written in place) | cart −2% in cycles (`perf stat -r 5`), dispatch −2% | yes |
+| `FOR_EACH` testing for a list first, and dropping the item before inline | cart −6% in cycles | yes |
+| `INVOKE` and `CALL_METHOD` entering the new frame they made, instead of finding it again | cart −5% in cycles, dispatch −8% | yes |
+| A method call that is a statement dropping its result on return, with no `POP` after it | cart −2%, dispatch unchanged | no: a flag in every frame and call for little |
+| A per-call-site cache of the method found for the last tree | not needed: `INVOKE` already finds the method with one array index (the method's number in the object's tree's table), and a cache written while running would have to live outside the bytecode, which isolates share (#150) | no |
 
 LTO and PGO, Plumlang alone (`--plum-only`), fastest of five runs, the
 four builds measured one after another:
@@ -257,10 +274,6 @@ are reloaded from the stack for every instruction. Keeping them in
 registers, a register-based instruction set (#123) or 8-byte values
 (#121) are the next steps, measured with this suite.
 
-Method calls cost what function calls do (`dispatch` and `fib` both run
-level with Lua): finding the method is one table lookup, and the time
-goes into setting up each call's frame.
-
 Before and after appending in place (#148), Plumlang alone,
 `bench/run.py --runs 7 --plum-only`, the two builds measured one after
 the other:
@@ -282,3 +295,53 @@ Measured again in turns, `cart`, `collatz` and `dispatch` moved by up to
 3% either way between the two builds, which is this machine's noise. The
 loop that adds a line costs one `APPEND_GLOBAL` and the instructions of
 the interpolation; what is left of `textbuild` is mostly the `join` half.
+
+Before and after fixed-offset fields and static method dispatch (#119),
+on top of #148, Plumlang alone, `make` (`-O2`), fastest of 14 runs
+(`--runs 7`, twice, the two builds in turns). The machine was busy with
+other work and ran slower than for the tables above, so compare the
+ratios:
+
+| Benchmark | before | after | |
+|---|---|---|---|
+| cart | 0.492 s | 0.226 s | 2.18x |
+| collatz | 0.917 s | 0.908 s | 1.01x |
+| dispatch | 0.429 s | 0.139 s | 3.09x |
+| fib | 0.077 s | 0.069 s | 1.11x |
+| jsondoc | 0.342 s | 0.347 s | 0.99x |
+| loop | 0.314 s | 0.323 s | 0.97x |
+| mandelbrot | 0.253 s | 0.244 s | 1.04x |
+| strings | 0.221 s | 0.224 s | 0.98x |
+| textbuild | 0.068 s | 0.069 s | 0.99x |
+| words | 0.391 s | 0.388 s | 1.01x |
+
+`loop` and `strings` run no method calls: the 3% is where GCC placed the
+run loop's code, which moved as it grew (their instruction counts are
+unchanged or lower; in cycles, `perf stat -r 7`, `loop` is 2.7% and
+`strings` 1% slower, `textbuild`, `words` and `jsondoc` level). With
+`make release-pgo` (LTO and PGO, `--runs 7`, measured before #148, on a
+quieter machine), nothing is slower:
+
+| Benchmark | before | after | |
+|---|---|---|---|
+| cart | 0.244 s | 0.140 s | 1.75x |
+| collatz | 0.452 s | 0.446 s | 1.01x |
+| dispatch | 0.214 s | 0.084 s | 2.54x |
+| fib | 0.042 s | 0.041 s | 1.04x |
+| jsondoc | 0.196 s | 0.195 s | 1.01x |
+| loop | 0.165 s | 0.165 s | 1.00x |
+| mandelbrot | 0.137 s | 0.137 s | 1.00x |
+| strings | 0.128 s | 0.125 s | 1.02x |
+| textbuild | 0.321 s | 0.319 s | 1.01x |
+| words | 0.248 s | 0.242 s | 1.02x |
+
+PGO had already sped up the old method calls (LTO inlined the call into
+the run loop), so the gain is smaller there for `cart`; the new code runs
+as fast with or without it.
+
+#119 asked for `dispatch` at least twice as fast as 2.2.0: it is 3.1
+times with `make` and 2.5 times with the release build. A method call is
+now cheaper than a function call: the object is slot 0 where the caller
+pushed it, a field of `self` is read without counting a reference, and
+`self.count += 1` is one instruction. What is left in `cart` is the run
+loop's own cost, about 20 instructions dispatched per item.

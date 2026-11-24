@@ -1,0 +1,4 @@
+tests/lang/trees/error_direct_call.plum:5: IndexError: index 0 is out of range: the list is empty
+  in Box.first, line 5
+  in Box.peek, line 6
+  in <main>, line 18

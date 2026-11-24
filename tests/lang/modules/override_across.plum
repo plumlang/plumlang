@@ -1,0 +1,10 @@
+# A tree overriding a method of a tree from another module: the module's
+# own calls on its tree still run the override (#119).
+seed ./lib/greeter { Greeter, greet_all, word_of }
+
+tree Shouter : Greeter {
+    branch word() -> str => "HEY"
+}
+
+drop(greet_all([Greeter("ann"), Shouter("bo")]))
+drop(word_of(Shouter("cy")), word_of(Greeter("di")))
