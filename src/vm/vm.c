@@ -1946,8 +1946,12 @@ VM_NOINLINE static void release_objects(PlumValue *from, PlumValue *to);
 static inline void release_values(PlumValue *from, PlumValue *to) {
     for (PlumValue *v = from; v < to; v++) {
         if (v->type == PLUM_VAL_OBJ) {
-            release_objects(v, to);
-            return;
+            if (v->as.obj->refcount > 1) {
+                v->as.obj->refcount--; /* most still have other holders */
+            } else {
+                release_objects(v, to); /* this one may go: the rest the slow way */
+                return;
+            }
         }
     }
 }
