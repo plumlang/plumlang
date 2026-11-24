@@ -1,0 +1,35 @@
+# command: run --check-leaks
+# exit: 0
+# Strings grown in place, copied when shared, held by lists, maps, objects
+# and closures (#148) are all freed.
+tree Doc {
+    title: str = ""
+    lines: list[str] = []
+}
+plant doc = Doc(title: "t")
+plant text = ""
+plant kept: map[str, int] = {:}
+for i in 0..1000 {
+    text += "line {i}\n"
+    if i % 100 == 0 {
+        doc.lines.push(text)
+        kept[text] = i
+        doc.title += "."
+    }
+}
+plant tail = ""
+plant grow = (x: str) => {
+    tail += x
+}
+for i in 0..100 {
+    grow("{i}")
+}
+branch local_build() -> str {
+    plant s = "x"
+    plant copy = s
+    for i in 0..500 {
+        s = s + copy + "{i}"
+    }
+    return s
+}
+drop(len(text), len(doc.lines), len(kept), doc.title, len(tail), len(local_build()))

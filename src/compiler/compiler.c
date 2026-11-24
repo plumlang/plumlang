@@ -77,6 +77,7 @@ typedef struct Compiler {
 } Compiler;
 
 static void compile_expr(Compiler *c, const PlumExpr *e);
+static bool compile_text_chain(Compiler *c, const PlumExpr *e);
 static void compile_stmt(Compiler *c, const PlumStmt *s);
 static uint16_t method_id(Compiler *c, const char *name);
 static const PlumBranch *method_decl(const PlumSymbol *decl, const char *name, int depth);
@@ -115,6 +116,9 @@ static void unsupported(Compiler *c, PlumSpan span, const char *what, int issue)
 }
 
 static uint16_t constant(Compiler *c, PlumValue v, PlumSpan span) {
+    if (plum_is_obj(v, PLUM_OBJ_STRING)) {
+        v.as.obj->flags |= PLUM_OBJ_FROZEN; /* never appended to in place */
+    }
     size_t i = plum_chunk_add_constant(chunk(c), v);
     if (i >= NO_FORMAT) {
         plum_diag_error(c->diags, span, "E0602",
@@ -735,13 +739,16 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
         op(c, PLUM_OP_CONTAINS, line);
         return;
     default:
+        if (compile_text_chain(c, e)) {
+            return;
+        }
         arithmetic(c, tok, l, l->ty, r, line);
         return;
     }
 }
 
-static void compile_interp(Compiler *c, const PlumExpr *e) {
-    size_t pieces = 0;
+/* Push the text of each part of an interpolated string. */
+static void compile_interp_parts(Compiler *c, const PlumExpr *e) {
     for (size_t i = 0; i < e->as.interp.count; i++) {
         const PlumInterpPart *part = &e->as.interp.parts[i];
         if (part->expr == NULL) {
@@ -756,11 +763,166 @@ static void compile_interp(Compiler *c, const PlumExpr *e) {
             }
             op1(c, PLUM_OP_TO_STRING, fmt, part->expr->span.line);
         }
-        pieces++;
     }
-    if (pieces != 1) {
-        op1(c, PLUM_OP_BUILD_STRING, (uint16_t)pieces, e->span.line);
+}
+
+static void compile_interp(Compiler *c, const PlumExpr *e) {
+    compile_interp_parts(c, e);
+    if (e->as.interp.count != 1) {
+        op1(c, PLUM_OP_BUILD_STRING, (uint16_t)e->as.interp.count, e->span.line);
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Building text                                                       */
+/* ------------------------------------------------------------------ */
+
+/* Is `e` str + str, which CONCAT joins? */
+static bool is_str_plus(const PlumExpr *e) {
+    return e->kind == PLUM_EXPR_BINARY && e->as.binary.op == PLUM_TOK_PLUS &&
+           ty_is(e->as.binary.left->ty, PLUM_TY_STR) && ty_is(e->as.binary.right->ty, PLUM_TY_STR);
+}
+
+/* The pieces emit_text_pieces pushes for `e`: one for each operand of a
+ * chain of str +, and one for each part of an interpolated string in it. */
+static size_t text_pieces(const PlumExpr *e) {
+    if (is_str_plus(e)) {
+        return text_pieces(e->as.binary.left) + text_pieces(e->as.binary.right);
+    }
+    if (e->kind == PLUM_EXPR_INTERP && e->as.interp.count > 1) {
+        return e->as.interp.count;
+    }
+    return 1;
+}
+
+/*
+ * Push the strings whose concatenation is the str `e`, left to right,
+ * leaving out the operand `skip` (the variable of x = x + ...), and return
+ * how many. a + b + "c{x}" pushes a, b, "c" and x's text, for one
+ * BUILD_STRING to join (or one APPEND_ to add to a variable), instead of a
+ * new string for every +.
+ */
+static size_t emit_text_pieces(Compiler *c, const PlumExpr *e, const PlumExpr *skip) {
+    if (e == skip) {
+        return 0;
+    }
+    if (is_str_plus(e)) {
+        size_t n = emit_text_pieces(c, e->as.binary.left, skip);
+        return n + emit_text_pieces(c, e->as.binary.right, skip);
+    }
+    if (e->kind == PLUM_EXPR_INTERP && e->as.interp.count > 1) {
+        compile_interp_parts(c, e);
+        return e->as.interp.count;
+    }
+    compile_expr(c, e);
+    return 1;
+}
+
+/* A chain of at least three strings joined by +: one BUILD_STRING. */
+static bool compile_text_chain(Compiler *c, const PlumExpr *e) {
+    if (!is_str_plus(e)) {
+        return false;
+    }
+    size_t n = text_pieces(e);
+    if (n < 3 || n > 0xFFFF) {
+        return false;
+    }
+    emit_text_pieces(c, e, NULL);
+    op1(c, PLUM_OP_BUILD_STRING, (uint16_t)n, e->span.line);
+    return true;
+}
+
+/* Text of a value of this type runs no Plumlang code (no to_str()), and an
+ * operator on it no method. */
+static bool plain_data(const PlumTy *t) {
+    return ty_is(t, PLUM_TY_INT) || ty_is(t, PLUM_TY_BYTE) || ty_is(t, PLUM_TY_FLOAT) ||
+           ty_is(t, PLUM_TY_STR) || ty_is(t, PLUM_TY_BOOL) || ty_is(t, PLUM_TY_NONE);
+}
+
+/*
+ * Can computing `e` change no variable? Literals, names, and operators and
+ * interpolation on plain data: no call, so no code that could assign to a
+ * module variable. (It may still throw, which changes nothing.)
+ */
+static bool changes_nothing(const PlumExpr *e) {
+    switch (e->kind) {
+    case PLUM_EXPR_INT:
+    case PLUM_EXPR_FLOAT:
+    case PLUM_EXPR_STRING:
+    case PLUM_EXPR_BOOL:
+    case PLUM_EXPR_NONE:
+    case PLUM_EXPR_NAME:
+        return true;
+    case PLUM_EXPR_INTERP:
+        for (size_t i = 0; i < e->as.interp.count; i++) {
+            const PlumExpr *x = e->as.interp.parts[i].expr;
+            if (x != NULL && (!plain_data(x->ty) || !changes_nothing(x))) {
+                return false;
+            }
+        }
+        return true;
+    case PLUM_EXPR_UNARY:
+        return plain_data(e->as.unary.operand->ty) && changes_nothing(e->as.unary.operand);
+    case PLUM_EXPR_BINARY:
+        return e->as.binary.op != PLUM_TOK_IN && plain_data(e->as.binary.left->ty) &&
+               plain_data(e->as.binary.right->ty) && changes_nothing(e->as.binary.left) &&
+               changes_nothing(e->as.binary.right);
+    default:
+        return false;
+    }
+}
+
+/* The leftmost operand of a chain of str +. */
+static const PlumExpr *chain_head(const PlumExpr *e) {
+    while (is_str_plus(e)) {
+        e = e->as.binary.left;
+    }
+    return e;
+}
+
+/*
+ * x += text and x = x + text on a str local or module variable x: the
+ * pieces of the text, then APPEND_LOCAL or APPEND_GLOBAL, which adds them
+ * to x in place when x is the string's only owner (a loop building a text
+ * a line at a time stays linear), and copies it otherwise. The pieces are
+ * computed before x is read. That changes nothing for a local, which only
+ * its own function can assign to; for a module variable, the text must
+ * make no call that could. Emits it and returns true, or emits nothing and
+ * returns false.
+ */
+static bool text_append(Compiler *c, const PlumStmt *s) {
+    const PlumExpr *target = s->as.assign.target;
+    const PlumExpr *value = s->as.assign.value;
+    const PlumExpr *skip = NULL;
+    if (!ty_is(target->ty, PLUM_TY_STR) || !ty_is(value->ty, PLUM_TY_STR)) {
+        return false;
+    }
+    if (s->as.assign.op == PLUM_TOK_EQ) {
+        /* x = x + ...: the x on the left is the string added to */
+        skip = chain_head(value);
+        if (skip == value || skip->kind != PLUM_EXPR_NAME || skip->symbol != target->symbol) {
+            return false;
+        }
+    } else if (s->as.assign.op != PLUM_TOK_PLUS_EQ) {
+        return false;
+    }
+    uint16_t slot;
+    PlumOpcode o = PLUM_OP_APPEND_LOCAL;
+    if (!plain_local(c, target, &slot)) {
+        const PlumSymbol *sym = target->symbol;
+        if (sym == NULL || !sym->global || !sym->has_slot || !changes_nothing(value)) {
+            return false;
+        }
+        slot = (uint16_t)sym->slot;
+        o = PLUM_OP_APPEND_GLOBAL;
+    }
+    size_t n = text_pieces(value) - (skip != NULL ? 1 : 0);
+    if (n > 0xFFFF) {
+        return false;
+    }
+    emit_text_pieces(c, value, skip);
+    op2(c, o, slot, (uint16_t)n, s->span.line);
+    return true;
 }
 
 static const PlumBranch *callee_decl(const PlumSymbol *sym) {
@@ -2599,6 +2761,9 @@ static void compile_assign(Compiler *c, const PlumStmt *s) {
     }
     PlumTokenKind tok = s->as.assign.op;
     const PlumExpr *value = s->as.assign.value;
+    if (text_append(c, s)) {
+        return;
+    }
     if (tok != PLUM_TOK_EQ &&
         local_update(c, target, compound_operator(tok), value, s->span.line)) {
         return;

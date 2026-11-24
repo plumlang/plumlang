@@ -1,0 +1,99 @@
+# += on a str grows it in place only when the variable is its only owner
+# (#148): every other holder keeps the text it had.
+
+# aliasing: b = a, then a += ...
+plant a = "ab"
+plant b = a
+a += "x"
+drop(a, b)
+
+branch locals() {
+    plant s = "s"
+    plant t = s
+    s += "1"
+    t += "2"
+    drop(s, t)
+    plant kept = s
+    s = s + "3" + "4"
+    drop(s, kept)
+}
+locals()
+
+# constant strings are frozen: building on one never changes the constant
+branch fresh(n: int) -> str {
+    plant s = "base"
+    for i in 0..n {
+        s += "+{i}"
+    }
+    return s
+}
+drop(fresh(3), fresh(1), fresh(0))
+root GREETING = "hi"
+plant g = GREETING
+g += " there"
+drop(g, GREETING)
+
+# held by a list, a map key, a set and a loop: none of them sees the change
+plant k = "key"
+k += "!"
+plant xs = [k]
+plant m = {k: 1}
+plant seen = set([k])
+k += "?"
+drop(k, xs[0], m["key!"], "key!" in seen, k in m)
+plant w = "ab"
+for ch in w {
+    w += ch
+}
+drop(w)
+
+# x += x, and the text on the right computed before x is read
+plant d = "do"
+d += d
+d = d + d
+drop(d)
+
+# interpolation, chains and formats
+plant line = ""
+for i in 0..3 {
+    line += "[{i}:{i * 1.5:.2}]" + "," + "{i % 2 == 0}"
+}
+drop(line)
+plant left = "L"
+plant chain = left + "-" + left + "{1 + 1}" + left
+drop(chain, left)
+
+# a module variable changed by a call on the right keeps the old order:
+# x is read first, so the call's change is overwritten
+plant log = "start"
+branch note() -> str {
+    log += "(note)"
+    return "+call"
+}
+log += note()
+drop(log)
+
+# captured variables and fields take the plain path
+plant cap = "c"
+plant add = (x: str) => {
+    cap += x
+}
+add("1")
+add("2")
+drop(cap)
+tree Box {
+    text: str = ""
+}
+plant box = Box()
+plant before = box.text
+box.text += "abc"
+box.text += "def"
+drop(box.text, before == "")
+
+# characters are counted right after growing, ASCII or not
+plant u = "é"
+drop(len(u))
+u += "ü🍑"
+drop(len(u), u[2], u.byte_len())
+u += "abc"
+drop(len(u), u[5], u.upper())

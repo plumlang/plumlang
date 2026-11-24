@@ -159,7 +159,7 @@ void plum_table_clear(PlumTable *t) {
 
 PlumTable *plum_table_unique(PlumValue *slot) {
     PlumTable *t = plum_as_table(*slot);
-    if (t->obj.refcount == 1) {
+    if (plum_obj_unique(&t->obj)) {
         return t;
     }
     PlumTable *copy = plum_table_new(t->is_set, t->seed);
@@ -169,7 +169,7 @@ PlumTable *plum_table_unique(PlumValue *slot) {
             plum_table_put(copy, plum_retain(e->key), plum_retain(e->value));
         }
     }
-    t->obj.refcount--; /* this holder lets go of the shared one */
+    plum_release(*slot); /* this holder lets go of the shared (or frozen) one */
     *slot = plum_obj(&copy->obj);
     return copy;
 }

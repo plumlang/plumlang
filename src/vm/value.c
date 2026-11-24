@@ -9,17 +9,82 @@
 
 #include <string.h>
 
-PlumString *plum_string_alloc(size_t len) {
-    PlumString *s = plum_alloc(plum_add_size(sizeof(PlumString), plum_add_size(len, 1)));
+PlumString *plum_string_alloc_room(size_t len, size_t cap) {
+    if (cap < len) {
+        cap = len;
+    }
+    PlumString *s = plum_alloc(plum_add_size(sizeof(PlumString), plum_add_size(cap, 1)));
     s->obj.refcount = 1;
     s->obj.type = PLUM_OBJ_STRING;
+    s->obj.flags = 0;
     plum_alloc_count(PLUM_MADE_STRING);
     s->len = len;
     s->chars = (char *)(s + 1);
     s->chars[len] = '\0';
     s->char_count = 0;
     s->counted = false;
+    s->cap = cap <= UINT32_MAX ? (uint32_t)cap : 0; /* 0: no room past `len` */
     return s;
+}
+
+PlumString *plum_string_alloc(size_t len) {
+    return plum_string_alloc_room(len, len);
+}
+
+/* Room for `need` bytes in a string `+=` is building: half as much again
+ * as before, so appending a line at a time copies each byte a bounded
+ * number of times. */
+static size_t grown_room(size_t need, size_t cap) {
+    size_t room = cap + cap / 2;
+    if (room < 32) {
+        room = 32;
+    }
+    if (room > PLUM_MAX_STRING) {
+        room = PLUM_MAX_STRING;
+    }
+    return room < need ? need : room;
+}
+
+void plum_string_append(PlumValue *slot, const PlumValue *parts, size_t n) {
+    PlumString *s = plum_as_string(*slot);
+    PlumString *shared = NULL;
+    size_t len = s->len;
+    for (size_t i = 0; i < n; i++) {
+        len = plum_add_size(len, plum_as_string(parts[i])->len);
+    }
+    size_t at = s->len;
+    size_t cap = s->cap > s->len ? s->cap : s->len;
+    if (!plum_obj_unique(&s->obj)) {
+        /* copy-on-write; the parts may include the shared string itself,
+         * which is let go of only once they are copied */
+        shared = s;
+        s = plum_string_alloc_room(len, grown_room(len, shared->len));
+        memcpy(s->chars, shared->chars, shared->len);
+        s->char_count = shared->char_count;
+        s->counted = shared->counted;
+        *slot = plum_obj(&s->obj);
+    } else if (len > cap) {
+        /* No one else can see it, so changing it is invisible; none of the
+         * parts is `s`, which would make a second owner. */
+        size_t room = grown_room(len, cap);
+        s = plum_realloc(s, plum_add_size(sizeof(PlumString), plum_add_size(room, 1)));
+        s->chars = (char *)(s + 1);
+        s->cap = (uint32_t)room;
+        slot->as.obj = &s->obj;
+    }
+    for (size_t i = 0; i < n; i++) {
+        const PlumString *part = plum_as_string(parts[i]);
+        memcpy(s->chars + at, part->chars, part->len);
+        if (s->counted) {
+            s->char_count += plum_utf8_length(part->chars, part->len);
+        }
+        at += part->len;
+    }
+    s->len = len;
+    s->chars[len] = '\0';
+    if (shared != NULL) {
+        plum_release(plum_obj(&shared->obj));
+    }
 }
 
 size_t plum_string_length(PlumString *s) {
@@ -77,7 +142,7 @@ void plum_list_push(PlumList *list, PlumValue v) {
 
 PlumList *plum_list_unique(PlumValue *slot) {
     PlumList *list = plum_as_list(*slot);
-    if (list->obj.refcount == 1) {
+    if (plum_obj_unique(&list->obj)) {
         return list;
     }
     PlumList *copy = plum_list_new(list->len);
@@ -85,7 +150,7 @@ PlumList *plum_list_unique(PlumValue *slot) {
         copy->items[i] = plum_retain(list->items[i]);
     }
     copy->len = list->len;
-    list->obj.refcount--; /* this holder lets go of the shared one */
+    plum_release(*slot); /* this holder lets go of the shared (or frozen) one */
     *slot = plum_obj(&copy->obj);
     return copy;
 }
@@ -114,6 +179,7 @@ PlumObject *plum_object_new(PlumTreeInfo *tree) {
     PlumObject *o = plum_alloc(plum_add_size(sizeof *o, plum_mul_size(n, sizeof(PlumValue))));
     o->obj.refcount = 1;
     o->obj.type = PLUM_OBJ_OBJECT;
+    o->obj.flags = 0;
     plum_alloc_count(tree->kind != NULL ? PLUM_MADE_KIND : PLUM_MADE_OBJECT);
     o->tree = tree;
     o->weak = NULL;
@@ -161,6 +227,7 @@ PlumCell *plum_cell_new(PlumValue v) {
     PlumCell *cell = plum_alloc(sizeof *cell);
     cell->obj.refcount = 1;
     cell->obj.type = PLUM_OBJ_CELL;
+    cell->obj.flags = 0;
     plum_alloc_count(PLUM_MADE_CELL);
     cell->value = v;
     return cell;

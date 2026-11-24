@@ -112,6 +112,8 @@
     X(GE_STR, 0, "a >= b by code point")                                                           \
     X(TO_STRING, 1, "text of the top value, with format constant [a] (0xFFFF: none)")              \
     X(BUILD_STRING, 1, "join the top [a] strings")                                                 \
+    X(APPEND_LOCAL, 2, "str local [a] += the top [b] strings, in place if it has one owner")       \
+    X(APPEND_GLOBAL, 2, "str global [a] += the top [b] strings, in place if it has one owner")     \
     /* Lists */                                                                                    \
     X(BUILD_MAP, 1, "a map of the top [a] key, value pairs")                                       \
     X(INDEX_STR, 0, "the character at str[index], or an index error")                              \

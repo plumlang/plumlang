@@ -20,8 +20,9 @@ prints, and only then times it: fastest of three runs, or `--runs N`.
 | `cart` | method dispatch over a collection: 4 million calls through a trait on 2,000 objects of four trees |
 
 Lua has no JSON in its standard library, so `jsondoc` has no Lua version.
-`+=` on a string copies it in Plumlang, CPython and Lua alike, so the
-`textbuild` loop is kept short.
+`+=` on a string copies it in CPython and Lua, so the `textbuild` loop is
+kept short; Plumlang adds to a string in place when the variable is its
+only owner (#148).
 
 ```bash
 make                                   # release build, -O2
@@ -53,10 +54,11 @@ Plumlang is faster.
 | loop | 0.199 s | 0.702 s | 3.52x | 0.189 s | 0.95x | 0.048 s | 0.24x |
 | mandelbrot | 0.159 s | 0.876 s | 5.49x | 0.196 s | 1.23x | 0.033 s | 0.21x |
 | strings | 0.142 s | 0.167 s | 1.17x | 0.128 s | 0.90x | 0.046 s | 0.32x |
-| textbuild | 0.322 s | 0.308 s | 0.96x | 0.295 s | 0.92x | 0.054 s | 0.17x |
+| textbuild | 0.046 s | 0.312 s | 6.71x | 0.307 s | 6.62x | 0.057 s | 1.23x |
 | words | 0.274 s | 0.310 s | 1.13x | 0.188 s | 0.69x | 0.261 s | 0.95x |
 
-Plumlang is ahead of CPython or within 4% of it on every benchmark, and
+(`textbuild` was measured again after #148, fastest of five runs.)
+Plumlang is ahead of CPython or within 1% of it on every benchmark, and
 3.5 to 5.5 times faster on integer and float arithmetic (`loop`,
 `collatz`, `mandelbrot`). It is level with Lua's interpreter on calls
 (`fib`, `dispatch`), ahead of it on `collatz`, `mandelbrot` and `cart`,
@@ -156,6 +158,7 @@ during development, and their totals below with
 | Local op literal pushed by one instruction (`MOD_INT_LK`); `+=` / `-=` on an int global in place (`GLOBAL_ADD_INT_L`) | collatz 0.63 s → 0.58 s; loop unchanged at 0.20 s although it runs 3.3 instructions a time round instead of 5 | yes |
 | The running frame's slot base and constant array kept in local variables | no difference: they are spilled to the stack like the frame pointer | no |
 | Computed-goto dispatch again, with the typed operands in | within noise: loop 0.20 s → 0.19 s, mandelbrot 0.16 s → 0.15 s, dispatch 0.26 s → 0.27 s, cart 0.30 s → 0.31 s | no |
+| `+=` on a str variable adds to its buffer in place when the variable is its only owner and the string isn't frozen, the buffer growing by half each time (`APPEND_LOCAL`, `APPEND_GLOBAL`, #148); a chain of str `+` joined by one `BUILD_STRING` | textbuild 0.325 s → 0.051 s (`--runs 7`); with 200,000 lines instead of 20,000, 57.4 s (one run) → 0.46 s (fastest of seven), where CPython 3.14 takes 50.4 s; the rest within noise (table below) | yes |
 
 LTO and PGO, Plumlang alone (`--plum-only`), fastest of five runs, the
 four builds measured one after another:
@@ -213,3 +216,25 @@ registers, a register-based instruction set (#123) or 8-byte values
 Method calls cost what function calls do (`dispatch` and `fib` both run
 level with Lua): finding the method is one table lookup, and the time
 goes into setting up each call's frame.
+
+Before and after appending in place (#148), Plumlang alone,
+`bench/run.py --runs 7 --plum-only`, the two builds measured one after
+the other:
+
+| Benchmark | before | after |
+|---|---|---|
+| cart | 0.309 s | 0.316 s |
+| collatz | 0.585 s | 0.596 s |
+| dispatch | 0.269 s | 0.273 s |
+| fib | 0.050 s | 0.049 s |
+| jsondoc | 0.237 s | 0.239 s |
+| loop | 0.201 s | 0.201 s |
+| mandelbrot | 0.161 s | 0.162 s |
+| strings | 0.143 s | 0.143 s |
+| textbuild | 0.325 s | 0.051 s |
+| words | 0.283 s | 0.276 s |
+
+Measured again in turns, `cart`, `collatz` and `dispatch` moved by up to
+3% either way between the two builds, which is this machine's noise. The
+loop that adds a line costs one `APPEND_GLOBAL` and the instructions of
+the interpolation; what is left of `textbuild` is mostly the `join` half.
