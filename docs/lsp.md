@@ -45,13 +45,14 @@ so every theme already has colours for them.
 | `function` | a `branch`, a built-in function (`drop`, `len`) or a standard-library function |
 | `method` | a method of a tree or trait, and a method of `str`, `list`, `map`, ... |
 | `keyword` | `plant`, `branch`, `if`, `good`, `none`, `self`, ... |
-| `string`, `number`, `comment` | literals and `#` comments |
+| `string`, `number`, `comment` | literals, and `#`, `##` and `#[ ... ]#` comments |
 
 | Modifier | When |
 |---|---|
 | `declaration` | where the name is declared |
 | `readonly` | a `root` constant, or a standard-library constant (`math.PI`) |
 | `defaultLibrary` | built into Plumlang: built-in functions, types and errors, and the standard library |
+| `documentation` | a `##` doc comment |
 
 Details:
 

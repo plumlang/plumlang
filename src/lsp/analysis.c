@@ -2999,6 +2999,7 @@ enum {
     SM_DECLARATION = 1 << 0,
     SM_READONLY = 1 << 1,        /* root constants, standard-library constants */
     SM_DEFAULT_LIBRARY = 1 << 2, /* built into Plumlang */
+    SM_DOCUMENTATION = 1 << 3,   /* `##` doc comments */
 };
 
 static const char *const token_types[] = {
@@ -3006,7 +3007,8 @@ static const char *const token_types[] = {
     "enumMember", "function", "method", "keyword", "string",    "number",    "comment",
 };
 
-static const char *const token_modifiers[] = {"declaration", "readonly", "defaultLibrary"};
+static const char *const token_modifiers[] = {"declaration", "readonly", "defaultLibrary",
+                                              "documentation"};
 
 void plum_lsp_semantic_legend(PlumJsonWriter *w) {
     plum_jw_object(w);
@@ -3241,7 +3243,8 @@ void plum_lsp_semantic_tokens(PlumJsonWriter *w, const PlumLspAnalysis *a) {
     }
     for (size_t i = 0; i < l.comments.len; i++) {
         const PlumComment *c = &l.comments.items[i];
-        add_sem(&tokens, m->text, c->span.offset, span_end(c->span, m->len), ST_COMMENT, 0);
+        add_sem(&tokens, m->text, c->span.offset, span_end(c->span, m->len), ST_COMMENT,
+                c->kind == PLUM_COMMENT_DOC ? SM_DOCUMENTATION : 0);
     }
     lexed_free(&l);
     /* names, by what they stand for */
@@ -3322,6 +3325,23 @@ static size_t seed_line_at(const PlumModule *m) {
         return at < m->len ? at + 1 : at;
     }
     while (at < m->len && m->text[at] == '#') {
+        if (at + 1 < m->len && m->text[at + 1] == '[') {
+            /* a block comment, perhaps over several lines: past its `]#` */
+            size_t depth = 0;
+            while (at < m->len) {
+                if (m->text[at] == '#' && at + 1 < m->len && m->text[at + 1] == '[') {
+                    depth++;
+                    at++;
+                } else if (m->text[at] == ']' && at + 1 < m->len && m->text[at + 1] == '#') {
+                    at++;
+                    if (--depth == 0) {
+                        at++;
+                        break;
+                    }
+                }
+                at++;
+            }
+        }
         while (at < m->len && m->text[at] != '\n') {
             at++;
         }
