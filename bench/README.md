@@ -614,4 +614,105 @@ What was tried:
 | Compare-and-jump on the stored bits of two inline ints (their encoding keeps them in order), without decoding | the same instructions: GCC already did it | no |
 | Ints as their low 50 bits, sign-extended to decode (two shifts), instead of offset by a constant | not built: the shift experiment above already costs more than adding a constant | no |
 | JavaScriptCore-style layout (pointers as they are, floats offset by 2^49) | not built: every float load and store pays an add, the opposite of where the 8-byte layout gains | no |
-| A fixed alignment for the run loop (`-falign-functions`), to take the 15% layout noise out of release builds | not tried here: it applies to both layouts, outside #121 | — |
+| A fixed alignment for the run loop (`-falign-functions`), to take the 15% layout noise out of release builds | done after #121, for both layouts: "Code placement" below | — |
+
+## Code placement
+
+#121 found that two builds with the same run loop could differ by 15% in
+cycles: the loop (`execute()` in src/vm/vm.c) had moved by 32 bytes
+because code placed before it had changed. Since then the run loop starts
+on a 64-byte boundary (`__attribute__((aligned(64)))` with GCC and Clang;
+MSVC has no alignment for one function, so Windows builds are as before;
+`-DPLUM_RUN_LOOP_ALIGN=0` turns it off).
+
+**Method.** A build of each variant moves the run loop and nothing else:
+`vm.c` is compiled with `-fno-toplevel-reorder`, so functions come out in
+source order, and with `__asm__(".text\n.skip N, 0xcc")` just before
+`execute()`, N = 0, 16, 32 and 48 bytes (GCC aligns functions to 16, so
+those are its four possible starts modulo 64). The rest of the program is
+the same object files. With the alignment, the four builds put the loop at
+the same offset modulo 64. Each variant was then timed with
+`perf stat -e cpu_core/cycles/,cpu_core/instructions/`, pinned to one
+P-core (`taskset`), the variants taking turns (the order reversed every
+round), 11 rounds for `make` and PGO and 7 for LTO; the figure for a
+variant is its median. Linux x86_64, Intel Core i5-13450HX, GCC 15.2 and
+13.4; the machine was also running other work, which moves cycles by up
+to about 1% between rounds. Instructions retired differ by under 0.2%
+between variants of a build (PGO: 1%, as the profile differs).
+
+Spread of the median cycles over the four placements (largest / smallest
+- 1), main and with the run loop aligned:
+
+| Benchmark | `make`, GCC 15: main | aligned | `make`, GCC 13: main | aligned | `make NANBOX=1`: main | aligned | `release-lto`: main | aligned | `release-pgo`: main | aligned |
+|---|---|---|---|---|---|---|---|---|---|---|
+| cart | 10.2% | 1.3% | 10.8% | 1.4% | 1.7% | 1.0% | 6.6% | 0.6% | 3.2% | 3.3% |
+| collatz | 4.1% | 1.3% | 12.9% | 0.6% | 4.7% | 0.5% | 7.5% | 0.5% | 6.4% | 0.7% |
+| dispatch | 5.9% | 0.5% | 8.8% | 0.4% | 0.3% | 0.8% | 3.8% | 0.2% | 0.8% | 1.7% |
+| fib | 9.9% | 1.0% | 18.8% | 1.0% | 10.3% | 0.6% | 8.6% | 0.3% | 13.5% | 4.4% |
+| jsondoc | 6.0% | 2.9% | 3.4% | 1.9% | 5.8% | 1.3% | 1.4% | 0.7% | 3.9% | 7.3% |
+| loop | 0.2% | 0.3% | 15.8% | 3.7% | 0.3% | 0.1% | 0.0% | 0.0% | 0.4% | 0.7% |
+| mandelbrot | 14.4% | 0.9% | 20.7% | 0.4% | 20.7% | 1.9% | 16.5% | 0.3% | 23.1% | 1.0% |
+| strings | 2.1% | 0.5% | 1.4% | 0.7% | 1.9% | 0.6% | 2.1% | 0.7% | 5.8% | 2.9% |
+| textbuild | 2.3% | 3.0% | 4.2% | 2.7% | 5.5% | 2.0% | 2.8% | 1.3% | 2.3% | 2.7% |
+| words | 5.1% | 0.9% | 3.0% | 1.2% | 3.7% | 1.6% | 2.7% | 0.9% | 1.7% | 2.3% |
+
+Where the run loop starts was worth up to 23% (`mandelbrot` with PGO:
+585 M to 720 M cycles for 3.03 G instructions); aligned, no benchmark
+moves by more than 3.7% with `make` and LTO. PGO builds keep some spread
+(`jsondoc` 7%, `fib` 4%): each of them is trained and laid out anew, so
+more than the run loop's start differs between them.
+
+What moves is mostly the dispatch: the few instructions at the top of the
+loop that load the next opcode and jump through the table. In the slow
+GCC 15 placement of `mandelbrot` they cross a 64-byte line (`lea` at
+offset 52, the indirect `jmp` at 9 of the next line); in the fast ones
+they sit within one. The front-end counters (`idq.dsb_uops`,
+`idq.mite_uops`, `frontend_retired.dsb_miss`) and branch misses hardly
+differ between the two, so the cost is in the back end; we did not find
+which structure is responsible. Which offset is fast also differs by
+compiler: GCC 13's fast one is GCC 15's slow one.
+
+Alignment pins the loop to one offset; it doesn't choose a good one. In
+these harness builds the pinned offset was the slow one for GCC 15
+(`mandelbrot` 749–756 M against 654–748 M) and the fast one for GCC 13
+(726–729 M against 725–876 M). Built normally, without the harness, the
+aligned run loop is level with main in every configuration (median
+cycles, 7 rounds each, main and aligned taking turns):
+
+| Benchmark | `make` GCC 15: main | aligned | | `make` GCC 13: main | aligned | | `release-lto`: main | aligned | | `release-pgo`: main | aligned | |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cart | 542 M | 548 M | +1.1% | 578 M | 563 M | -2.6% | 627 M | 627 M | -0.0% | 537 M | 523 M | -2.5% |
+| collatz | 1927 M | 1923 M | -0.2% | 1954 M | 1979 M | +1.3% | 2030 M | 2018 M | -0.6% | 1988 M | 1921 M | -3.4% |
+| dispatch | 394 M | 395 M | +0.2% | 401 M | 401 M | -0.1% | 460 M | 459 M | -0.2% | 367 M | 369 M | +0.5% |
+| fib | 88 M | 88 M | +0.5% | 105 M | 98 M | -6.8% | 117 M | 116 M | -0.6% | 87 M | 88 M | +2.0% |
+| jsondoc | 1092 M | 1094 M | +0.1% | 1119 M | 1119 M | +0.0% | 860 M | 876 M | +1.8% | 860 M | 838 M | -2.7% |
+| loop | 907 M | 907 M | -0.0% | 394 M | 384 M | -2.6% | 905 M | 905 M | +0.0% | 743 M | 741 M | -0.2% |
+| mandelbrot | 641 M | 639 M | -0.3% | 704 M | 722 M | +2.6% | 746 M | 746 M | +0.0% | 722 M | 737 M | +2.1% |
+| strings | 672 M | 665 M | -1.0% | 696 M | 701 M | +0.7% | 586 M | 581 M | -0.8% | 548 M | 537 M | -1.9% |
+| textbuild | 209 M | 216 M | +3.5% | 215 M | 215 M | +0.3% | 192 M | 189 M | -1.4% | 173 M | 171 M | -1.5% |
+| words | 1217 M | 1209 M | -0.7% | 1257 M | 1251 M | -0.5% | 1141 M | 1132 M | -0.8% | 1046 M | 1032 M | -1.4% |
+
+Geometric mean, aligned against main: 1.003 (`make`, GCC 15), 0.992
+(GCC 13), 0.997 (LTO), 0.991 (PGO). A future change to the run loop
+itself still moves its code, and may land on a slow offset; what the
+alignment removes is the noise from changes anywhere else, so a pull
+request's numbers measure the pull request. (`loop` runs in about 390 M
+cycles with GCC 13 and 907 M with GCC 15 in every placement: that is a
+difference in the code the two compilers generate, not in where it
+lands.)
+
+What was tried:
+
+| Change | Result | Kept |
+|---|---|---|
+| `aligned(64)` on `execute()` | the tables above: spread from up to 23% to under 4% (PGO 7%), level with main | yes |
+| `-falign-loops=64` for the whole build | pins the dispatch itself, wherever the function starts: the jump sat at the same offset in all four placements, and spreads fell to 0.3–2.6% with GCC 13, 0.0–1.4% with `NANBOX=1` and 0.1–3.8% with GCC 15. But the offset it pins is the slow one for GCC 13: against main, `mandelbrot` +27%, `loop` +19%, `collatz` +18%, `dispatch` +12%, `cart` +11%; and the binary grows by 27 KB (2.6%) | no |
+| `-falign-jumps=32` for vm.c, with and without `aligned(64)` | doesn't touch the dispatch (it is also reached by falling through, which `-falign-jumps` leaves alone): GCC 15 `mandelbrot` still spread 15% without the function alignment | no |
+| Keeping `vm->top` in a local (a register) in the run loop | not tried for this: it would change the code that is measured, not where it lands, and every instruction that calls out of the loop would have to store it back (123 uses). #120's attempt at keeping the frame's slot base in a local helped GCC 15 by 2–3% and slowed GCC 13 by 19–50%; the register VM of #123 is where this belongs | — |
+
+The harness builds aren't the normal builds: `-fno-toplevel-reorder`
+changes where GCC puts `vm.c`'s functions, which is why the normal and
+harness builds can land on different offsets. Clang has `aligned` on
+functions too (the macOS release builds use it); MSVC has no equivalent,
+and its builds are unchanged.
+
