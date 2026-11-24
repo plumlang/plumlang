@@ -18,6 +18,7 @@ prints, and only then times it: fastest of three runs, or `--runs N`.
 | `textbuild` | building text: `+=` a line at a time (20,000 lines), and `join` of 600,000 pieces |
 | `words` | a hash-map workload: counting the words of a 1,000,000-word text in a `map[str, int]` |
 | `cart` | method dispatch over a collection: 4 million calls through a trait on 2,000 objects of four trees |
+| `lists` | collections handed to functions: a 200,000-int list summed and multiplied by index, a 300 x 300 grid read by column, 100,000 words grouped in a `map[str, list[str]]`, and a list built by a helper that returns it |
 
 Lua has no JSON in its standard library, so `jsondoc` has no Lua version.
 `+=` on a string copies it in CPython and Lua, so the `textbuild` loop is
