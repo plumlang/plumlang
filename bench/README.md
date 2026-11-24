@@ -178,12 +178,39 @@ instructions that `-O2` already lays out well, or in `memcpy`.
 
 Release builds use it where the build machine can run the training:
 Linux x86_64 and arm64 (GCC; Clang on Linux passes the whole suite too).
-Linux riscv64 (built under emulation) gets LTO only. macOS gets no LTO
-for now (arm64 gets PGO alone, x86_64 is cross-compiled and plain): with
-Apple Clang, every LTO build (LTO alone, LTO + PGO, and the
-instrumented LTO build) aborts in the network tests (`pointer being freed
-was not allocated`), while the plain, PGO-only and ASan + UBSan builds
-pass; that is still to be tracked down. Windows gets
+Linux riscv64 (built under emulation) gets LTO only. macOS arm64 gets
+LTO + PGO too (Apple Clang), and x86_64, cross-compiled so it can't be
+trained, LTO alone. Until #173, macOS releases had no LTO: every Apple
+Clang LTO build aborted in the network tests (`pointer being freed was
+not allocated`, the "pointer" being the bytes `GET /hel`). The cause was
+a name: src/lsp/server.c had a `static void send(...)`, and macOS's
+`<sys/socket.h>` declares `send()` with an assembler name
+(`__asm("_send")`). Once LTO merges the files into one module, the
+static function and the library's `send` are the same symbol, `_send`,
+and net.c's `send(fd, text, len, flags)` called the language server's
+function, which took the text for a JSON writer and freed its first
+eight bytes. Two files reproduce it with Apple Clang 17 and 21, full or
+thin LTO; Linux builds keep the two apart:
+
+```c
+/* a.c */
+#include <stdio.h>
+void call_send(int fd);
+__attribute__((noinline)) static void send(const char *who) { printf("static send (%s)\n", who); }
+void lsp(void) { send("lsp"); send("lsp again"); }
+int main(void) { lsp(); call_send(-1); return 0; }
+
+/* b.c */
+#include <stdio.h>
+#include <sys/socket.h>
+void call_send(int fd) { printf("libc send returned %ld\n", (long)send(fd, "GET /hello", 10, 0)); }
+```
+
+`clang -O2 a.c b.c` prints `libc send returned -1`; `clang -O2 -flto
+a.c b.c` crashes in the static `send`. The function is now
+`send_message`, and `tests/symbols.sh` (part of `make test`) fails if
+any function of ours, static ones included, has the name of one the
+binary imports from the system. Windows gets
 MSVC's LTCG (`-DPLUM_LTO=ON`) and no PGO, as MSVC's needs its own runtime
 DLL while training and the ARM64 build is cross-compiled.
 

@@ -6,10 +6,10 @@
 #
 # A static `send` in src/lsp/server.c once took the place of the socket
 # library's send() for src/stdlib/net.c in Apple Clang's LTO builds: macOS
-# declares send() with an assembler name (__DARWIN_ALIAS_C), so after the
-# files were merged the call bound to the static function of the same name,
-# and every net.write() crashed (#173). Other compilers and builds get it
-# right, so the clash is caught here, by name, on every platform.
+# declares send() with an assembler name (__asm("_send")), so once LTO
+# merged the files the two were one symbol, and every net write crashed
+# (#173, bench/README.md). Other builds keep them apart, so the clash is
+# caught here, by name, on every platform.
 #
 # Usage: sh tests/symbols.sh BUILD_DIR BINARY
 
