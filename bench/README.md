@@ -430,3 +430,188 @@ now cheaper than a function call: the object is slot 0 where the caller
 pushed it, a field of `self` is read without counting a reference, and
 `self.count += 1` is one instruction. What is left in `cart` is the run
 loop's own cost, about 20 instructions dispatched per item.
+
+## Value layout (#121)
+
+A value was a 16-byte tagged union: a 4-byte type, padding, and an 8-byte
+number or pointer. #121 asked whether 8-byte NaN-boxed values are faster.
+Both layouts are now built from the same source (`src/vm/value.h`; the
+rest of the code reads and makes values through its functions), chosen
+with `make NANBOX=1` or `cmake -DPLUM_NANBOX=1`. The NaN-boxed layout:
+
+| Bits (hex) | Value |
+|---|---|
+| below `FFF9 0000 0000 0000` | a float, its own IEEE 754 bits (`-nan` is `FFF8 0000 0000 0000`) |
+| `FFF9 0000 0000 000x` | none (x = 0), the unset module variable (1), `bad` (2), `good` (3) |
+| `FFFA pppp pppp pppp` | a heap object at the 48-bit address p |
+| `FFFC ...` to `FFFF ...` | an int from -2^49 to 2^49 - 1, stored as i + `FFFE 0000 0000 0000` |
+
+**Ints stay 64-bit.** An int outside ±2^49 (about ±5.6 × 10^14) is
+*boxed*: a small immutable heap object (`PlumBigInt`, `PLUM_OBJ_INT`)
+behind the object tag, reference-counted like any other. An int that fits
+inline is never boxed, so equal inline ints have equal bits. Every int
+instruction has a fast path, taken when both operands and the result are
+inline (always, in the 16-byte layout). Otherwise it goes to a slow path
+out of the run loop (`int_arith_slow`, `int_compare_slow`), which computes
+in 64 bits, raises the same `OverflowError` with the same message at the
+64-bit edge, and boxes or unboxes. The cost of the trade-off: an int
+beyond ±2^49 (nanosecond timestamps, hashes, `1 << 60`) costs an
+allocation each time one is made, and a pointer must fit in 48 bits
+(`plum_obj` stops the program with a message if one doesn't: no
+platform Plumlang builds for hands out such addresses). The alternative,
+51-bit ints with no boxing, would change the language (`int` is 64-bit
+with overflow errors, spec 4.4), so it was not considered.
+
+**NaNs.** A NaN made by hardware or `strtod` can carry any payload and
+could land among the tagged values, which would be a memory-safety hole.
+`plum_float` turns every NaN into the payload-less one of its sign, which
+also keeps the sign that a `:f` format prints. The VM's `+ - * /` store
+their result unchanged (`plum_float_raw`), since IEEE 754 arithmetic on
+such NaNs gives one of the same two (and so does WebAssembly, whose rule
+for canonical NaNs is the same).
+
+**Isolates (#150).** Boxed ints are ordinary objects, one per value, with
+no process-wide table. The object header and its 32-bit count are
+unchanged, the bytecode is untouched, and nothing is kept on the C stack.
+
+`tests/lang/arith/big_ints.plum` runs every kind of int instruction
+across ±2^49 (stack, `_K`, `_L`, `_LK`, locals, module variables, fields,
+ranges, compare-and-jump, `return a + b`). It keeps boxed ints in lists,
+maps, sets, objects, closures, tasks and channels, and covers sorting,
+`compare()`, formatting, JSON and the overflow and index errors. Its
+expected output is the 16-byte build's; the NaN-boxed build prints the
+same. The whole suite passes in both layouts. CI builds and tests the
+NaN-boxed layout under ASan and UBSan (GCC and Clang), on Linux arm64,
+on macOS arm64, and as WebAssembly (a 32-bit target), so it keeps
+working.
+
+### Measurements
+
+Linux x86_64, Intel Core i5-13450HX, GCC 15.2. Times are medians of 11
+pairs from `bench/run.py --baseline --plum-only --pairs 11`, each build
+taking turns with main (#120 merged) on one core (`taskset -c 3`).
+Instructions and cycles come from `perf stat -r 3` on the same core.
+"16 bytes" is this change in the default layout; "8 bytes" is
+`NANBOX=1`. The % column is 8 bytes against main. The first four time
+columns are `make` (`-O2`), the last four `make release-pgo`:
+
+| Benchmark | `make`: main | 16 bytes | 8 bytes | | PGO: main | 16 bytes | 8 bytes | |
+|---|---|---|---|---|---|---|---|---|
+| cart | 0.132 s | 0.126 s | 0.144 s | +9% | 0.118 s | 0.123 s | 0.129 s | +9% |
+| collatz | 0.465 s | 0.452 s | 0.514 s | +10% | 0.419 s | 0.438 s | 0.355 s | -15% |
+| dispatch | 0.092 s | 0.091 s | 0.093 s | +1% | 0.083 s | 0.084 s | 0.082 s | -1% |
+| fib | 0.021 s | 0.020 s | 0.024 s | +15% | 0.018 s | 0.020 s | 0.019 s | +7% |
+| jsondoc | 0.243 s | 0.234 s | 0.233 s | -4% | 0.193 s | 0.191 s | 0.180 s | -6% |
+| loop | 0.203 s | 0.200 s | 0.224 s | +10% | 0.162 s | 0.162 s | 0.101 s | -38% |
+| mandelbrot | 0.150 s | 0.147 s | 0.169 s | +13% | 0.147 s | 0.166 s | 0.136 s | -7% |
+| strings | 0.149 s | 0.149 s | 0.150 s | +1% | 0.120 s | 0.123 s | 0.128 s | +7% |
+| textbuild | 0.044 s | 0.044 s | 0.042 s | -5% | 0.037 s | 0.037 s | 0.037 s | -0% |
+| words | 0.266 s | 0.263 s | 0.265 s | -0% | 0.229 s | 0.233 s | 0.235 s | +2% |
+
+Geometric mean against main: with `make`, 16 bytes 0.997, 8 bytes 1.048
+(5% slower); with `make release-pgo`, 16 bytes 1.038, 8 bytes 0.947 (5%
+faster).
+
+The two builds of the 16-byte layout are the same code (the accessors
+compile to the same instructions), so their PGO difference measures the
+noise of code layout alone. On `mandelbrot`, main's and this change's
+PGO builds run 3.038 G and 3.033 G instructions but take 626 M and
+718 M cycles (+15%). The run loop starts 32 bytes further along in one
+of them. Any single PGO time here can move about 15% that way. The
+instructions retired don't depend on layout (`make` unless marked PGO):
+
+| Benchmark | instructions: 16 bytes | 8 bytes | | cycles: 16 bytes | 8 bytes | | PGO cycles: main | 8 bytes | |
+|---|---|---|---|---|---|---|---|---|---|
+| cart | 2.64 G | 2.81 G | +6% | 538 M | 597 M | +11% | 510 M | 564 M | +11% |
+| collatz | 6.02 G | 7.33 G | +22% | 1920 M | 2238 M | +17% | 1862 M | 1566 M | -16% |
+| dispatch | 1.91 G | 1.88 G | -1% | 392 M | 397 M | +1% | 361 M | 361 M | -0% |
+| fib | 0.42 G | 0.45 G | +8% | 85 M | 100 M | +16% | 75 M | 81 M | +8% |
+| jsondoc | 4.00 G | 4.00 G | +0% | 1044 M | 1009 M | -3% | 862 M | 796 M | -8% |
+| loop | 1.94 G | 2.40 G | +24% | 905 M | 1018 M | +12% | 737 M | 443 M | -40% |
+| mandelbrot | 3.02 G | 2.68 G | -11% | 640 M | 742 M | +16% | 626 M | 585 M | -6% |
+| strings | 2.68 G | 2.72 G | +1% | 667 M | 659 M | -1% | 526 M | 568 M | +8% |
+| textbuild | 0.72 G | 0.72 G | -0% | 199 M | 185 M | -7% | 165 M | 164 M | -0% |
+| words | 4.03 G | 4.10 G | +2% | 1160 M | 1159 M | -0% | 1006 M | 1030 M | +2% |
+
+What the counts show:
+
+- An inline int costs more to use than a 16-byte one. Each int
+  instruction checks that its operands are inline (an `and` and a
+  compare against a 64-bit constant), decodes them, checks the result's
+  range and encodes it. That is +22% instructions on `collatz`, +24% on
+  `loop`, +8% on `fib` (its `n - 1` and `n < 2`) and +6% on `cart`.
+- A float is cheaper: no type word to write, so `mandelbrot` runs 11%
+  fewer instructions.
+- Calls and references cost about the same. "Is this an object" is a
+  shift and a compare on the loaded word instead of a compare on the
+  type word, and copying a value is one 8-byte move instead of two.
+- With `make`, the 8-byte build is front-end bound where the 16-byte one
+  isn't: 43% of `mandelbrot`'s issue slots on fetch, against 2%. Its run
+  loop is larger (39 KB against 32 KB, after moving the slow paths out;
+  50 KB with them in), and its 64-bit constants are 10-byte
+  instructions. PGO lays the loop out by profile, which removes most of
+  that, and the 8-byte build is then ahead on `loop`, `collatz`,
+  `mandelbrot` and `jsondoc`.
+- `loop` is backend-bound in both layouts at `-O2` (64% of slots):
+  every instruction reads and writes `vm->top` in memory. Whether the
+  processor forwards that well depends on where the code lands. One
+  8-byte build ran `loop` at 412 M cycles and another, after an
+  unrelated change, at 1011 M, with the same instructions. Its −40%
+  under PGO is that effect, not the value size.
+
+Peak memory (maximum resident set, `/usr/bin/time -f %M`, `make`
+builds). Most benchmarks are a few MB of interpreter and keep little
+data. `collections` keeps 4 million ints in a list, 2 million floats, a
+map of 500,000 ints and 300,000 objects of four number fields:
+
+| Program | 16 bytes | 8 bytes | |
+|---|---|---|---|
+| cart | 3.2 MB | 3.1 MB | -4% |
+| collatz | 2.8 MB | 2.7 MB | -5% |
+| dispatch | 2.9 MB | 2.9 MB | -0% |
+| fib | 2.9 MB | 2.8 MB | -2% |
+| jsondoc | 73.8 MB | 65.1 MB | -12% |
+| loop | 3.1 MB | 2.7 MB | -13% |
+| mandelbrot | 2.9 MB | 2.8 MB | -3% |
+| strings | 2.8 MB | 2.8 MB | +2% |
+| textbuild | 28.5 MB | 23.7 MB | -17% |
+| words | 170.0 MB | 154.5 MB | -9% |
+| collections | 162.1 MB | 97.1 MB | -40% |
+
+Memory is the clear gain: 9–17% less for the benchmarks that keep data
+(`words`, `jsondoc`, `textbuild`), 40% less for collections of numbers.
+List items, map entries, fields, the stack and globals all halve.
+
+### Decision
+
+The 16-byte layout stays the default. Under `make`, the build CI
+compares, the 8-byte layout is up to 15% slower (5% on the geometric
+mean). Under `make release-pgo`, what users run, it is 5% faster on the
+geometric mean, but by margins on the order of the 15% that layout
+alone moves a PGO build. The instruction counts, which don't depend on
+layout, say the int instructions do more work. #121's rule was that the
+faster layout becomes the default, and neither is reliably faster.
+NaN boxing stays as a tested build option (`make NANBOX=1`) for builds
+where memory matters more than the last few percent: 40% less for
+collections of numbers.
+
+What would change the answer: the stack top in a register or a register
+VM (#123), so that the store-forwarding effects stop deciding `loop` and
+`collatz`; or the compiler telling the VM that an int can't leave the
+inline range (a loop counter below a list's length), so its instructions
+could skip the checks. Measuring the WebAssembly build both ways, which
+these numbers don't cover, is left for the playground.
+
+What was tried:
+
+| Change | Result | Kept |
+|---|---|---|
+| Accessors for every read and write of a value (`plum_as_int`, `plum_set_int`, `plum_is_ref`, ...), the 16-byte layout | within ±2% of main on every benchmark with `make` | yes |
+| NaN boxing, the int slow paths inline in each instruction | run loop 32 KB → 50 KB; `mandelbrot` +15% cycles with 11% fewer instructions, front-end bound | no |
+| The slow paths (boxed operand or result, overflow) in out-of-line functions | run loop 39 KB; the counts and times above | yes |
+| `+` and `-` of two inline ints without the 64-bit overflow check (50-bit operands can't overflow) | `collatz` −1% instructions | yes |
+| Range and tag checks with shifts instead of 64-bit constants (`(x << 14) >> 14 == x`) | +8% instructions on `collatz`, +11% on `loop` | no |
+| Compare-and-jump on the stored bits of two inline ints (their encoding keeps them in order), without decoding | the same instructions: GCC already did it | no |
+| Ints as their low 50 bits, sign-extended to decode (two shifts), instead of offset by a constant | not built: the shift experiment above already costs more than adding a constant | no |
+| JavaScriptCore-style layout (pointers as they are, floats offset by 2^49) | not built: every float load and store pays an add, the opposite of where the 8-byte layout gains | no |
+| A fixed alignment for the run loop (`-falign-functions`), to take the 15% layout noise out of release builds | not tried here: it applies to both layouts, outside #121 | — |

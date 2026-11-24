@@ -165,7 +165,7 @@ static bool pkg_set_dependency(ARGS) {
         return plum_native_throw(n, PLUM_ERROR_VALUE, "'%s' isn't a package name: %s", name, why);
     }
     const char *range = NULL;
-    if (args[2].type != PLUM_VAL_NONE) {
+    if (!plum_is_none(args[2])) {
         range = text_of(n, "set_dependency", args[2]);
         PlumRange r;
         if (range == NULL || !plum_range_parse(range, &r)) {

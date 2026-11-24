@@ -6,6 +6,7 @@
 #   cmake -B build && cmake --build build --config Release
 #   cmake -B build -DPLUM_SANITIZE=ON       (GCC/Clang: ASan + UBSan)
 #   cmake -B build -DPLUM_LTO=ON            link-time optimisation (MSVC: /GL and /LTCG)
+#   cmake -B build -DPLUM_NANBOX=1          a value layout other than the default (src/vm/value.h)
 #   ctest --test-dir build -C Release
 
 cmake_minimum_required(VERSION 3.16)
@@ -58,6 +59,10 @@ endif()
 
 add_library(plumcore STATIC ${PLUM_LIB_SOURCES})
 target_link_libraries(plumcore PUBLIC plum_mbedtls)
+set(PLUM_NANBOX "" CACHE STRING "1: NaN-boxed 8-byte values; 0: 16-byte tagged values; empty: the default (src/vm/value.h)")
+if(NOT PLUM_NANBOX STREQUAL "")
+  target_compile_definitions(plumcore PUBLIC PLUM_NANBOX=${PLUM_NANBOX})
+endif()
 if(NOT MSVC)
   target_link_libraries(plumcore PUBLIC m) # pow, fmod; part of the C runtime on MSVC
 endif()

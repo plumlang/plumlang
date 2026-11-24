@@ -158,7 +158,7 @@ bool plum_run_method(PlumMethod m, PlumValue *receiver, const PlumValue *args, i
         return true;
     case PLUM_METHOD_LIST_INSERT:
     case PLUM_METHOD_LIST_REMOVE_AT: {
-        int64_t i = args[0].as.i;
+        int64_t i = plum_as_int(args[0]);
         bool insert = m == PLUM_METHOD_LIST_INSERT;
         int64_t limit = (int64_t)list->len + (insert ? 1 : 0);
         if (i < 0 || i >= limit) {
@@ -215,8 +215,7 @@ bool plum_run_method(PlumMethod m, PlumValue *receiver, const PlumValue *args, i
     }
     case PLUM_METHOD_LIST_JOIN: {
         /* the separator defaults to "" (passed as none) */
-        const PlumString *sep =
-            argc > 0 && args[0].type != PLUM_VAL_NONE ? plum_as_string(args[0]) : NULL;
+        const PlumString *sep = argc > 0 && !plum_is_none(args[0]) ? plum_as_string(args[0]) : NULL;
         size_t sep_len = sep != NULL ? sep->len : 0;
         size_t total = 0;
         for (size_t i = 0; i < list->len; i++) {

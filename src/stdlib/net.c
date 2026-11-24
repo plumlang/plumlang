@@ -218,10 +218,10 @@ static bool net_fail(PlumNative *n, const char *what, int err) {
 }
 
 static double timeout_arg(const PlumValue *args, int argc, int at) {
-    if (argc <= at || args[at].type == PLUM_VAL_NONE) {
+    if (argc <= at || plum_is_none(args[at])) {
         return 0;
     }
-    return args[at].type == PLUM_VAL_INT ? (double)args[at].as.i : args[at].as.f;
+    return plum_is_int(args[at]) ? (double)plum_as_int(args[at]) : plum_as_float(args[at]);
 }
 
 static bool check_timeout(PlumNative *n, double timeout) {
@@ -372,8 +372,8 @@ static PlumHandle *listen_on(PlumNative *n, const char *host, int64_t port) {
 }
 
 static bool n_listen(ARGS) {
-    int64_t port = args[0].as.i;
-    const char *host = argc > 1 && args[1].type != PLUM_VAL_NONE ? str_arg(args[1]) : "0.0.0.0";
+    int64_t port = plum_as_int(args[0]);
+    const char *host = argc > 1 && !plum_is_none(args[1]) ? str_arg(args[1]) : "0.0.0.0";
     if (!check_port(n, port, true)) {
         return false;
     }
@@ -388,8 +388,8 @@ static bool n_listen(ARGS) {
 /* listen_tls(port, cert_file, key_file): accept() gives TLS connections,
  * whose handshake is made by their first read or write. */
 static bool n_listen_tls(ARGS) {
-    int64_t port = args[0].as.i;
-    const char *host = argc > 3 && args[3].type != PLUM_VAL_NONE ? str_arg(args[3]) : "0.0.0.0";
+    int64_t port = plum_as_int(args[0]);
+    const char *host = argc > 3 && !plum_is_none(args[3]) ? str_arg(args[3]) : "0.0.0.0";
     if (!check_port(n, port, true)) {
         return false;
     }
@@ -491,7 +491,7 @@ static bool tcp_connect(PlumNative *n, const char *what, const char *host, int64
 
 static bool n_connect(ARGS) {
     const char *host = str_arg(args[0]);
-    int64_t port = args[1].as.i;
+    int64_t port = plum_as_int(args[1]);
     double timeout = timeout_arg(args, argc, 2);
     if (!check_port(n, port, false) || !check_timeout(n, timeout)) {
         return false;
@@ -510,10 +510,10 @@ static bool n_connect(ARGS) {
 /* tls_connect(host, port): a connection, its TLS handshake made. */
 static bool n_tls_connect(ARGS) {
     const char *host = str_arg(args[0]);
-    int64_t port = args[1].as.i;
+    int64_t port = plum_as_int(args[1]);
     double timeout = timeout_arg(args, argc, 2);
-    bool verify = argc > 3 && args[3].type == PLUM_VAL_BOOL ? args[3].as.b : true;
-    const char *ca_file = argc > 4 && args[4].type != PLUM_VAL_NONE ? str_arg(args[4]) : "";
+    bool verify = argc > 3 && plum_is_bool(args[3]) ? plum_as_bool(args[3]) : true;
+    const char *ca_file = argc > 4 && !plum_is_none(args[4]) ? str_arg(args[4]) : "";
     if (!check_port(n, port, false) || !check_timeout(n, timeout)) {
         return false;
     }
@@ -558,8 +558,8 @@ static bool n_tls_connect(ARGS) {
 }
 
 static bool n_udp(ARGS) {
-    int64_t port = argc > 0 && args[0].type == PLUM_VAL_INT ? args[0].as.i : 0;
-    const char *host = argc > 1 && args[1].type != PLUM_VAL_NONE ? str_arg(args[1]) : "0.0.0.0";
+    int64_t port = argc > 0 && plum_is_int(args[0]) ? plum_as_int(args[0]) : 0;
+    const char *host = argc > 1 && !plum_is_none(args[1]) ? str_arg(args[1]) : "0.0.0.0";
     if (!check_port(n, port, true)) {
         return false;
     }
@@ -752,7 +752,7 @@ static PlumValue take(PlumHandle *h, size_t len, size_t skip) {
 /* read(max): what has arrived, up to max bytes; none at the end. */
 static bool c_read(ARGS) {
     PlumHandle *h = NULL;
-    int64_t max = argc > 1 && args[1].type == PLUM_VAL_INT ? args[1].as.i : 65536;
+    int64_t max = argc > 1 && plum_is_int(args[1]) ? plum_as_int(args[1]) : 65536;
     double timeout = timeout_arg(args, argc, 2);
     if (!open_handle(n, args[0], "read", &h) || !check_timeout(n, timeout)) {
         return false;
@@ -880,7 +880,7 @@ static bool c_remote(ARGS) {
 static bool u_send_to(ARGS) {
     (void)argc;
     PlumHandle *h = NULL;
-    if (!open_handle(n, args[0], "send_to", &h) || !check_port(n, args[2].as.i, false)) {
+    if (!open_handle(n, args[0], "send_to", &h) || !check_port(n, plum_as_int(args[2]), false)) {
         return false;
     }
     const PlumString *text = plum_as_string(args[3]);
@@ -889,7 +889,7 @@ static bool u_send_to(ARGS) {
                                  "send_to: a datagram holds at most 65,507 bytes, not %zu",
                                  text->len);
     }
-    struct addrinfo *ai = lookup(n, str_arg(args[1]), args[2].as.i, SOCK_DGRAM, false);
+    struct addrinfo *ai = lookup(n, str_arg(args[1]), plum_as_int(args[2]), SOCK_DGRAM, false);
     if (ai == NULL) {
         return false;
     }
@@ -918,7 +918,7 @@ static bool u_send_to(ARGS) {
 /* receive(): the next datagram; sender() says where it came from. */
 static bool u_receive(ARGS) {
     PlumHandle *h = NULL;
-    int64_t max = argc > 1 && args[1].type == PLUM_VAL_INT ? args[1].as.i : 65536;
+    int64_t max = argc > 1 && plum_is_int(args[1]) ? plum_as_int(args[1]) : 65536;
     double timeout = timeout_arg(args, argc, 2);
     if (!open_handle(n, args[0], "receive", &h) || !check_timeout(n, timeout)) {
         return false;

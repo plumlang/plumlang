@@ -154,7 +154,7 @@ const char *plum_native_arg(PlumNative *n, int i);
 /* ---- Helpers for writing them -------------------------------------- */
 
 static inline double plum_num(PlumValue v) {
-    return v.type == PLUM_VAL_INT ? (double)v.as.i : v.as.f;
+    return plum_is_int(v) ? (double)plum_as_int(v) : plum_as_float(v);
 }
 
 static inline PlumValue plum_str_value(const char *s, size_t len) {

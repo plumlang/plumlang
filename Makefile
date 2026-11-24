@@ -21,6 +21,8 @@
 #   make fuzz-build       only build them, into build/fuzz/fuzz-NAME
 #   make wasm             the WebAssembly build for the browser playground:
 #                         build/wasm/plum.js and plum.wasm (docs/playground.md)
+#   make NANBOX=1 ...     any of these with NaN-boxed 8-byte values instead of the
+#                         default 16-byte ones (src/vm/value.h, bench/README.md)
 #
 # The fuzz targets need clang with libFuzzer (FUZZ_CC=clang, the default)
 # on Linux or macOS; nothing else in the build depends on them. Crashes
@@ -40,6 +42,13 @@ INCLUDE := -Iinclude -Isrc
 
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DEFS    := -DPLUM_COMMIT=\"$(COMMIT)\"
+
+# NANBOX=1 or NANBOX=0 builds with that value layout (src/vm/value.h, #121)
+# instead of the default, into a build directory of its own.
+ifneq ($(NANBOX),)
+  DEFS += -DPLUM_NANBOX=$(NANBOX)
+  LAYOUT := -nanbox$(NANBOX)
+endif
 
 # make wasm: Emscripten's emcc if it is on the PATH, or else this image
 # (docker), pinned so every build is the same.
@@ -88,7 +97,7 @@ endif
 # that llvm-profdata merges into one .profdata (LLVM_PROFDATA=llvm-profdata-18
 # where it has a version suffix).
 IS_CLANG := $(shell $(CC) --version 2>/dev/null | grep -q clang && echo yes)
-PGO_DIR  := build/pgo
+PGO_DIR  := build/pgo$(LAYOUT)
 ifeq ($(shell uname -s 2>/dev/null),Darwin)
   LLVM_PROFDATA ?= xcrun llvm-profdata
 else
@@ -154,14 +163,14 @@ LDLIBS  += -lws2_32 -lbcrypt -lcrypt32
 LDFLAGS += -Wl,--stack,8388608
 endif
 
-BUILD   := build/$(MODE)
+BUILD   := build/$(MODE)$(LAYOUT)
 ifneq ($(PGO),)
   BUILD := $(PGO_DIR)
 else ifeq ($(MODE)$(LTO),release1)
-  BUILD := build/release-lto
+  BUILD := build/release-lto$(LAYOUT)
 endif
 ifeq ($(MODE),wasm)
-  BUILD := build/wasm-obj
+  BUILD := build/wasm-obj$(LAYOUT)
 endif
 # Everything but the command-line front end is the library the unit tests
 # link against; src/wasm/bindings.c is for Emscripten only.

@@ -7,7 +7,7 @@
 /* encode(data, upper = bad): two digits for each byte of the text. */
 static bool hex_encode(ARGS) {
     const PlumString *s = plum_as_string(args[0]);
-    bool upper = argc > 1 && args[1].type == PLUM_VAL_BOOL && args[1].as.b;
+    bool upper = argc > 1 && plum_is_bool(args[1]) && plum_as_bool(args[1]);
     if (s->len > PLUM_MAX_STRING / 2) {
         return plum_native_throw(n, PLUM_ERROR_VALUE,
                                  "hex.encode: the text would be longer than %zu bytes, the most "

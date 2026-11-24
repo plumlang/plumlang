@@ -184,13 +184,21 @@ typedef struct PlumChannel {
  * runtime error and never a value of the wrong type.
  */
 static inline PlumValue unset(void) {
+#if PLUM_NANBOX
+    return plum_value_of_bits(PLUM_NB_SPECIAL | 1u);
+#else
     PlumValue v = plum_none();
     v.as.i = 1;
     return v;
+#endif
 }
 
 static inline bool is_unset(PlumValue v) {
+#if PLUM_NANBOX
+    return v.bits == (PLUM_NB_SPECIAL | 1u);
+#else
     return v.type == PLUM_VAL_NONE && v.as.i == 1;
+#endif
 }
 
 static inline Frame *FRAME(VM *vm, int i) {
@@ -273,7 +281,7 @@ static void trace_add(VM *vm, const char *fmt, ...) {
 static void throw_error(VM *vm, PlumValue error) {
     plum_release(vm->thrown);
     vm->thrown = error;
-    if (vm->trace_of.type == PLUM_VAL_OBJ && vm->trace_of.as.obj == error.as.obj) {
+    if (plum_is_ref(vm->trace_of) && plum_as_obj(vm->trace_of) == plum_as_obj(error)) {
         return;
     }
     plum_release(vm->trace_of);
@@ -544,7 +552,7 @@ static bool parse_float(const PlumString *s, double *out) {
 }
 
 static const char *type_name(PlumValue v) {
-    switch (v.type) {
+    switch (plum_value_type(v)) {
     case PLUM_VAL_NONE:
         return "none";
     case PLUM_VAL_BOOL:
@@ -554,7 +562,7 @@ static const char *type_name(PlumValue v) {
     case PLUM_VAL_FLOAT:
         return "float";
     case PLUM_VAL_OBJ:
-        switch ((PlumObjType)v.as.obj->type) {
+        switch ((PlumObjType)plum_as_obj(v)->type) {
         case PLUM_OBJ_STRING:
             return "str";
         case PLUM_OBJ_FUNCTION:
@@ -567,6 +575,8 @@ static const char *type_name(PlumValue v) {
         }
         case PLUM_OBJ_TREE_INFO:
             return "tree";
+        case PLUM_OBJ_INT: /* never here: plum_value_type says PLUM_VAL_INT */
+            return "int";
         case PLUM_OBJ_WEAK:
             return "weak";
         case PLUM_OBJ_TASK:
@@ -665,10 +675,10 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
     }
     case PLUM_BUILTIN_INT: {
         PlumValue v = args[0];
-        if (v.type == PLUM_VAL_INT) {
-            result = v;
-        } else if (v.type == PLUM_VAL_FLOAT) {
-            double f = v.as.f;
+        if (plum_is_int(v)) {
+            result = plum_retain(v); /* a boxed int holds a reference */
+        } else if (plum_is_float(v)) {
+            double f = plum_as_float(v);
             if (isnan(f) || f >= 9223372036854775808.0 || f < -9223372036854775808.0) {
                 char buf[PLUM_FLOAT_BUF];
                 runtime_error(vm, PLUM_ERROR_OVERFLOW, "int(%s) doesn't fit in an int",
@@ -689,10 +699,10 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
     }
     case PLUM_BUILTIN_FLOAT: {
         PlumValue v = args[0];
-        if (v.type == PLUM_VAL_FLOAT) {
+        if (plum_is_float(v)) {
             result = v;
-        } else if (v.type == PLUM_VAL_INT) {
-            result = plum_float((double)v.as.i);
+        } else if (plum_is_int(v)) {
+            result = plum_float((double)plum_as_int(v));
         } else {
             double f;
             if (!parse_float(plum_as_string(v), &f)) {
@@ -705,12 +715,12 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         break;
     }
     case PLUM_BUILTIN_BYTE:
-        if (args[0].as.i < 0 || args[0].as.i > 255) {
+        if (plum_as_int(args[0]) < 0 || plum_as_int(args[0]) > 255) {
             runtime_error(vm, PLUM_ERROR_VALUE, "byte(%lld) is out of range; a byte is 0 to 255",
-                          (long long)args[0].as.i);
+                          (long long)plum_as_int(args[0]));
             return false;
         }
-        result = args[0];
+        result = args[0]; /* 0 to 255: inline */
         break;
     case PLUM_BUILTIN_SET: {
         PlumTable *s = plum_table_new(true, vm->seed);
@@ -727,7 +737,7 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         break;
     }
     case PLUM_BUILTIN_ASSERT:
-        if (!args[0].as.b) {
+        if (!plum_as_bool(args[0])) {
             if (argc > 1 && plum_as_string(args[1])->len > 0) {
                 runtime_error(vm, PLUM_ERROR_ASSERT, "assertion failed: %s",
                               plum_as_string(args[1])->chars);
@@ -738,7 +748,7 @@ static bool call_builtin(VM *vm, PlumBuiltin id, int argc) {
         }
         break;
     case PLUM_BUILTIN_EXIT:
-        vm->exit_code = argc > 0 ? (int)args[0].as.i : 0;
+        vm->exit_code = argc > 0 ? (int)plum_as_int(args[0]) : 0;
         vm->stopped = true;
         break;
     case PLUM_BUILTIN_ASK:
@@ -825,10 +835,10 @@ static PlumValue *walk_path(VM *vm, PlumValue *place, const PlumValue *keys, int
             place = next;
         } else {
             PlumList *list = plum_list_unique(place);
-            if (!check_index(vm, keys[d].as.i, list->len)) {
+            if (!check_index(vm, plum_as_int(keys[d]), list->len)) {
                 return NULL;
             }
-            place = &list->items[keys[d].as.i];
+            place = &list->items[plum_as_int(keys[d])];
         }
     }
     return place;
@@ -856,7 +866,7 @@ static bool call_value(VM *vm, PlumValue fn, const PlumValue *args, int argc, Pl
         push(vm, plum_retain(args[i]));
     }
     PlumFunction *f =
-        fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn)->fn : plum_as_function(fn);
+        plum_as_obj(fn)->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn)->fn : plum_as_function(fn);
     int saved = vm->stop_at;
     vm->stop_at = vm->frame_count;
     vm->callback_depth++;
@@ -898,7 +908,7 @@ static bool equal_by_equals(VM *vm, PlumValue a, PlumValue b, bool *same) {
             if (!call_value(vm, plum_obj(&fn->obj), pair, 2, &r)) {
                 return false;
             }
-            *same = r.as.b;
+            *same = plum_as_bool(r);
             return true;
         }
     }
@@ -952,7 +962,8 @@ static bool sort_objects(VM *vm, const PlumList *list, PlumList **out) {
                     break;
                 }
                 /* <= keeps equal items in their original order */
-                tmp[k++] = r.as.i <= 0 ? order[i++] : order[j++];
+                tmp[k++] = plum_as_int(r) <= 0 ? order[i++] : order[j++];
+                plum_release_int(r);
             }
             while (ok && i < mid) {
                 tmp[k++] = order[i++];
@@ -998,7 +1009,7 @@ static bool run_higher_order(VM *vm, PlumMethod m, PlumList *list, const PlumVal
             }
             if (m == PLUM_METHOD_LIST_MAP) {
                 plum_list_push(out, r);
-            } else if (r.as.b) {
+            } else if (plum_as_bool(r)) {
                 plum_list_push(out, plum_retain(list->items[i]));
             }
         }
@@ -1027,7 +1038,7 @@ static bool run_higher_order(VM *vm, PlumMethod m, PlumList *list, const PlumVal
             if (!call_value(vm, fn, &list->items[i], 1, &r)) {
                 return false;
             }
-            if (r.as.b == want) {
+            if (plum_as_bool(r) == want) {
                 *result = m == PLUM_METHOD_LIST_FIND ? plum_retain(list->items[i])
                                                      : plum_bool(m == PLUM_METHOD_LIST_ANY);
                 return true;
@@ -1235,11 +1246,11 @@ static inline Frame *invoke(VM *vm, PlumFunction *fn, int argc) {
 /* ------------------------------------------------------------------ */
 
 static PlumTask *as_task(PlumValue v) {
-    return (PlumTask *)(void *)v.as.obj;
+    return (PlumTask *)(void *)plum_as_obj(v);
 }
 
 static PlumChannel *as_channel(PlumValue v) {
-    return (PlumChannel *)(void *)v.as.obj;
+    return (PlumChannel *)(void *)plum_as_obj(v);
 }
 
 /* Move the running registers into `t`, leaving the VM's empty. */
@@ -1536,7 +1547,7 @@ static bool t_done(ARGS) {
 }
 
 static bool c_new(ARGS) {
-    int64_t limit = argc > 0 && args[0].type == PLUM_VAL_INT ? args[0].as.i : 0;
+    int64_t limit = argc > 0 && plum_is_int(args[0]) ? plum_as_int(args[0]) : 0;
     if (limit < 0) {
         return plum_native_throw(n, PLUM_ERROR_VALUE,
                                  "Channel(%lld): the capacity must be 0 (no limit) or more",
@@ -1796,8 +1807,8 @@ static bool run_tasks(VM *vm, PlumFunction *main_fn) {
         if (!t->started) {
             t->started = true;
             PlumValue fn = vm->stack[0];
-            PlumFunction *f = fn.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn)->fn
-                                                                  : plum_as_function(fn);
+            PlumFunction *f = plum_as_obj(fn)->type == PLUM_OBJ_CLOSURE ? plum_as_closure(fn)->fn
+                                                                        : plum_as_function(fn);
             ok = call(vm, f, t->start_argc, 1) && execute(vm);
         } else {
             ok = execute(vm);
@@ -1925,8 +1936,8 @@ static bool call(VM *vm, PlumFunction *fn, int argc, uint32_t callee) {
 /* Give up the reference the object value at `v` holds: inline while
  * something else still holds the object, plum_release when it may go. */
 static inline void drop_ref(const PlumValue *v) {
-    if (v->as.obj->refcount > 1) {
-        v->as.obj->refcount--;
+    if (plum_as_obj(*v)->refcount > 1) {
+        plum_as_obj(*v)->refcount--;
     } else {
         plum_release(*v);
     }
@@ -1945,9 +1956,9 @@ VM_NOINLINE static void release_objects(PlumValue *from, PlumValue *to);
 
 static inline void release_values(PlumValue *from, PlumValue *to) {
     for (PlumValue *v = from; v < to; v++) {
-        if (v->type == PLUM_VAL_OBJ) {
-            if (v->as.obj->refcount > 1) {
-                v->as.obj->refcount--; /* most still have other holders */
+        if (plum_is_ref(*v)) {
+            if (plum_as_obj(*v)->refcount > 1) {
+                plum_as_obj(*v)->refcount--; /* most still have other holders */
             } else {
                 release_objects(v, to); /* this one may go: the rest the slow way */
                 return;
@@ -1958,7 +1969,7 @@ static inline void release_values(PlumValue *from, PlumValue *to) {
 
 VM_NOINLINE static void release_objects(PlumValue *from, PlumValue *to) {
     for (PlumValue *v = to; v-- > from;) {
-        if (v->type == PLUM_VAL_OBJ) {
+        if (plum_is_ref(*v)) {
             drop_ref(v); /* most still have other holders */
         }
     }
@@ -1972,19 +1983,113 @@ static void unwind_to(VM *vm, size_t to) {
 }
 
 /*
- * Copy a value field by field. The typed instructions write only a
- * value's number, in place; a whole-value (16-byte) read of it right after
- * would wait for that store to retire (a failed store-to-load forward),
- * which costs more than the instruction itself.
+ * Copy a value field by field. In the wide layout the typed instructions
+ * write only a value's number, in place; a whole-value (16-byte) read of
+ * it right after would wait for that store to retire (a failed
+ * store-to-load forward), which costs more than the instruction itself.
+ * A NaN-boxed value is one word, written and read whole.
  */
 static inline void copy_value(PlumValue *to, const PlumValue *from) {
+#if PLUM_NANBOX
+    *to = *from;
+#else
     to->type = from->type;
     to->as = from->as;
+#endif
+}
+
+/* Store the inline int `i` over the inline int at `p`: in the wide
+ * layout, only the number. */
+static inline void set_small(PlumValue *p, int64_t i) {
+#if PLUM_NANBOX
+    *p = plum_small_int(i);
+#else
+    p->as.i = i;
+#endif
+}
+
+/* Make the int `i` the value at `p`, a new stack slot. */
+static inline void push_int(PlumValue *p, int64_t i) {
+#if PLUM_NANBOX
+    *p = plum_int(i);
+#else
+    p->type = PLUM_VAL_INT;
+    p->as.i = i;
+#endif
+}
+
+/*
+ * The slow paths of the int instructions, kept out of the run loop so its
+ * fast paths stay small: a boxed operand or result (NaN boxing), or an
+ * overflow error.
+ */
+
+/* A boxed int popped: its number, letting go of the box. */
+VM_NOINLINE static int64_t boxed_int_popped(PlumValue v) {
+    int64_t i = plum_as_int(v);
+    plum_release_int(v);
+    return i;
+}
+
+/* Pop an int, letting go of it if it was boxed. */
+static inline int64_t pop_int(VM *vm) {
+    PlumValue v = pop(vm);
+    return plum_is_small_int(v) ? plum_small_int_of(v) : boxed_int_popped(v);
+}
+
+#define DROP_X 1 /* let go of x (in *to) if the operation fails */
+#define DROP_Y 2 /* let go of y, whatever happens */
+
+/*
+ * *to = *to op y ('+', '-' or '*') for an int instruction whose fast path
+ * didn't apply. On overflow reports the error (the caller saved ip) and
+ * returns false, leaving *to as it was unless `drop` has DROP_X.
+ */
+VM_NOINLINE static bool int_arith_slow(VM *vm, int op, PlumValue *to, PlumValue y, int drop) {
+    int64_t a = plum_as_int(*to), b = plum_as_int(y), r;
+    bool overflow = op == '+'   ? add_overflows(a, b, &r)
+                    : op == '-' ? sub_overflows(a, b, &r)
+                                : mul_overflows(a, b, &r);
+    if (drop & DROP_Y) {
+        plum_release_int(y);
+    }
+    if (overflow) {
+        runtime_error(vm, PLUM_ERROR_OVERFLOW,
+                      "integer overflow: %lld %c %lld doesn't fit in an int", (long long)a,
+                      (char)op, (long long)b);
+        if (drop & DROP_X) {
+            plum_release_int(*to);
+        }
+        return false;
+    }
+    plum_set_int(to, r);
+    return true;
+}
+
+/* Compare two ints, one of them boxed: <0, 0 or >0; lets go of what `drop`
+ * says (DROP_X for x, DROP_Y for y). */
+VM_NOINLINE static int int_compare_slow(PlumValue x, PlumValue y, int drop) {
+    int64_t a = plum_as_int(x), b = plum_as_int(y);
+    if (drop & DROP_X) {
+        plum_release_int(x);
+    }
+    if (drop & DROP_Y) {
+        plum_release_int(y);
+    }
+    return a < b ? -1 : a > b;
+}
+
+/* The numbers of two ints, one of them boxed, letting go of both. */
+VM_NOINLINE static void ints_popped(PlumValue x, PlumValue y, int64_t *a, int64_t *b) {
+    *a = plum_as_int(x);
+    *b = plum_as_int(y);
+    plum_release_int(x);
+    plum_release_int(y);
 }
 
 /* Put `v` in the variable at `to`, giving up the value it held. */
 static inline void store_value(PlumValue *to, const PlumValue *v) {
-    if (to->type == PLUM_VAL_OBJ) {
+    if (plum_is_ref(*to)) {
         PlumValue old = *to;
         copy_value(to, v);
         plum_release(old);
@@ -2006,8 +2111,8 @@ static inline void reserve_one(VM *vm) {
 static inline void push_copy(VM *vm, const PlumValue *from) {
     PlumValue *to = &vm->stack[vm->top++];
     copy_value(to, from);
-    if (to->type == PLUM_VAL_OBJ) {
-        to->as.obj->refcount++;
+    if (plum_is_ref(*to)) {
+        plum_as_obj(*to)->refcount++;
     }
 }
 
@@ -2092,142 +2197,211 @@ static bool execute(VM *vm) {
         runtime_error(vm, __VA_ARGS__); \
         goto thrown;                    \
     } while (0)
-/* Typed binary operations work in place: the result takes the left
- * operand's slot, so there is no push and no capacity check. */
-#define INT_BINARY(expr)                         \
-    do {                                         \
-        PlumValue *s_ = &vm->stack[--vm->top];   \
-        int64_t a = s_[-1].as.i, b = s_[0].as.i; \
-        s_[-1] = (expr);                         \
+/*
+ * Typed binary operations work in place: the result takes the left
+ * operand's slot, so there is no push and no capacity check.
+ *
+ * With NaN boxing (#121) an int is inline or, outside +-2^49, boxed. The
+ * int instructions take a fast path when the operands and the result are
+ * inline (always, in the wide layout), and otherwise read the operands
+ * with plum_as_int, store with plum_set_int and let go of the boxed ints
+ * they consumed. Both paths give the same results and the same errors.
+ */
+#define INT_OVERFLOW_ERROR(a, symbol, b)                                              \
+    FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
+         (long long)(a), symbol, (long long)(b))
+/* r = x fn y, when x and y are inline ints and so is the result. Two
+ * NaN-boxed inline ints are at most 50 bits, so their sum or difference
+ * can't overflow 64 bits: only the inline range is checked. */
+#if PLUM_NANBOX
+#define add_overflows_inline(a, b, out) (*(out) = (a) + (b), false)
+#define sub_overflows_inline(a, b, out) (*(out) = (a) - (b), false)
+#else
+#define add_overflows_inline add_overflows
+#define sub_overflows_inline sub_overflows
+#endif
+#define mul_overflows_inline mul_overflows
+#define INT_FAST(fn, x, y, r)          \
+    (plum_both_small_ints((x), (y)) && \
+     !fn##_inline(plum_small_int_of(x), plum_small_int_of(y), &(r)) && plum_int_inline(r))
+#define INT_BINARY(expr)                           \
+    do {                                           \
+        PlumValue *s_ = &vm->stack[--vm->top];     \
+        int64_t a, b;                              \
+        if (plum_both_small_ints(s_[-1], s_[0])) { \
+            a = plum_small_int_of(s_[-1]);         \
+            b = plum_small_int_of(s_[0]);          \
+        } else {                                   \
+            ints_popped(s_[-1], s_[0], &a, &b);    \
+        }                                          \
+        s_[-1] = (expr);                           \
     } while (0)
-#define FLOAT_BINARY(expr)                      \
-    do {                                        \
-        PlumValue *s_ = &vm->stack[--vm->top];  \
-        double a = s_[-1].as.f, b = s_[0].as.f; \
-        s_[-1] = (expr);                        \
+#define FLOAT_BINARY(expr)                                          \
+    do {                                                            \
+        PlumValue *s_ = &vm->stack[--vm->top];                      \
+        double a = plum_as_float(s_[-1]), b = plum_as_float(s_[0]); \
+        s_[-1] = (expr);                                            \
     } while (0)
-#define CHECKED(fn, symbol)                                                                   \
-    do {                                                                                      \
-        PlumValue *s_ = &vm->stack[--vm->top];                                                \
-        int64_t a = s_[-1].as.i, b = s_[0].as.i, r;                                           \
-        if (fn(a, b, &r)) {                                                                   \
-            vm->top--;                                                                        \
-            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
-                 (long long)a, symbol, (long long)b);                                         \
-        }                                                                                     \
-        s_[-1].as.i = r;                                                                      \
+#define CHECKED(fn, symbol)                                                        \
+    do {                                                                           \
+        PlumValue *s_ = &vm->stack[--vm->top];                                     \
+        int64_t r_;                                                                \
+        if (INT_FAST(fn, s_[-1], s_[0], r_)) {                                     \
+            set_small(&s_[-1], r_);                                                \
+        } else {                                                                   \
+            SAVE_IP();                                                             \
+            if (!int_arith_slow(vm, symbol[0], &s_[-1], s_[0], DROP_X | DROP_Y)) { \
+                vm->top--;                                                         \
+                goto thrown;                                                       \
+            }                                                                      \
+        }                                                                          \
     } while (0)
 /* The _K and _L forms: the right operand is a constant or a local, not on
  * the stack, and the result replaces the left operand on top. */
 #define KONST(n) (chunk->constants.items[(n)])
-#define CHECKED_WITH(fn, symbol, right)                                                       \
-    do {                                                                                      \
-        uint16_t n_ = READ_U16();                                                             \
-        PlumValue *s_ = &vm->stack[vm->top - 1];                                              \
-        int64_t a = s_->as.i, b = right(n_).as.i, r;                                          \
-        if (fn(a, b, &r)) {                                                                   \
-            vm->top--;                                                                        \
-            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
-                 (long long)a, symbol, (long long)b);                                         \
-        }                                                                                     \
-        s_->as.i = r;                                                                         \
+#define CHECKED_WITH(fn, symbol, right)                                  \
+    do {                                                                 \
+        uint16_t n_ = READ_U16();                                        \
+        PlumValue *s_ = &vm->stack[vm->top - 1];                         \
+        int64_t r_;                                                      \
+        if (INT_FAST(fn, *s_, right(n_), r_)) {                          \
+            set_small(s_, r_);                                           \
+        } else {                                                         \
+            SAVE_IP();                                                   \
+            if (!int_arith_slow(vm, symbol[0], s_, right(n_), DROP_X)) { \
+                vm->top--;                                               \
+                goto thrown;                                             \
+            }                                                            \
+        }                                                                \
     } while (0)
 /* The LOCAL_ and GLOBAL_ forms change an int variable in place, with no
- * stack traffic; the _LK forms push local op a literal the instruction
- * holds (-32768 to 32767). */
-#define PLACE_CHECKED(place, check, fn, symbol, right)                                        \
-    do {                                                                                      \
-        uint16_t n_ = READ_U16();                                                             \
-        uint16_t m_ = READ_U16();                                                             \
-        check(n_);                                                                            \
-        PlumValue *v_ = &place(n_);                                                           \
-        int64_t a = v_->as.i, b = right(m_).as.i, r;                                          \
-        if (fn(a, b, &r)) {                                                                   \
-            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
-                 (long long)a, symbol, (long long)b);                                         \
-        }                                                                                     \
-        v_->as.i = r;                                                                         \
+ * stack traffic; the _LK forms push local op constant. */
+#define PLACE_CHECKED(place, check, fn, symbol, right)              \
+    do {                                                            \
+        uint16_t n_ = READ_U16();                                   \
+        uint16_t m_ = READ_U16();                                   \
+        check(n_);                                                  \
+        PlumValue *v_ = &place(n_);                                 \
+        int64_t r_;                                                 \
+        if (INT_FAST(fn, *v_, right(m_), r_)) {                     \
+            set_small(v_, r_);                                      \
+        } else {                                                    \
+            SAVE_IP();                                              \
+            if (!int_arith_slow(vm, symbol[0], v_, right(m_), 0)) { \
+                goto thrown;                                        \
+            }                                                       \
+        }                                                           \
     } while (0)
 /* The _FIELD forms: a field of the object in a local (self.count += 1),
  * changed in place. Objects are shared, so every holder sees it. */
 #define FIELD_OF(n, f) (plum_as_object(SLOT(n))->fields[(f)])
-#define FIELD_CHECKED(fn, symbol, right)                                                      \
-    do {                                                                                      \
-        uint16_t n_ = READ_U16();                                                             \
-        uint16_t f_ = READ_U16();                                                             \
-        uint16_t m_ = READ_U16();                                                             \
-        PlumValue *v_ = &FIELD_OF(n_, f_);                                                    \
-        int64_t a = v_->as.i, b = right(m_).as.i, r;                                          \
-        if (fn(a, b, &r)) {                                                                   \
-            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
-                 (long long)a, symbol, (long long)b);                                         \
-        }                                                                                     \
-        v_->as.i = r;                                                                         \
+#define FIELD_CHECKED(fn, symbol, right)                            \
+    do {                                                            \
+        uint16_t n_ = READ_U16();                                   \
+        uint16_t f_ = READ_U16();                                   \
+        uint16_t m_ = READ_U16();                                   \
+        PlumValue *v_ = &FIELD_OF(n_, f_);                          \
+        int64_t r_;                                                 \
+        if (INT_FAST(fn, *v_, right(m_), r_)) {                     \
+            set_small(v_, r_);                                      \
+        } else {                                                    \
+            SAVE_IP();                                              \
+            if (!int_arith_slow(vm, symbol[0], v_, right(m_), 0)) { \
+                goto thrown;                                        \
+            }                                                       \
+        }                                                           \
     } while (0)
-#define FIELD_FLOAT(operator, right)                 \
-    do {                                             \
-        uint16_t n_ = READ_U16();                    \
-        uint16_t f_ = READ_U16();                    \
-        uint16_t m_ = READ_U16();                    \
-        PlumValue *v_ = &FIELD_OF(n_, f_);           \
-        v_->as.f = v_->as.f operator right(m_).as.f; \
+#define FIELD_FLOAT(OP_, right)                                              \
+    do {                                                                     \
+        uint16_t n_ = READ_U16();                                            \
+        uint16_t f_ = READ_U16();                                            \
+        uint16_t m_ = READ_U16();                                            \
+        PlumValue *v_ = &FIELD_OF(n_, f_);                                   \
+        plum_set_float(v_, plum_as_float(*v_) OP_ plum_as_float(right(m_))); \
     } while (0)
 #define NO_CHECK(n)                       ((void)(n))
 #define GLOBAL(n)                         (vm->globals[(n)])
 #define LOCAL_CHECKED(fn, symbol, right)  PLACE_CHECKED(SLOT, NO_CHECK, fn, symbol, right)
 #define GLOBAL_CHECKED(fn, symbol, right) PLACE_CHECKED(GLOBAL, CHECK_GLOBAL, fn, symbol, right)
-#define PUSH_INT(value)                        \
-    do {                                       \
-        int64_t v_ = (value);                  \
-        reserve_one(vm);                       \
-        PlumValue *t_ = &vm->stack[vm->top++]; \
-        t_->type = PLUM_VAL_INT;               \
-        t_->as.i = v_;                         \
+#define PUSH_INT(value)                      \
+    do {                                     \
+        int64_t v_ = (value);                \
+        reserve_one(vm);                     \
+        push_int(&vm->stack[vm->top++], v_); \
     } while (0)
-#define PUSH_CHECKED(fn, symbol)                                                              \
-    do {                                                                                      \
-        uint16_t n_ = READ_U16();                                                             \
-        uint16_t k_ = READ_U16();                                                             \
-        int64_t a = SLOT(n_).as.i, b = (int16_t)k_, r;                                        \
-        if (fn(a, b, &r)) {                                                                   \
-            FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
-                 (long long)a, symbol, (long long)b);                                         \
-        }                                                                                     \
-        PUSH_INT(r);                                                                          \
+#define PUSH_CHECKED(fn, symbol)                               \
+    do {                                                       \
+        uint16_t n_ = READ_U16();                              \
+        uint16_t k_ = READ_U16();                              \
+        int64_t a = plum_as_int(SLOT(n_)), b = (int16_t)k_, r; \
+        if (fn(a, b, &r)) {                                    \
+            INT_OVERFLOW_ERROR(a, symbol, b);                  \
+        }                                                      \
+        PUSH_INT(r);                                           \
     } while (0)
-#define FLOAT_WITH(operator, right)                  \
-    do {                                             \
-        uint16_t n_ = READ_U16();                    \
-        PlumValue *s_ = &vm->stack[vm->top - 1];     \
-        s_->as.f = s_->as.f operator right(n_).as.f; \
+#define FLOAT_WITH(OP_, right)                                               \
+    do {                                                                     \
+        uint16_t n_ = READ_U16();                                            \
+        PlumValue *s_ = &vm->stack[vm->top - 1];                             \
+        plum_set_float(s_, plum_as_float(*s_) OP_ plum_as_float(right(n_))); \
     } while (0)
 /* Compare the top two and jump unless the comparison holds; for floats,
  * a NaN makes every comparison but != false, so it jumps. */
-#define JUMP_UNLESS(field, operator)                     \
-    do {                                                 \
-        uint16_t d_ = READ_U16();                        \
-        PlumValue *s_ = &vm->stack[vm->top -= 2];        \
-        if (!(s_[0].as.field operator s_[1].as.field)) { \
-            ip += d_;                                    \
-        }                                                \
+#define JUMP_UNLESS_INT(OP_)                                                \
+    do {                                                                    \
+        uint16_t d_ = READ_U16();                                           \
+        PlumValue *s_ = &vm->stack[vm->top -= 2];                           \
+        bool holds_;                                                        \
+        if (plum_both_small_ints(s_[0], s_[1])) {                           \
+            holds_ = plum_small_int_of(s_[0]) OP_ plum_small_int_of(s_[1]); \
+        } else {                                                            \
+            holds_ = int_compare_slow(s_[0], s_[1], DROP_X | DROP_Y) OP_ 0; \
+        }                                                                   \
+        if (!holds_) {                                                      \
+            ip += d_;                                                       \
+        }                                                                   \
     } while (0)
-#define JUMP_UNLESS_K(field, operator)                     \
-    do {                                                   \
-        uint16_t k_ = READ_U16();                          \
-        uint16_t d_ = READ_U16();                          \
-        PlumValue *s_ = &vm->stack[--vm->top];             \
-        if (!(s_->as.field operator KONST(k_).as.field)) { \
-            ip += d_;                                      \
-        }                                                  \
+#define JUMP_UNLESS_FLOAT(OP_)                                  \
+    do {                                                        \
+        uint16_t d_ = READ_U16();                               \
+        PlumValue *s_ = &vm->stack[vm->top -= 2];               \
+        if (!(plum_as_float(s_[0]) OP_ plum_as_float(s_[1]))) { \
+            ip += d_;                                           \
+        }                                                       \
     } while (0)
-#define JUMP_UNLESS_LK(operator)                     \
-    do {                                             \
-        uint16_t n_ = READ_U16();                    \
-        uint16_t k_ = READ_U16();                    \
-        uint16_t d_ = READ_U16();                    \
-        if (!(SLOT(n_).as.i operator(int16_t) k_)) { \
-            ip += d_;                                \
-        }                                            \
+#define JUMP_UNLESS_INT_K(OP_)                                               \
+    do {                                                                     \
+        uint16_t k_ = READ_U16();                                            \
+        uint16_t d_ = READ_U16();                                            \
+        PlumValue *s_ = &vm->stack[--vm->top];                               \
+        PlumValue k_value_ = KONST(k_);                                      \
+        bool holds_;                                                         \
+        if (plum_both_small_ints(*s_, k_value_)) {                           \
+            holds_ = plum_small_int_of(*s_) OP_ plum_small_int_of(k_value_); \
+        } else {                                                             \
+            holds_ = int_compare_slow(*s_, k_value_, DROP_X) OP_ 0;          \
+        }                                                                    \
+        if (!holds_) {                                                       \
+            ip += d_;                                                        \
+        }                                                                    \
+    } while (0)
+#define JUMP_UNLESS_FLOAT_K(OP_)                                  \
+    do {                                                          \
+        uint16_t k_ = READ_U16();                                 \
+        uint16_t d_ = READ_U16();                                 \
+        PlumValue *s_ = &vm->stack[--vm->top];                    \
+        if (!(plum_as_float(*s_) OP_ plum_as_float(KONST(k_)))) { \
+            ip += d_;                                             \
+        }                                                         \
+    } while (0)
+#define JUMP_UNLESS_LK(OP_)                             \
+    do {                                                \
+        uint16_t n_ = READ_U16();                       \
+        uint16_t k_ = READ_U16();                       \
+        uint16_t d_ = READ_U16();                       \
+        if (!(plum_as_int(SLOT(n_)) OP_(int16_t) k_)) { \
+            ip += d_;                                   \
+        }                                               \
     } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
 #define CHECK_GLOBAL(n)                                                                      \
@@ -2349,8 +2523,8 @@ static bool execute(VM *vm) {
             break;
         case PLUM_OP_FLOORDIV_INT:
         case PLUM_OP_MOD_INT: {
-            int64_t b = pop(vm).as.i;
-            int64_t a = pop(vm).as.i;
+            int64_t b = pop_int(vm);
+            int64_t a = pop_int(vm);
             const char *sym = op == PLUM_OP_FLOORDIV_INT ? "//" : "%";
             if (b == 0) {
                 FAIL(PLUM_ERROR_ZERO_DIVISION, "division by zero: %lld %s 0", (long long)a, sym);
@@ -2363,8 +2537,8 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_POW_INT: {
-            int64_t b = pop(vm).as.i;
-            int64_t a = pop(vm).as.i;
+            int64_t b = pop_int(vm);
+            int64_t a = pop_int(vm);
             int64_t r;
             if (b < 0) {
                 FAIL(PLUM_ERROR_VALUE,
@@ -2380,7 +2554,7 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_NEG_INT: {
-            int64_t a = pop(vm).as.i;
+            int64_t a = pop_int(vm);
             if (a == INT64_MIN) {
                 FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: -(%lld) doesn't fit in an int",
                      (long long)a);
@@ -2398,12 +2572,12 @@ static bool execute(VM *vm) {
             INT_BINARY(plum_int(a ^ b));
             break;
         case PLUM_OP_BNOT:
-            push(vm, plum_int(~pop(vm).as.i));
+            push(vm, plum_int(~pop_int(vm)));
             break;
         case PLUM_OP_SHL:
         case PLUM_OP_SHR: {
-            int64_t b = pop(vm).as.i;
-            int64_t a = pop(vm).as.i;
+            int64_t b = pop_int(vm);
+            int64_t a = pop_int(vm);
             if (b < 0 || b > 63) {
                 FAIL(PLUM_ERROR_VALUE, "shift count %lld is out of range; it must be 0 to 63",
                      (long long)b);
@@ -2441,12 +2615,22 @@ static bool execute(VM *vm) {
         case PLUM_OP_FLOORDIV_INT_K: {
             /* the compiler only uses it for a constant above 0: no error is possible */
             PlumValue *s_ = &vm->stack[vm->top - 1];
-            s_->as.i = floor_div(s_->as.i, KONST(READ_U16()).as.i);
+            PlumValue k_ = KONST(READ_U16());
+            if (plum_both_small_ints(*s_, k_)) { /* and so is the result */
+                set_small(s_, floor_div(plum_small_int_of(*s_), plum_small_int_of(k_)));
+            } else {
+                plum_set_int(s_, floor_div(plum_as_int(*s_), plum_as_int(k_)));
+            }
             break;
         }
         case PLUM_OP_MOD_INT_K: {
             PlumValue *s_ = &vm->stack[vm->top - 1];
-            s_->as.i = floor_mod(s_->as.i, KONST(READ_U16()).as.i);
+            PlumValue k_ = KONST(READ_U16());
+            if (plum_both_small_ints(*s_, k_)) {
+                set_small(s_, floor_mod(plum_small_int_of(*s_), plum_small_int_of(k_)));
+            } else {
+                plum_set_int(s_, floor_mod(plum_as_int(*s_), plum_as_int(k_)));
+            }
             break;
         }
         case PLUM_OP_LOCAL_ADD_INT_K:
@@ -2461,13 +2645,23 @@ static bool execute(VM *vm) {
         case PLUM_OP_LOCAL_FLOORDIV_INT_K: {
             uint16_t n = READ_U16();
             uint16_t k = READ_U16();
-            SLOT(n).as.i = floor_div(SLOT(n).as.i, KONST(k).as.i);
+            PlumValue *v = &SLOT(n);
+            if (plum_both_small_ints(*v, KONST(k))) { /* above 0: the result is inline too */
+                set_small(v, floor_div(plum_small_int_of(*v), plum_small_int_of(KONST(k))));
+            } else {
+                plum_set_int(v, floor_div(plum_as_int(*v), plum_as_int(KONST(k))));
+            }
             break;
         }
         case PLUM_OP_LOCAL_MOD_INT_K: {
             uint16_t n = READ_U16();
             uint16_t k = READ_U16();
-            SLOT(n).as.i = floor_mod(SLOT(n).as.i, KONST(k).as.i);
+            PlumValue *v = &SLOT(n);
+            if (plum_both_small_ints(*v, KONST(k))) {
+                set_small(v, floor_mod(plum_small_int_of(*v), plum_small_int_of(KONST(k))));
+            } else {
+                plum_set_int(v, floor_mod(plum_as_int(*v), plum_as_int(KONST(k))));
+            }
             break;
         }
         case PLUM_OP_GLOBAL_ADD_INT_K:
@@ -2494,13 +2688,13 @@ static bool execute(VM *vm) {
         case PLUM_OP_FLOORDIV_INT_LK: {
             uint16_t n = READ_U16();
             uint16_t k = READ_U16();
-            PUSH_INT(floor_div(SLOT(n).as.i, (int16_t)k));
+            PUSH_INT(floor_div(plum_as_int(SLOT(n)), (int16_t)k));
             break;
         }
         case PLUM_OP_MOD_INT_LK: {
             uint16_t n = READ_U16();
             uint16_t k = READ_U16();
-            PUSH_INT(floor_mod(SLOT(n).as.i, (int16_t)k));
+            PUSH_INT(floor_mod(plum_as_int(SLOT(n)), (int16_t)k));
             break;
         }
         case PLUM_OP_LOCAL_ADD_INT_L:
@@ -2520,16 +2714,16 @@ static bool execute(VM *vm) {
             break;
 
         case PLUM_OP_ADD_FLOAT:
-            FLOAT_BINARY(plum_float(a + b));
+            FLOAT_BINARY(plum_float_raw(a + b));
             break;
         case PLUM_OP_SUB_FLOAT:
-            FLOAT_BINARY(plum_float(a - b));
+            FLOAT_BINARY(plum_float_raw(a - b));
             break;
         case PLUM_OP_MUL_FLOAT:
-            FLOAT_BINARY(plum_float(a * b));
+            FLOAT_BINARY(plum_float_raw(a * b));
             break;
         case PLUM_OP_DIV_FLOAT:
-            FLOAT_BINARY(plum_float(a / b));
+            FLOAT_BINARY(plum_float_raw(a / b));
             break;
         case PLUM_OP_FLOORDIV_FLOAT:
             FLOAT_BINARY(plum_float(floor(a / b)));
@@ -2541,7 +2735,7 @@ static bool execute(VM *vm) {
             FLOAT_BINARY(plum_float(pow(a, b)));
             break;
         case PLUM_OP_NEG_FLOAT:
-            push(vm, plum_float(-pop(vm).as.f));
+            push(vm, plum_float_raw(-plum_as_float(pop(vm))));
             break;
         case PLUM_OP_LT_FLOAT:
             FLOAT_BINARY(plum_bool(a < b));
@@ -2586,7 +2780,7 @@ static bool execute(VM *vm) {
             FLOAT_WITH(/, SLOT);
             break;
         case PLUM_OP_INT_TO_FLOAT:
-            push(vm, plum_float((double)pop(vm).as.i));
+            push(vm, plum_float_raw((double)pop_int(vm)));
             break;
 
         case PLUM_OP_CONCAT: {
@@ -2699,7 +2893,7 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_INDEX_STR: {
-            int64_t i = pop(vm).as.i;
+            int64_t i = pop_int(vm);
             PlumValue v = pop(vm);
             PlumString *s = plum_as_string(v);
             size_t n = plum_string_length(s);
@@ -2755,7 +2949,7 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_INDEX_LIST: {
-            int64_t i = pop(vm).as.i;
+            int64_t i = pop_int(vm);
             PlumValue v = pop(vm);
             PlumList *list = plum_as_list(v);
             SAVE_IP(); /* so the error names this line */
@@ -2769,8 +2963,8 @@ static bool execute(VM *vm) {
         }
         case PLUM_OP_SLICE: {
             uint16_t inclusive = READ_U16();
-            int64_t hi = pop(vm).as.i;
-            int64_t lo = pop(vm).as.i;
+            int64_t hi = pop_int(vm);
+            int64_t lo = pop_int(vm);
             PlumValue v = pop(vm);
             bool text = plum_is_obj(v, PLUM_OBJ_STRING);
             size_t size = text ? plum_string_length(plum_as_string(v)) : plum_as_list(v)->len;
@@ -2927,7 +3121,7 @@ static bool execute(VM *vm) {
                 plum_table_put(plum_table_unique(place), key, value); /* copy first if shared */
                 break;
             }
-            int64_t i = pop(vm).as.i;
+            int64_t i = pop_int(vm);
             PlumList *list = plum_list_unique(place); /* copy first if shared */
             SAVE_IP();                                /* so the error names this line */
             if (!check_index(vm, i, list->len)) {
@@ -2968,12 +3162,12 @@ static bool execute(VM *vm) {
                 plum_table_put(plum_table_unique(container), plum_retain(key), value);
             } else {
                 PlumList *list = plum_list_unique(container);
-                if (!check_index(vm, key.as.i, list->len)) {
+                if (!check_index(vm, plum_as_int(key), list->len)) {
                     plum_release(value);
                     goto thrown;
                 }
-                plum_release(list->items[key.as.i]);
-                list->items[key.as.i] = value;
+                plum_release(list->items[plum_as_int(key)]);
+                list->items[plum_as_int(key)] = value;
             }
             unwind_to(vm, vm->top - depth - (op == PLUM_OP_SET_PATH_FIELD ? 1 : 0));
             break;
@@ -3055,22 +3249,23 @@ static bool execute(VM *vm) {
             uint16_t at = READ_U16();
             uint16_t var = READ_U16();
             uint16_t d = READ_U16();
-            PlumObjType kind = SLOT(at).as.obj->type;
+            PlumObjType kind = (PlumObjType)plum_as_obj(SLOT(at))->type;
             if (kind != PLUM_OBJ_STRING && kind != PLUM_OBJ_MAP) { /* a list: the usual case */
                 PlumList *list = plum_as_list(SLOT(at));
-                int64_t pos = SLOT(at + 1).as.i;
+                /* positions and offsets are below 2^50: inline */
+                int64_t pos = plum_small_int_of(SLOT(at + 1));
                 if ((uint64_t)pos >= list->len) {
                     ip += d;
                     break;
                 }
-                SLOT(at + 1).as.i = pos + 1;
+                set_small(&SLOT(at + 1), pos + 1);
                 if (op == PLUM_OP_FOR_EACH2) {
                     SLOT(var) = plum_int(pos); /* ints hold no reference */
                     var++;
                 }
                 /* the item before is most likely still in the list */
                 PlumValue *slot = &SLOT(var);
-                if (slot->type == PLUM_VAL_OBJ) {
+                if (plum_is_ref(*slot)) {
                     drop_ref(slot);
                 }
                 *slot = plum_retain(list->items[pos]);
@@ -3078,7 +3273,7 @@ static bool execute(VM *vm) {
             }
             if (kind == PLUM_OBJ_STRING) {
                 const PlumString *s = plum_as_string(SLOT(at));
-                size_t from = (size_t)SLOT(at + 1).as.i; /* a byte offset */
+                size_t from = (size_t)plum_small_int_of(SLOT(at + 1)); /* a byte offset */
                 if (from >= s->len) {
                     ip += d;
                     break;
@@ -3087,20 +3282,20 @@ static bool execute(VM *vm) {
                 while (to < s->len && ((unsigned char)s->chars[to] & 0xC0) == 0x80) {
                     to++;
                 }
-                SLOT(at + 1).as.i = (int64_t)to;
+                set_small(&SLOT(at + 1), (int64_t)to);
                 plum_release(SLOT(var));
                 SLOT(var) = plum_obj(&plum_string_new(s->chars + from, to - from)->obj);
                 break;
             }
             {
                 /* maps give keys (and values with two names); sets give items */
-                int64_t pos = SLOT(at + 1).as.i;
+                int64_t pos = plum_small_int_of(SLOT(at + 1));
                 const PlumTableEntry *e = plum_table_next(plum_as_table(SLOT(at)), &pos);
                 if (e == NULL) {
                     ip += d;
                     break;
                 }
-                SLOT(at + 1).as.i = pos;
+                set_small(&SLOT(at + 1), pos);
                 plum_release(SLOT(var));
                 SLOT(var) = plum_retain(e->key);
                 if (op == PLUM_OP_FOR_EACH2) {
@@ -3123,7 +3318,7 @@ static bool execute(VM *vm) {
             break;
         }
         case PLUM_OP_NOT:
-            push(vm, plum_bool(!pop(vm).as.b));
+            push(vm, plum_bool(!plum_as_bool(pop(vm))));
             break;
         case PLUM_OP_NEW_OBJECT: {
             PlumTreeInfo *tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
@@ -3201,15 +3396,15 @@ static bool execute(VM *vm) {
         case PLUM_OP_IS_TREE: {
             PlumTreeInfo *tree = plum_as_tree_info(chunk->constants.items[READ_U16()]);
             PlumValue v = pop(vm);
-            bool is = v.type == PLUM_VAL_OBJ && v.as.obj->type == PLUM_OBJ_OBJECT &&
-                      plum_tree_is(plum_as_object(v)->tree, tree);
+            bool is =
+                plum_is_obj(v, PLUM_OBJ_OBJECT) && plum_tree_is(plum_as_object(v)->tree, tree);
             push(vm, plum_bool(is));
             plum_release(v);
             break;
         }
         case PLUM_OP_WEAK: {
             PlumValue *v = peek(vm, 0);
-            if (v->type == PLUM_VAL_OBJ) {
+            if (plum_is_ref(*v)) {
                 PlumWeak *w = plum_weak_of(plum_as_object(*v));
                 plum_release(*v);
                 *v = plum_obj(&w->obj);
@@ -3218,8 +3413,8 @@ static bool execute(VM *vm) {
         }
         case PLUM_OP_UNWEAK: {
             PlumValue *v = peek(vm, 0);
-            if (v->type == PLUM_VAL_OBJ) {
-                PlumObject *target = ((PlumWeak *)v->as.obj)->target;
+            if (plum_is_ref(*v)) {
+                PlumObject *target = ((PlumWeak *)plum_as_obj(*v))->target;
                 PlumValue strong =
                     target != NULL ? plum_retain(plum_obj(&target->obj)) : plum_none();
                 plum_release(*v);
@@ -3268,7 +3463,7 @@ static bool execute(VM *vm) {
             const PlumString *trait = plum_as_string(chunk->constants.items[READ_U16()]);
             PlumValue v = pop(vm);
             bool is = false;
-            if (v.type == PLUM_VAL_OBJ && v.as.obj->type == PLUM_OBJ_OBJECT) {
+            if (plum_is_obj(v, PLUM_OBJ_OBJECT)) {
                 const PlumTreeInfo *tree = plum_as_object(v)->tree;
                 for (int i = 0; i < tree->trait_count && !is; i++) {
                     is = strcmp(tree->traits[i], trait->chars) == 0;
@@ -3322,7 +3517,7 @@ static bool execute(VM *vm) {
         }
         case PLUM_OP_IS_NONE: {
             PlumValue v = pop(vm);
-            push(vm, plum_bool(v.type == PLUM_VAL_NONE));
+            push(vm, plum_bool(plum_is_none(v)));
             plum_release(v);
             break;
         }
@@ -3334,92 +3529,92 @@ static bool execute(VM *vm) {
         }
         case PLUM_OP_JUMP_IF_FALSE: {
             uint16_t d = READ_U16();
-            if (!pop(vm).as.b) {
+            if (!plum_as_bool(pop(vm))) {
                 ip += d;
             }
             break;
         }
         case PLUM_OP_JUMP_IF_FALSE_KEEP: {
             uint16_t d = READ_U16();
-            if (!peek(vm, 0)->as.b) {
+            if (!plum_as_bool(*peek(vm, 0))) {
                 ip += d;
             }
             break;
         }
         case PLUM_OP_JUMP_IF_TRUE_KEEP: {
             uint16_t d = READ_U16();
-            if (peek(vm, 0)->as.b) {
+            if (plum_as_bool(*peek(vm, 0))) {
                 ip += d;
             }
             break;
         }
         case PLUM_OP_JUMP_IF_NOT_NONE_KEEP: {
             uint16_t d = READ_U16();
-            if (peek(vm, 0)->type != PLUM_VAL_NONE) {
+            if (!plum_is_none(*peek(vm, 0))) {
                 ip += d;
             }
             break;
         }
         case PLUM_OP_JUMP_IF_NONE_KEEP: {
             uint16_t d = READ_U16();
-            if (peek(vm, 0)->type == PLUM_VAL_NONE) {
+            if (plum_is_none(*peek(vm, 0))) {
                 ip += d;
             }
             break;
         }
         case PLUM_OP_JUMP_IF_NOT_LT_INT:
-            JUMP_UNLESS(i, <);
+            JUMP_UNLESS_INT(<);
             break;
         case PLUM_OP_JUMP_IF_NOT_LE_INT:
-            JUMP_UNLESS(i, <=);
+            JUMP_UNLESS_INT(<=);
             break;
         case PLUM_OP_JUMP_IF_NOT_GT_INT:
-            JUMP_UNLESS(i, >);
+            JUMP_UNLESS_INT(>);
             break;
         case PLUM_OP_JUMP_IF_NOT_GE_INT:
-            JUMP_UNLESS(i, >=);
+            JUMP_UNLESS_INT(>=);
             break;
         case PLUM_OP_JUMP_IF_NOT_EQ_INT:
-            JUMP_UNLESS(i, ==);
+            JUMP_UNLESS_INT(==);
             break;
         case PLUM_OP_JUMP_IF_NOT_NE_INT:
-            JUMP_UNLESS(i, !=);
+            JUMP_UNLESS_INT(!=);
             break;
         case PLUM_OP_JUMP_IF_NOT_LT_FLOAT:
-            JUMP_UNLESS(f, <);
+            JUMP_UNLESS_FLOAT(<);
             break;
         case PLUM_OP_JUMP_IF_NOT_LE_FLOAT:
-            JUMP_UNLESS(f, <=);
+            JUMP_UNLESS_FLOAT(<=);
             break;
         case PLUM_OP_JUMP_IF_NOT_GT_FLOAT:
-            JUMP_UNLESS(f, >);
+            JUMP_UNLESS_FLOAT(>);
             break;
         case PLUM_OP_JUMP_IF_NOT_GE_FLOAT:
-            JUMP_UNLESS(f, >=);
+            JUMP_UNLESS_FLOAT(>=);
             break;
         case PLUM_OP_JUMP_IF_NOT_EQ_FLOAT:
-            JUMP_UNLESS(f, ==);
+            JUMP_UNLESS_FLOAT(==);
             break;
         case PLUM_OP_JUMP_IF_NOT_NE_FLOAT:
-            JUMP_UNLESS(f, !=);
+            JUMP_UNLESS_FLOAT(!=);
             break;
         case PLUM_OP_JUMP_IF_NOT_LT_INT_K:
-            JUMP_UNLESS_K(i, <);
+            JUMP_UNLESS_INT_K(<);
             break;
         case PLUM_OP_JUMP_IF_NOT_LE_INT_K:
-            JUMP_UNLESS_K(i, <=);
+            JUMP_UNLESS_INT_K(<=);
             break;
         case PLUM_OP_JUMP_IF_NOT_GT_INT_K:
-            JUMP_UNLESS_K(i, >);
+            JUMP_UNLESS_INT_K(>);
             break;
         case PLUM_OP_JUMP_IF_NOT_GE_INT_K:
-            JUMP_UNLESS_K(i, >=);
+            JUMP_UNLESS_INT_K(>=);
             break;
         case PLUM_OP_JUMP_IF_NOT_EQ_INT_K:
-            JUMP_UNLESS_K(i, ==);
+            JUMP_UNLESS_INT_K(==);
             break;
         case PLUM_OP_JUMP_IF_NOT_NE_INT_K:
-            JUMP_UNLESS_K(i, !=);
+            JUMP_UNLESS_INT_K(!=);
             break;
         case PLUM_OP_JUMP_IF_NOT_LT_INT_LK:
             JUMP_UNLESS_LK(<);
@@ -3440,22 +3635,22 @@ static bool execute(VM *vm) {
             JUMP_UNLESS_LK(!=);
             break;
         case PLUM_OP_JUMP_IF_NOT_LT_FLOAT_K:
-            JUMP_UNLESS_K(f, <);
+            JUMP_UNLESS_FLOAT_K(<);
             break;
         case PLUM_OP_JUMP_IF_NOT_LE_FLOAT_K:
-            JUMP_UNLESS_K(f, <=);
+            JUMP_UNLESS_FLOAT_K(<=);
             break;
         case PLUM_OP_JUMP_IF_NOT_GT_FLOAT_K:
-            JUMP_UNLESS_K(f, >);
+            JUMP_UNLESS_FLOAT_K(>);
             break;
         case PLUM_OP_JUMP_IF_NOT_GE_FLOAT_K:
-            JUMP_UNLESS_K(f, >=);
+            JUMP_UNLESS_FLOAT_K(>=);
             break;
         case PLUM_OP_JUMP_IF_NOT_EQ_FLOAT_K:
-            JUMP_UNLESS_K(f, ==);
+            JUMP_UNLESS_FLOAT_K(==);
             break;
         case PLUM_OP_JUMP_IF_NOT_NE_FLOAT_K:
-            JUMP_UNLESS_K(f, !=);
+            JUMP_UNLESS_FLOAT_K(!=);
             break;
         case PLUM_OP_LOOP: {
             uint16_t d = READ_U16();
@@ -3470,7 +3665,7 @@ static bool execute(VM *vm) {
             uint16_t slot = READ_U16();
             uint16_t inclusive = READ_U16();
             uint16_t d = READ_U16();
-            int64_t i = SLOT(slot).as.i, end = SLOT(slot + 1).as.i;
+            int64_t i = plum_as_int(SLOT(slot)), end = plum_as_int(SLOT(slot + 1));
             if (inclusive ? i > end : i >= end) {
                 ip += d;
             }
@@ -3483,9 +3678,22 @@ static bool execute(VM *vm) {
             /* Go round again if the next value is still in the range: then
              * adding 1 can't overflow, even at an inclusive end that is the
              * largest int. The jump goes back past FOR_RANGE, to the body. */
-            int64_t i = SLOT(slot).as.i, end = SLOT(slot + 1).as.i;
+            PlumValue *v = &SLOT(slot);
+            int64_t i, end;
+            bool small = plum_both_small_ints(v[0], v[1]);
+            if (small) {
+                i = plum_small_int_of(v[0]);
+                end = plum_small_int_of(v[1]);
+            } else {
+                i = plum_as_int(v[0]);
+                end = plum_as_int(v[1]);
+            }
             if (i < end && (inclusive || i + 1 < end)) {
-                SLOT(slot).as.i = i + 1;
+                if (small) {
+                    set_small(v, i + 1); /* below `end`: inline too */
+                } else {
+                    plum_set_int(v, i + 1);
+                }
                 ip -= d;
                 if (!step(vm)) {
                     SAVE_IP();
@@ -3498,8 +3706,9 @@ static bool execute(VM *vm) {
         case PLUM_OP_CALL: {
             uint16_t argc = READ_U16();
             PlumValue callee = *peek(vm, argc);
-            PlumFunction *fn = callee.as.obj->type == PLUM_OBJ_CLOSURE ? plum_as_closure(callee)->fn
-                                                                       : plum_as_function(callee);
+            PlumFunction *fn = plum_as_obj(callee)->type == PLUM_OBJ_CLOSURE
+                                   ? plum_as_closure(callee)->fn
+                                   : plum_as_function(callee);
             SAVE_IP();
             Frame *f = call_frame(vm, fn, argc, 1);
             if (f == NULL) {
@@ -3596,8 +3805,8 @@ static bool execute(VM *vm) {
         case PLUM_OP_RETURN_LOCAL: {
             const PlumValue *v = &SLOT(READ_U16());
             copy_value(&ret, v);
-            if (ret.type == PLUM_VAL_OBJ) {
-                ret.as.obj->refcount++;
+            if (plum_is_ref(ret)) {
+                plum_as_obj(ret)->refcount++;
             }
             goto do_return;
         }
@@ -3605,15 +3814,19 @@ static bool execute(VM *vm) {
             ret = plum_none();
             goto do_return;
         case PLUM_OP_RETURN_ADD_INT: {
-            const PlumValue *s = &vm->stack[vm->top - 2];
-            int64_t a = s[0].as.i, b = s[1].as.i, r;
-            if (add_overflows(a, b, &r)) {
-                FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld + %lld doesn't fit in an int",
-                     (long long)a, (long long)b);
+            PlumValue *s = &vm->stack[vm->top - 2];
+            int64_t r;
+            if (INT_FAST(add_overflows, s[0], s[1], r)) {
+                push_int(&ret, r);
+            } else {
+                SAVE_IP();
+                if (!int_arith_slow(vm, '+', &s[0], s[1], 0)) {
+                    goto thrown; /* both are still on the stack */
+                }
+                plum_release_int(s[1]);
+                ret = s[0];
             }
             vm->top -= 2;
-            ret.type = PLUM_VAL_INT;
-            ret.as.i = r;
             goto do_return;
         }
         case PLUM_OP_RETURN: {
@@ -3662,8 +3875,14 @@ static bool execute(VM *vm) {
 #undef KONST
 #undef CHECKED_WITH
 #undef FLOAT_WITH
-#undef JUMP_UNLESS
-#undef JUMP_UNLESS_K
+#undef JUMP_UNLESS_INT
+#undef JUMP_UNLESS_FLOAT
+#undef JUMP_UNLESS_INT_K
+#undef JUMP_UNLESS_FLOAT_K
+#undef INT_OVERFLOW_ERROR
+#undef INT_FAST
+#undef DROP_X
+#undef DROP_Y
 #undef JUMP_UNLESS_LK
 #undef PLACE_CHECKED
 #undef NO_CHECK

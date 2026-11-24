@@ -70,7 +70,7 @@ void plum_string_append(PlumValue *slot, const PlumValue *parts, size_t n) {
         s = plum_realloc(s, plum_add_size(sizeof(PlumString), plum_add_size(room, 1)));
         s->chars = (char *)(s + 1);
         s->cap = (uint32_t)room;
-        slot->as.obj = &s->obj;
+        *slot = plum_obj(&s->obj);
     }
     for (size_t i = 0; i < n; i++) {
         const PlumString *part = plum_as_string(parts[i]);
@@ -118,6 +118,23 @@ PlumString *plum_string_new(const char *chars, size_t len) {
     }
     return s;
 }
+
+#if PLUM_NANBOX
+PlumValue plum_int_boxed(int64_t i) {
+    PlumBigInt *b = plum_alloc(sizeof *b);
+    b->obj.refcount = 1;
+    b->obj.type = PLUM_OBJ_INT;
+    b->obj.flags = PLUM_OBJ_FROZEN;
+    b->i = i;
+    return plum_obj(&b->obj);
+}
+
+void plum_set_int_slow(PlumValue *slot, int64_t i) {
+    PlumValue old = *slot;
+    *slot = plum_int(i);
+    plum_release_int(old);
+}
+#endif
 
 PlumList *plum_list_new(size_t cap) {
     PlumList *list = plum_alloc_zeroed(1, sizeof *list);
@@ -286,8 +303,8 @@ static void pending_push(Pending *p, PlumObj *obj) {
 
 /* Let go of one reference; an object nothing holds joins the list. */
 static void drop_ref(Pending *p, PlumValue v) {
-    if (v.type == PLUM_VAL_OBJ && --v.as.obj->refcount == 0) {
-        pending_push(p, v.as.obj);
+    if (plum_is_ref(v) && --plum_as_obj(v)->refcount == 0) {
+        pending_push(p, plum_as_obj(v));
     }
 }
 
@@ -301,6 +318,7 @@ static void drop_obj(Pending *p, PlumObj *obj) {
 static void free_object(PlumObj *obj, Pending *p) {
     switch ((PlumObjType)obj->type) {
     case PLUM_OBJ_STRING:
+    case PLUM_OBJ_INT:
         plum_free(obj);
         return;
     case PLUM_OBJ_FUNCTION: {
@@ -395,14 +413,14 @@ static void free_object(PlumObj *obj, Pending *p) {
 }
 
 void plum_release(PlumValue v) {
-    if (v.type != PLUM_VAL_OBJ || --v.as.obj->refcount != 0) {
+    if (!plum_is_ref(v) || --plum_as_obj(v)->refcount != 0) {
         return;
     }
     Pending p;
     p.items = p.local;
     p.len = 0;
     p.cap = sizeof p.local / sizeof p.local[0];
-    pending_push(&p, v.as.obj);
+    pending_push(&p, plum_as_obj(v));
     while (p.len > 0) {
         free_object(p.items[--p.len], &p);
     }
@@ -440,33 +458,34 @@ static void pairs_push(Pairs *p, PlumValue a, PlumValue b) {
  * deep C recursion.
  */
 static bool equal_here(PlumValue a, PlumValue b, Pairs *todo) {
-    if (a.type == PLUM_VAL_INT && b.type == PLUM_VAL_FLOAT) {
-        return (double)a.as.i == b.as.f;
+    PlumValueType ta = plum_value_type(a), tb = plum_value_type(b);
+    if (ta == PLUM_VAL_INT && tb == PLUM_VAL_FLOAT) {
+        return (double)plum_as_int(a) == plum_as_float(b);
     }
-    if (a.type == PLUM_VAL_FLOAT && b.type == PLUM_VAL_INT) {
-        return a.as.f == (double)b.as.i;
+    if (ta == PLUM_VAL_FLOAT && tb == PLUM_VAL_INT) {
+        return plum_as_float(a) == (double)plum_as_int(b);
     }
-    if (a.type != b.type) {
+    if (ta != tb) {
         return false;
     }
-    switch (a.type) {
+    switch (ta) {
     case PLUM_VAL_NONE:
         return true;
     case PLUM_VAL_BOOL:
-        return a.as.b == b.as.b;
+        return plum_as_bool(a) == plum_as_bool(b);
     case PLUM_VAL_INT:
-        return a.as.i == b.as.i;
+        return plum_as_int(a) == plum_as_int(b);
     case PLUM_VAL_FLOAT:
-        return a.as.f == b.as.f;
+        return plum_as_float(a) == plum_as_float(b);
     case PLUM_VAL_OBJ:
-        if (a.as.obj == b.as.obj) {
+        if (plum_as_obj(a) == plum_as_obj(b)) {
             return true;
         }
-        if (a.as.obj->type == PLUM_OBJ_STRING && b.as.obj->type == PLUM_OBJ_STRING) {
+        if (plum_as_obj(a)->type == PLUM_OBJ_STRING && plum_as_obj(b)->type == PLUM_OBJ_STRING) {
             PlumString *x = plum_as_string(a), *y = plum_as_string(b);
             return x->len == y->len && memcmp(x->chars, y->chars, x->len) == 0;
         }
-        if (a.as.obj->type == PLUM_OBJ_LIST && b.as.obj->type == PLUM_OBJ_LIST) {
+        if (plum_as_obj(a)->type == PLUM_OBJ_LIST && plum_as_obj(b)->type == PLUM_OBJ_LIST) {
             PlumList *x = plum_as_list(a), *y = plum_as_list(b);
             if (x->len != y->len) {
                 return false;
@@ -476,7 +495,7 @@ static bool equal_here(PlumValue a, PlumValue b, Pairs *todo) {
             }
             return true;
         }
-        if (a.as.obj->type == PLUM_OBJ_MAP && b.as.obj->type == PLUM_OBJ_MAP) {
+        if (plum_as_obj(a)->type == PLUM_OBJ_MAP && plum_as_obj(b)->type == PLUM_OBJ_MAP) {
             const PlumTable *x = plum_as_table(a), *y = plum_as_table(b);
             if (x->count != y->count || x->is_set != y->is_set) {
                 return false;
@@ -492,7 +511,7 @@ static bool equal_here(PlumValue a, PlumValue b, Pairs *todo) {
             }
             return true;
         }
-        if (a.as.obj->type == PLUM_OBJ_OBJECT && b.as.obj->type == PLUM_OBJ_OBJECT) {
+        if (plum_as_obj(a)->type == PLUM_OBJ_OBJECT && plum_as_obj(b)->type == PLUM_OBJ_OBJECT) {
             /* kind values: the same case with equal contents; tree objects: identity */
             const PlumObject *x = plum_as_object(a), *y = plum_as_object(b);
             if (x->tree->kind == NULL || x->tree != y->tree) {
@@ -509,7 +528,7 @@ static bool equal_here(PlumValue a, PlumValue b, Pairs *todo) {
 }
 
 bool plum_values_equal(PlumValue a, PlumValue b) {
-    if (a.type != PLUM_VAL_OBJ || a.as.obj->type == PLUM_OBJ_STRING) {
+    if (!plum_is_object(a) || plum_as_obj(a)->type == PLUM_OBJ_STRING) {
         return equal_here(a, b, NULL); /* nothing inside to compare */
     }
     Pairs todo;
@@ -529,17 +548,19 @@ bool plum_values_equal(PlumValue a, PlumValue b) {
 }
 
 int plum_compare_values(PlumValue a, PlumValue b) {
-    if (a.type == PLUM_VAL_OBJ && b.type == PLUM_VAL_OBJ) {
+    PlumValueType ta = plum_value_type(a), tb = plum_value_type(b);
+    if (ta == PLUM_VAL_OBJ && tb == PLUM_VAL_OBJ) {
         PlumString *x = plum_as_string(a), *y = plum_as_string(b);
         size_t n = x->len < y->len ? x->len : y->len;
         int c = memcmp(x->chars, y->chars, n);
         return c != 0 ? c : (x->len < y->len ? -1 : x->len > y->len);
     }
-    double x = a.type == PLUM_VAL_INT ? (double)a.as.i : a.as.f;
-    double y = b.type == PLUM_VAL_INT ? (double)b.as.i : b.as.f;
-    if (a.type == PLUM_VAL_INT && b.type == PLUM_VAL_INT) {
-        return a.as.i < b.as.i ? -1 : a.as.i > b.as.i;
+    if (ta == PLUM_VAL_INT && tb == PLUM_VAL_INT) {
+        int64_t i = plum_as_int(a), j = plum_as_int(b);
+        return i < j ? -1 : i > j;
     }
+    double x = ta == PLUM_VAL_INT ? (double)plum_as_int(a) : plum_as_float(a);
+    double y = tb == PLUM_VAL_INT ? (double)plum_as_int(b) : plum_as_float(b);
     return x < y ? -1 : x > y;
 }
 

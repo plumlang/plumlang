@@ -38,7 +38,7 @@ static void put(Buf *b, const char *s, size_t len) {
  * character that isn't a quote or a line break. */
 static bool get_separator(PlumNative *n, const char *fn, const PlumValue *args, int argc, int at,
                           char *sep) {
-    if (argc <= at || args[at].type == PLUM_VAL_NONE) {
+    if (argc <= at || plum_is_none(args[at])) {
         *sep = ',';
         return true;
     }

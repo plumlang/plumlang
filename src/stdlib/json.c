@@ -485,28 +485,28 @@ static bool write_value(Writer *w, PlumValue v, int depth) {
                                  "to itself?)");
     }
     char tmp[PLUM_FLOAT_BUF + 8];
-    switch (v.type) {
+    switch (plum_value_type(v)) {
     case PLUM_VAL_NONE:
         puts_(&w->out, "null");
         return true;
     case PLUM_VAL_BOOL:
-        puts_(&w->out, v.as.b ? "true" : "false");
+        puts_(&w->out, plum_as_bool(v) ? "true" : "false");
         return true;
     case PLUM_VAL_INT:
-        snprintf(tmp, sizeof tmp, "%lld", (long long)v.as.i);
+        snprintf(tmp, sizeof tmp, "%lld", (long long)plum_as_int(v));
         puts_(&w->out, tmp);
         return true;
     case PLUM_VAL_FLOAT:
-        if (!isfinite(v.as.f)) {
+        if (!isfinite(plum_as_float(v))) {
             return plum_native_throw(w->n, PLUM_ERROR_VALUE,
                                      "json.stringify: JSON has no infinity or NAN");
         }
-        puts_(&w->out, plum_format_float(v.as.f, tmp));
+        puts_(&w->out, plum_format_float(plum_as_float(v), tmp));
         return true;
     case PLUM_VAL_OBJ:
         break;
     }
-    switch ((PlumObjType)v.as.obj->type) {
+    switch ((PlumObjType)plum_as_obj(v)->type) {
     case PLUM_OBJ_STRING: {
         const PlumString *s = plum_as_string(v);
         put_quoted(&w->out, s->chars, s->len);
@@ -575,7 +575,7 @@ static bool write_value(Writer *w, PlumValue v, int depth) {
         for (int i = 0; i < o->tree->field_count; i++) {
             PlumValue field = o->fields[i];
             if (plum_is_obj(field, PLUM_OBJ_WEAK)) {
-                PlumObject *target = ((PlumWeak *)field.as.obj)->target;
+                PlumObject *target = ((PlumWeak *)plum_as_obj(field))->target;
                 field = target != NULL ? plum_obj(&target->obj) : plum_none();
             }
             const char *name = o->tree->field_names[i];
@@ -596,7 +596,7 @@ static bool write_value(Writer *w, PlumValue v, int depth) {
 }
 
 static bool j_stringify(ARGS) {
-    int64_t indent = argc > 1 && args[1].type == PLUM_VAL_INT ? args[1].as.i : 0;
+    int64_t indent = argc > 1 && plum_is_int(args[1]) ? plum_as_int(args[1]) : 0;
     if (indent < 0 || indent > 16) {
         return plum_native_throw(n, PLUM_ERROR_VALUE,
                                  "json.stringify: indent must be 0 to 16, not %lld",
@@ -644,7 +644,7 @@ static bool v_at(ARGS) {
     *result = plum_none();
     if (is(args[0], PLUM_OBJ_LIST)) {
         const PlumList *list = plum_as_list(args[0]);
-        int64_t i = args[1].as.i;
+        int64_t i = plum_as_int(args[1]);
         if (i < 0) {
             i += (int64_t)list->len; /* -1 is the last */
         }
@@ -683,7 +683,7 @@ static bool v_keys(ARGS) {
 }
 
 static const char *kind_of(PlumValue v) {
-    switch (v.type) {
+    switch (plum_value_type(v)) {
     case PLUM_VAL_NONE:
         return "null";
     case PLUM_VAL_BOOL:
@@ -711,7 +711,7 @@ static bool v_kind(ARGS) {
 static bool v_is_null(ARGS) {
     (void)n;
     (void)argc;
-    *result = plum_bool(args[0].type == PLUM_VAL_NONE);
+    *result = plum_bool(plum_is_none(args[0]));
     return true;
 }
 
@@ -727,10 +727,11 @@ static bool v_int(ARGS) {
     (void)argc;
     PlumValue v = args[0];
     *result = plum_none();
-    if (v.type == PLUM_VAL_INT) {
-        *result = v;
-    } else if (v.type == PLUM_VAL_FLOAT && v.as.f == floor(v.as.f) && fabs(v.as.f) < 9.2e18) {
-        *result = plum_int((int64_t)v.as.f); /* 3.0 is the int 3; 3.5 isn't an int */
+    if (plum_is_int(v)) {
+        *result = plum_retain(v); /* a boxed int holds a reference */
+    } else if (plum_is_float(v) && plum_as_float(v) == floor(plum_as_float(v)) &&
+               fabs(plum_as_float(v)) < 9.2e18) {
+        *result = plum_int((int64_t)plum_as_float(v)); /* 3.0 is the int 3; 3.5 isn't an int */
     }
     return true;
 }
@@ -739,16 +740,16 @@ static bool v_float(ARGS) {
     (void)n;
     (void)argc;
     PlumValue v = args[0];
-    *result = v.type == PLUM_VAL_INT     ? plum_float((double)v.as.i)
-              : v.type == PLUM_VAL_FLOAT ? v
-                                         : plum_none();
+    *result = plum_is_int(v)     ? plum_float((double)plum_as_int(v))
+              : plum_is_float(v) ? v
+                                 : plum_none();
     return true;
 }
 
 static bool v_bool(ARGS) {
     (void)n;
     (void)argc;
-    *result = args[0].type == PLUM_VAL_BOOL ? args[0] : plum_none();
+    *result = plum_is_bool(args[0]) ? args[0] : plum_none();
     return true;
 }
 

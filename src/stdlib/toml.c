@@ -214,24 +214,25 @@ static bool put_inline(Writer *w, PlumValue v, int depth) {
                                  MAX_DEPTH);
     }
     char tmp[PLUM_FLOAT_BUF + 8];
-    switch (v.type) {
+    switch (plum_value_type(v)) {
     case PLUM_VAL_NONE:
         return plum_native_throw(w->n, PLUM_ERROR_VALUE,
                                  "toml.stringify: TOML has no null; leave the key out instead");
     case PLUM_VAL_BOOL:
-        put_str(&w->out, v.as.b ? "true" : "false");
+        put_str(&w->out, plum_as_bool(v) ? "true" : "false");
         return true;
     case PLUM_VAL_INT:
-        snprintf(tmp, sizeof tmp, "%lld", (long long)v.as.i);
+        snprintf(tmp, sizeof tmp, "%lld", (long long)plum_as_int(v));
         put_str(&w->out, tmp);
         return true;
     case PLUM_VAL_FLOAT:
-        put_str(&w->out, isnan(v.as.f) ? "nan" : plum_format_float(v.as.f, tmp));
+        put_str(&w->out,
+                isnan(plum_as_float(v)) ? "nan" : plum_format_float(plum_as_float(v), tmp));
         return true;
     case PLUM_VAL_OBJ:
         break;
     }
-    switch ((PlumObjType)v.as.obj->type) {
+    switch ((PlumObjType)plum_as_obj(v)->type) {
     case PLUM_OBJ_STRING: {
         const PlumString *s = plum_as_string(v);
         return put_quoted(w, s->chars, s->len);

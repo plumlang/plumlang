@@ -11,19 +11,19 @@
 
 static uint64_t hash_key(const PlumTable *t, PlumValue key) {
     unsigned char buf[9];
-    switch (key.type) {
+    switch (plum_value_type(key)) {
     case PLUM_VAL_INT:
         buf[0] = 'i';
         for (int i = 0; i < 8; i++) {
-            buf[1 + i] = (unsigned char)((uint64_t)key.as.i >> (8 * i));
+            buf[1 + i] = (unsigned char)((uint64_t)plum_as_int(key) >> (8 * i));
         }
         return plum_siphash(t->seed, buf, 9);
     case PLUM_VAL_BOOL:
         buf[0] = 'b';
-        buf[1] = key.as.b ? 1 : 0;
+        buf[1] = plum_as_bool(key) ? 1 : 0;
         return plum_siphash(t->seed, buf, 2);
     case PLUM_VAL_OBJ:
-        if (key.as.obj->type == PLUM_OBJ_STRING) {
+        if (plum_as_obj(key)->type == PLUM_OBJ_STRING) {
             const PlumString *s = plum_as_string(key);
             return plum_siphash(t->seed, s->chars, s->len);
         }
