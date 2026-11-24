@@ -66,7 +66,7 @@ static void print_help(FILE *out) {
           "  plum check <file>           Report every error without running\n"
           "  plum fmt <paths...>         Format files, and the .plum files in directories\n"
           "    --check                   ...change nothing; list files that would change\n"
-          "  plum fmt -                  Format standard input to standard output\n"
+          "  plum fmt --stdin            Format standard input to standard output (or `-`)\n"
           "  plum repl                   Type and run code interactively (also plain `plum`)\n"
           "  plum lsp                    The language server, for editors (docs/lsp.md)\n"
           "  plum version                Show the version and build\n"

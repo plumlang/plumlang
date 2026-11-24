@@ -8,7 +8,8 @@
  *                                     would change, and exit 1 if any would
  *   plum fmt --stdout <paths>...      write the formatted text to standard
  *                                     output instead
- *   plum fmt -                        standard input to standard output
+ *   plum fmt --stdin                  standard input to standard output
+ *   plum fmt -                        the same
  *
  * A file with syntax errors is reported and left as it is (exit 1).
  */
@@ -49,7 +50,8 @@ static void fail(FmtRun *run, int status) {
     }
 }
 
-/* Format one source text that came from `path` ("<stdin>" for -). */
+/* Format one source text that came from `path` ("<stdin>" for --stdin or -).
+ * With syntax errors nothing goes to standard output. */
 static void format_text(FmtRun *run, const char *path, const char *text, size_t len,
                         bool write_back) {
     PlumSource source = {path, text, len};
@@ -170,24 +172,34 @@ static void format_dir(FmtRun *run, const char *dir, int depth) {
 int plum_fmt_command(int argc, char **argv) {
     FmtRun run = {false, false, 0};
     int paths = 0;
+    bool from_stdin = false;
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--check") == 0) {
             run.check = true;
         } else if (strcmp(argv[i], "--stdout") == 0) {
             run.to_stdout = true;
+        } else if (strcmp(argv[i], "--stdin") == 0) {
+            from_stdin = true;
         } else if (argv[i][0] == '-' && argv[i][1] != '\0') {
             fprintf(stderr,
                     "plum: error: unknown option '%s'\n"
-                    "  hint: plum fmt [--check] [--stdout] <files or directories...>\n",
+                    "  hint: plum fmt [--check] [--stdout] <files or directories...>, "
+                    "or plum fmt --stdin\n",
                     argv[i]);
             return EXIT_USAGE;
         } else {
             paths++;
         }
     }
-    if (paths == 0) {
+    if (from_stdin && paths > 0) {
+        fputs("plum: error: `plum fmt --stdin` formats standard input and takes no paths\n"
+              "  hint: plum fmt --stdin < hello.plum, or plum fmt hello.plum\n",
+              stderr);
+        return EXIT_USAGE;
+    }
+    if (paths == 0 && !from_stdin) {
         fputs("plum: error: `plum fmt` needs files or directories to format\n"
-              "  hint: plum fmt hello.plum, plum fmt . (every .plum file), or plum fmt - "
+              "  hint: plum fmt hello.plum, plum fmt . (every .plum file), or plum fmt --stdin "
               "(standard input)\n",
               stderr);
         return EXIT_USAGE;
@@ -197,6 +209,9 @@ int plum_fmt_command(int argc, char **argv) {
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stdin), _O_BINARY);
 #endif
+    if (from_stdin) {
+        format_stdin(&run);
+    }
     for (int i = 0; i < argc; i++) {
         const char *path = argv[i];
         if (path[0] == '-' && path[1] != '\0') {

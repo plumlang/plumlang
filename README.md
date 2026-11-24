@@ -89,6 +89,7 @@ plum                                # the interactive prompt (REPL), see docs/re
 plum run program.plum [args...]     # run a program (or a directory with a plum.toml)
 plum check program.plum             # report every error without running
 plum fmt .                          # format every .plum file here (--check: only list them)
+plum fmt --stdin < program.plum     # format standard input to standard output, for editors
 plum stdlib [module]                # list the standard library
 plum lsp                            # the language server for editors, see docs/lsp.md
 plum run --check-leaks program.plum # report objects left alive in reference cycles

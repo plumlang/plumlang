@@ -8,7 +8,11 @@
 #   1. formatting the formatted text changes nothing (idempotent);
 #   2. `plum ast` of the formatted text is `plum ast` of the original
 #      (it prints no positions, so layout can't make a difference);
-#   3. every comment of the original is in the formatted text.
+#   3. every comment of the original is in the formatted text;
+#   4. `plum fmt --stdin` writes the same text to standard output.
+#
+# Then `plum fmt --stdin` is checked on its own: a syntax error goes to
+# standard error with exit 1 and nothing on standard output.
 #
 # Usage: sh tests/fmt-check.sh ./plum [DIR...]
 
@@ -97,6 +101,13 @@ for dir in $DIRS; do
             fail=$((fail + 1))
             continue
         fi
+        if ! "$PLUM" fmt --stdin <"$file" >"$tmp/stdin.plum" 2>"$tmp/err" \
+            || ! same_file "$tmp/once.plum" "$tmp/stdin.plum"; then
+            echo "FAIL $file: plum fmt --stdin differs from plum fmt --stdout"
+            show_diff "$tmp/once.plum" "$tmp/stdin.plum"
+            fail=$((fail + 1))
+            continue
+        fi
         comments "$file" >"$tmp/comments"
         missing=$(awk 'FNR == NR { text = text $0 "\n"; next }
                        index(text, $0) == 0 { print "    " $0 }' "$tmp/once.plum" "$tmp/comments")
@@ -107,6 +118,27 @@ for dir in $DIRS; do
         fi
     done
 done
+
+# plum fmt --stdin, for editors that pipe the buffer through a formatter.
+out=$(echo 'plant   x=1' | "$PLUM" fmt --stdin 2>"$tmp/err")
+status=$?
+if [ "$status" -ne 0 ] || [ "$out" != "plant x = 1" ]; then
+    echo "FAIL fmt --stdin: expected 'plant x = 1' (exit 0), got '$out' (exit $status)"
+    fail=$((fail + 1))
+fi
+echo 'plant = (' | "$PLUM" fmt --stdin >"$tmp/out" 2>"$tmp/err"
+status=$?
+if [ "$status" -ne 1 ] || [ -s "$tmp/out" ] || ! grep -q 'syntax errors' "$tmp/err"; then
+    echo "FAIL fmt --stdin with a syntax error: expected exit 1, errors on stderr, nothing on stdout (exit $status)"
+    sed 's/^/    out: /' "$tmp/out" | head -n 5
+    fail=$((fail + 1))
+fi
+"$PLUM" fmt --stdin some.plum </dev/null >/dev/null 2>&1
+status=$?
+if [ "$status" -ne 2 ]; then
+    echo "FAIL fmt --stdin with a path: expected exit 2 (wrong usage), got $status"
+    fail=$((fail + 1))
+fi
 
 # The examples and the modules written in Plumlang are kept formatted
 # (tests/lang is not: its files try out every way of laying code out).
