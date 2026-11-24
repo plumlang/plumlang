@@ -25,7 +25,7 @@ typedef struct Frame {
     PlumFunction *fn;
     const uint8_t *ip;
     const PlumValue *konst; /* fn's constants, which its instructions read */
-    uint32_t base; /* index of slot 0 in the stack */
+    uint32_t base;          /* index of slot 0 in the stack */
     /* 1: the function value sits at base - 1 and goes when the call
      * returns (a closure's captured variables are read through it); 0: the
      * caller didn't push it (CALL_GLOBAL, methods). */
@@ -2199,7 +2199,7 @@ static bool execute(VM *vm) {
     do {                                                                                      \
         uint16_t n_ = READ_U16();                                                             \
         uint16_t k_ = READ_U16();                                                             \
-        int64_t a = SLOT(n_).as.i, b = (int16_t)k_, r;                                       \
+        int64_t a = SLOT(n_).as.i, b = (int16_t)k_, r;                                        \
         if (fn(a, b, &r)) {                                                                   \
             FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int", \
                  (long long)a, symbol, (long long)b);                                         \
@@ -2231,14 +2231,14 @@ static bool execute(VM *vm) {
             ip += d_;                                      \
         }                                                  \
     } while (0)
-#define JUMP_UNLESS_LK(operator)                        \
-    do {                                                \
-        uint16_t n_ = READ_U16();                       \
-        uint16_t k_ = READ_U16();                       \
-        uint16_t d_ = READ_U16();                       \
-        if (!(SLOT(n_).as.i operator (int16_t)k_)) { \
-            ip += d_;                                   \
-        }                                               \
+#define JUMP_UNLESS_LK(operator)                     \
+    do {                                             \
+        uint16_t n_ = READ_U16();                    \
+        uint16_t k_ = READ_U16();                    \
+        uint16_t d_ = READ_U16();                    \
+        if (!(SLOT(n_).as.i operator(int16_t) k_)) { \
+            ip += d_;                                \
+        }                                            \
     } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
 #define CHECK_GLOBAL(n)                                                                      \
@@ -2634,8 +2634,7 @@ static bool execute(VM *vm) {
             if (f == 0xFFFF && plum_is_obj(*v, PLUM_OBJ_STRING)) {
                 break; /* already text */
             }
-            const char *format =
-                f == 0xFFFF ? NULL : plum_as_string(frame->konst[f])->chars;
+            const char *format = f == 0xFFFF ? NULL : plum_as_string(frame->konst[f])->chars;
             char error[256];
             SAVE_IP(); /* to_str() may run */
             PlumString *s = plum_value_text_with(*v, format, &vm->text_hook, error, sizeof error);
