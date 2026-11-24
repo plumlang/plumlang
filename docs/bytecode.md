@@ -55,7 +55,7 @@ as the plain instruction:
 |---|---|---|
 | `_K`: the right operand is a constant | `n % 2`: `MOD_INT_K` | `CONST`, `MOD_INT` |
 | `_L`: the right operand is a local | `x * y`: `MUL_FLOAT_L` | `GET_LOCAL`, `MUL_FLOAT` |
-| `_LK`: a local and a constant, pushed | `i + 1`: `ADD_INT_LK` | `GET_LOCAL`, `CONST`, `ADD_INT` |
+| `_LK`: a local and a literal from -32768 to 32767, held by the instruction itself, pushed | `i + 1`: `ADD_INT_LK` | `GET_LOCAL`, `CONST`, `ADD_INT` |
 | `LOCAL_`, `GLOBAL_`: change a variable in place | `n += 1`, `n = n // 2`: `LOCAL_ADD_INT_K`, `LOCAL_FLOORDIV_INT_K` | `GET_LOCAL`, `CONST`, `ADD_INT`, `SET_LOCAL` |
 | `JUMP_IF_NOT_`: compare and jump, for `if` and `while` | `while i < n`: `JUMP_IF_NOT_LT_INT` | `LT_INT`, `JUMP_IF_FALSE` |
 
@@ -185,11 +185,11 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 41 | `ADD_INT_L` | 1 | a + int local [a] |
 | 42 | `SUB_INT_L` | 1 | a - int local [a] |
 | 43 | `MUL_INT_L` | 1 | a * int local [a] |
-| 44 | `ADD_INT_LK` | 2 | push int local [a] + int constant [b] |
-| 45 | `SUB_INT_LK` | 2 | push int local [a] - int constant [b] |
-| 46 | `MUL_INT_LK` | 2 | push int local [a] * int constant [b] |
-| 47 | `FLOORDIV_INT_LK` | 2 | push int local [a] // int constant [b], which is above 0 |
-| 48 | `MOD_INT_LK` | 2 | push int local [a] % int constant [b], which is above 0 |
+| 44 | `ADD_INT_LK` | 2 | push int local [a] + [b] |
+| 45 | `SUB_INT_LK` | 2 | push int local [a] - [b] |
+| 46 | `MUL_INT_LK` | 2 | push int local [a] * [b] |
+| 47 | `FLOORDIV_INT_LK` | 2 | push int local [a] // [b], which is above 0 |
+| 48 | `MOD_INT_LK` | 2 | push int local [a] % [b], which is above 0 |
 | 49 | `LOCAL_ADD_INT_K` | 2 | int local [a] += int constant [b] |
 | 50 | `LOCAL_SUB_INT_K` | 2 | int local [a] -= int constant [b] |
 | 51 | `LOCAL_MUL_INT_K` | 2 | int local [a] *= int constant [b] |
@@ -307,12 +307,12 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 163 | `JUMP_IF_NOT_GE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a >= constant [a] |
 | 164 | `JUMP_IF_NOT_EQ_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a == constant [a] |
 | 165 | `JUMP_IF_NOT_NE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a != constant [a] |
-| 166 | `JUMP_IF_NOT_LT_INT_LK` | 3 | jump [c] unless int local [a] < int constant [b] |
-| 167 | `JUMP_IF_NOT_LE_INT_LK` | 3 | jump [c] unless int local [a] <= int constant [b] |
-| 168 | `JUMP_IF_NOT_GT_INT_LK` | 3 | jump [c] unless int local [a] > int constant [b] |
-| 169 | `JUMP_IF_NOT_GE_INT_LK` | 3 | jump [c] unless int local [a] >= int constant [b] |
-| 170 | `JUMP_IF_NOT_EQ_INT_LK` | 3 | jump [c] unless int local [a] == int constant [b] |
-| 171 | `JUMP_IF_NOT_NE_INT_LK` | 3 | jump [c] unless int local [a] != int constant [b] |
+| 166 | `JUMP_IF_NOT_LT_INT_LK` | 3 | jump [c] unless int local [a] < [b] |
+| 167 | `JUMP_IF_NOT_LE_INT_LK` | 3 | jump [c] unless int local [a] <= [b] |
+| 168 | `JUMP_IF_NOT_GT_INT_LK` | 3 | jump [c] unless int local [a] > [b] |
+| 169 | `JUMP_IF_NOT_GE_INT_LK` | 3 | jump [c] unless int local [a] >= [b] |
+| 170 | `JUMP_IF_NOT_EQ_INT_LK` | 3 | jump [c] unless int local [a] == [b] |
+| 171 | `JUMP_IF_NOT_NE_INT_LK` | 3 | jump [c] unless int local [a] != [b] |
 | 172 | `LOOP` | 1 | jump back [a] bytes |
 | 173 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
 | 174 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |

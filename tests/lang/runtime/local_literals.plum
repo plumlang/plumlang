@@ -1,0 +1,12 @@
+# A local and an int literal in one instruction: literals from -32768 to
+# 32767 are held by the instruction, bigger ones are constants.
+for i in 0..3 {
+    drop(i + 32767, i - 32768, i * -3, i // 2, i % 2)
+    drop(i + 32768, i - 32769, i * 100000, i // 70000, i % 70000)
+    if i < -32768 or i > 32767 or i == 1 {
+        drop("one")
+    }
+    if i >= 40000 or i != 2 {
+        drop("not two")
+    }
+}

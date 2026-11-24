@@ -443,7 +443,8 @@ static bool fused_right(Compiler *c, PlumTokenKind tok, bool fl, const PlumTy *l
 }
 
 /*
- * int local op int literal, pushed by one instruction (MOD_INT_LK, ...).
+ * int local op int literal from -32768 to 32767, pushed by one
+ * instruction (MOD_INT_LK, ...).
  * Emits it and returns true, or emits nothing and returns false.
  */
 static bool fused_both(Compiler *c, PlumTokenKind tok, const PlumExpr *left, const PlumExpr *right,
@@ -457,13 +458,14 @@ static bool fused_both(Compiler *c, PlumTokenKind tok, const PlumExpr *left, con
         {PLUM_TOK_PERCENT, PLUM_OP_MOD_INT_LK},
     };
     uint16_t slot;
-    if (right->kind != PLUM_EXPR_INT || !int_like(left->ty) || !int_like(right->ty) ||
-        !plain_local(c, left, &slot)) {
+    if (right->kind != PLUM_EXPR_INT || right->as.i < INT16_MIN || right->as.i > INT16_MAX ||
+        !int_like(left->ty) || !int_like(right->ty) || !plain_local(c, left, &slot)) {
         return false;
     }
     for (size_t i = 0; i < sizeof ops / sizeof ops[0]; i++) {
         if (ops[i].tok == tok && (i < 3 || right->as.i > 0)) { /* // and %: above 0 */
-            op2(c, ops[i].o, slot, constant(c, plum_int(right->as.i), right->span), line);
+            /* the literal is the instruction's operand: no constant to load */
+            op2(c, ops[i].o, slot, (uint16_t)(int16_t)right->as.i, line);
             return true;
         }
     }
@@ -610,14 +612,15 @@ static void compile_cond(Compiler *c, const PlumExpr *e, Jumps *out) {
                       : r->kind == PLUM_EXPR_FLOAT ? plum_float(r->as.f)
                                                    : plum_float((double)r->as.i);
         uint16_t slot;
-        if (kind == 0 && plain_local(c, l, &slot)) {
-            /* an int local against a literal: nothing pushed */
+        if (kind == 0 && r->as.i >= INT16_MIN && r->as.i <= INT16_MAX && plain_local(c, l, &slot)) {
+            /* an int local against a small literal: nothing pushed, nothing
+             * loaded but the local */
             static const PlumOpcode jumps_lk[6] = {
                 PLUM_OP_JUMP_IF_NOT_EQ_INT_LK, PLUM_OP_JUMP_IF_NOT_NE_INT_LK,
                 PLUM_OP_JUMP_IF_NOT_LT_INT_LK, PLUM_OP_JUMP_IF_NOT_LE_INT_LK,
                 PLUM_OP_JUMP_IF_NOT_GT_INT_LK, PLUM_OP_JUMP_IF_NOT_GE_INT_LK,
             };
-            op2(c, jumps_lk[row], slot, constant(c, k, r->span), line);
+            op2(c, jumps_lk[row], slot, (uint16_t)(int16_t)r->as.i, line);
             plum_chunk_write_u16(chunk(c), 0xFFFF, line);
             plum_array_push(out, chunk(c)->code.len - 2);
             return;
