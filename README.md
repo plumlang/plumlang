@@ -61,7 +61,17 @@ app.listen(8080)
 
 ## Install
 
-Plumlang is in **alpha**; see [Releases](#releases). Build it from source in a few seconds with a C11 compiler and `make`:
+```bash
+curl -fsSL https://plum.elixpo.com/install.sh | sh     # Linux and macOS
+irm https://plum.elixpo.com/install.ps1 | iex          # Windows (PowerShell)
+brew install plumlang/tap/plum                         # Homebrew
+```
+
+The installers check every download against the release's `SHA256SUMS`; see
+[the install guide](https://plum.elixpo.com/docs/install/) for versions and
+install locations. To try Plumlang without installing anything, use the
+[playground](https://plum.elixpo.com/playground/). To build from source you
+need a C11 compiler and `make`:
 
 ```bash
 git clone https://github.com/plumlang/plumlang
@@ -110,33 +120,57 @@ requests a second on one thread, and 10,000 idle connections open in 0.16 s.
 
 ## Releases
 
-| Version | Status |
-|---|---|
-| 1.0 | Planned. Specification frozen for 1.x compatibility, signed builds for every platform ([#35](https://github.com/plumlang/plumlang/issues/35)). |
-| Pre-releases | See [Releases](https://github.com/plumlang/plumlang/releases). One-line installers, Homebrew and winget arrive with [#33](https://github.com/plumlang/plumlang/issues/33). |
-
-Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+The current release is on [Releases](https://github.com/plumlang/plumlang/releases):
+eight builds for Linux, macOS and Windows, with `SHA256SUMS` and build
+attestations. The next one, 2.2.0, ships the `path`, `base64`, `hex`, `utf8`
+and `csv` modules and the Apache-2.0 licence
+([milestone](https://github.com/plumlang/plumlang/milestone/7)). Changes are
+recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Roadmap
 
-| Stage | Scope | Status |
-|---|---|---|
-| 1. Foundation | Specification, C scaffold, CI, licence, test harness | Done |
-| 2. Front end | Lexer, parser, diagnostics | Done |
-| 3. Semantic analysis | Scopes, type inference and checking | Done |
-| 4. Runtime | Bytecode compiler, virtual machine, reference counting | Done |
-| 5. Language and library | Collections, errors, OOP, modules, standard library, networking, HTTP, TLS | Done |
-| 6. Tooling and 1.0 | Formatter, REPL, editor support, playground, releases, documentation site | In progress |
+The language, its runtime and its standard library are complete. What comes
+next is staged in milestones, each a set of issues with a "done when":
 
-Every item is an issue; the full list is in [#36](https://github.com/plumlang/plumlang/issues/36).
+| Milestone | Scope |
+|---|---|
+| [2.2: Ship and polish](https://github.com/plumlang/plumlang/milestone/7) | The 2.2.0 release, `plum test`, a deeper language server, benchmarks in CI |
+| [2.3: Fast VM](https://github.com/plumlang/plumlang/milestone/8) | Typed opcodes, fixed field offsets, cheaper calls: at least 5x Python |
+| [2.4: Batteries](https://github.com/plumlang/plumlang/milestone/9) | `regex`, `datetime`, `process`, a C FFI, embedding, Orchard 1.0, `plum doc` |
+| [3.0: Native and ready](https://github.com/plumlang/plumlang/milestone/10) | A native compiler, multicore tasks, a debugger and profiler, a frozen spec |
+
+[#137](https://github.com/plumlang/plumlang/issues/137) is the checklist for
+calling Plumlang ready for production; the whole roadmap is
+[#36](https://github.com/plumlang/plumlang/issues/36).
+
+## Ecosystem
+
+| | |
+|---|---|
+| **VS Code** | [Plumlang extension](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) on the Marketplace: highlighting, errors as you type, hover, go to definition, completion, formatting. Open VSX: coming. |
+| **Zed** | [zed-plum](https://github.com/plumlang/zed-plum), in review for Zed's extension gallery; install it now as a dev extension. |
+| **Helix** | Built-in support in review ([helix#16493](https://github.com/helix-editor/helix/pull/16493)). |
+| **Other editors** | Any editor with LSP support can run `plum lsp`; see [the language server guide](https://plum.elixpo.com/docs/tools/lsp/). |
+| **Tree-sitter** | [tree-sitter-plum](https://github.com/plumlang/tree-sitter-plum): the grammar for Neovim, Helix, Zed and others; npm `@plumlang/tree-sitter-plum`. |
+| **Highlighting on the web** | [highlightjs-plum](https://github.com/plumlang/highlightjs-plum) for highlight.js (npm `@plumlang/highlightjs-plum`) and [pygments-plum](https://github.com/plumlang/pygments-plum) for Pygments, Sphinx and MkDocs (PyPI `pygments-plum`). |
+| **In JavaScript** | `@plumlang/plumlang` on npm: run, check and format Plumlang in Node or the browser (WebAssembly), from 2.2.0. |
+| **CI** | [setup-plum](https://github.com/plumlang/setup-plum): `uses: plumlang/setup-plum@v1` installs a verified `plum` in GitHub Actions. |
+| **Packages** | [Orchard](https://plum.elixpo.com/packages/), the package index: `plum add`, `plum publish`. |
 
 ## Repositories
 
 | Repository | Contents |
 |---|---|
-| [plumlang](https://github.com/plumlang/plumlang) | The language (this repository). |
-| [plum.elixpo](https://github.com/plumlang/plum.elixpo) | The website at plum.elixpo.com: documentation and playground. |
-| [branding](https://github.com/plumlang/branding) | Logos, icons, and the VS Code extension. |
+| [plumlang](https://github.com/plumlang/plumlang) | The language: compiler, virtual machine, standard library, language server, specification and tests (this repository). |
+| [plum.elixpo](https://github.com/plumlang/plum.elixpo) | The website at plum.elixpo.com: documentation, packages and the playground. |
+| [registry](https://github.com/plumlang/registry) | Orchard, the package index. |
+| [branding](https://github.com/plumlang/branding) | Logos, icons, colours and the VS Code extension. |
+| [tree-sitter-plum](https://github.com/plumlang/tree-sitter-plum) | The Tree-sitter grammar. |
+| [zed-plum](https://github.com/plumlang/zed-plum) | The Zed extension. |
+| [highlightjs-plum](https://github.com/plumlang/highlightjs-plum) | The highlight.js grammar. |
+| [pygments-plum](https://github.com/plumlang/pygments-plum) | The Pygments lexer plugin. |
+| [setup-plum](https://github.com/plumlang/setup-plum) | The GitHub Action that installs `plum`. |
+| [homebrew-tap](https://github.com/plumlang/homebrew-tap) | The Homebrew formula. |
 
 ## Contributing
 
