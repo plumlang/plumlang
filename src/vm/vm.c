@@ -390,7 +390,7 @@ static bool pow_overflows(int64_t base, int64_t exp, int64_t *out) {
  * 32-bit path, where floor division and C's truncating one agree.
  */
 static inline bool small_positive(int64_t a, int64_t b) {
-    return a >= 0 && a <= UINT32_MAX && b > 0 && b <= UINT32_MAX;
+    return a >= 0 && a <= (int64_t)UINT32_MAX && b > 0 && b <= (int64_t)UINT32_MAX;
 }
 
 static inline int64_t floor_div(int64_t a, int64_t b) {
@@ -3338,6 +3338,19 @@ static bool execute(VM *vm) {
 #undef FLOAT_BINARY
 #undef CHECKED
 #undef STR_COMPARE
+#undef KONST
+#undef CHECKED_WITH
+#undef FLOAT_WITH
+#undef JUMP_UNLESS
+#undef JUMP_UNLESS_K
+#undef PLACE_CHECKED
+#undef NO_CHECK
+#undef GLOBAL
+#undef LOCAL_CHECKED
+#undef GLOBAL_CHECKED
+#undef PUSH_INT
+#undef PUSH_CHECKED
+#undef ENTER_FRAME
 }
 
 /*
