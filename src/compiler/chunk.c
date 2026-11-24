@@ -216,6 +216,10 @@ static void disassemble_chunk(FILE *out, const PlumFunction *fn) {
         case PLUM_OP_CALL_BUILTIN:
             fprintf(out, " %s %u", plum_builtin_name((PlumBuiltin)a), b);
             break;
+        case PLUM_OP_BUILD_TEXT:
+            fprintf(out, " %u %u  ; ", a, b);
+            print_constant(out, chunk->constants.items[b]);
+            break;
         default:
             for (int i = 0; i < n; i++) {
                 fprintf(out, " %u", i == 0 ? a : i == 1 ? b : c3);

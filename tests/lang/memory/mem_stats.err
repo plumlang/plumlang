@@ -1,6 +1,6 @@
 memory used by this run (--mem-stats):
 values made:
-  strings              27
+  strings              17
   lists                4
   maps                 1
   sets                 1

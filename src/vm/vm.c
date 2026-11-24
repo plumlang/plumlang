@@ -2116,6 +2116,45 @@ static inline void push_copy(VM *vm, const PlumValue *from) {
     }
 }
 
+/* Let go of the top n values, inline while something else still holds
+ * each one (#122): a part of a text being joined is often a constant. */
+static inline void drop_top(VM *vm, size_t n) {
+    PlumValue *v = &vm->stack[vm->top - n];
+    vm->top -= n;
+    for (size_t i = 0; i < n; i++) {
+        if (plum_is_ref(v[i])) {
+            drop_ref(&v[i]);
+        }
+    }
+}
+
+/* How many characters the decimal text of `i` takes. */
+static size_t int_text_length(int64_t i) {
+    uint64_t u = i < 0 ? (uint64_t)0 - (uint64_t)i : (uint64_t)i;
+    size_t n = i < 0 ? 2 : 1;
+    while (u >= 10) {
+        u /= 10;
+        n++;
+    }
+    return n;
+}
+
+/* Write the decimal text of `i` (as "%lld" would) at `to`, with no '\0';
+ * returns its length. */
+static size_t int_text(char *to, int64_t i) {
+    size_t n = int_text_length(i);
+    uint64_t u = i < 0 ? (uint64_t)0 - (uint64_t)i : (uint64_t)i;
+    char *at = to + n;
+    do {
+        *--at = (char)('0' + u % 10);
+        u /= 10;
+    } while (u != 0);
+    if (i < 0) {
+        *--at = '-';
+    }
+    return n;
+}
+
 /* Read a 16-bit operand and move past it. */
 static inline uint16_t read_u16(const uint8_t **ip) {
     uint16_t v = plum_chunk_read_u16(*ip);
@@ -2869,7 +2908,43 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 at -= part->len;
                 memcpy(s->chars + at, part->chars, part->len);
             }
-            unwind_to(vm, vm->top - n);
+            drop_top(vm, n);
+            push(vm, plum_obj(&s->obj));
+            break;
+        }
+        case PLUM_OP_BUILD_TEXT: {
+            uint16_t n = READ_U16();
+            const char *kinds = plum_as_string(KONST(READ_U16()))->chars;
+            PlumValue *parts = &vm->stack[vm->top - n];
+            size_t total = 0;
+            for (uint16_t i = 0; i < n; i++) {
+                size_t len = kinds[i] == 'i'   ? int_text_length(plum_as_int(parts[i]))
+                             : kinds[i] == 'b' ? (plum_as_bool(parts[i]) ? 4 : 3)
+                                               : plum_as_string(parts[i])->len;
+                total = plum_add_size(total, len);
+            }
+            if (total > PLUM_MAX_STRING) {
+                FAIL(PLUM_ERROR_VALUE,
+                     "the text would be longer than %zu bytes, the most a "
+                     "str can hold",
+                     PLUM_MAX_STRING);
+            }
+            PlumString *s = plum_string_alloc(total);
+            char *to = s->chars;
+            for (uint16_t i = 0; i < n; i++) {
+                if (kinds[i] == 'i') {
+                    to += int_text(to, plum_as_int(parts[i]));
+                } else if (kinds[i] == 'b') {
+                    bool b = plum_as_bool(parts[i]);
+                    memcpy(to, b ? "good" : "bad", b ? 4 : 3);
+                    to += b ? 4 : 3;
+                } else {
+                    const PlumString *part = plum_as_string(parts[i]);
+                    memcpy(to, part->chars, part->len);
+                    to += part->len;
+                }
+            }
+            drop_top(vm, n);
             push(vm, plum_obj(&s->obj));
             break;
         }

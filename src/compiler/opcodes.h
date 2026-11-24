@@ -118,6 +118,8 @@
     X(GE_STR, 0, "a >= b by code point")                                                           \
     X(TO_STRING, 1, "text of the top value, with format constant [a] (0xFFFF: none)")              \
     X(BUILD_STRING, 1, "join the top [a] strings")                                                 \
+    X(BUILD_TEXT, 2,                                                                               \
+      "join the top [a] values as text: constant [b] says each one's type (s str, i int, b bool)") \
     X(APPEND_LOCAL, 2, "str local [a] += the top [b] strings, in place if it has one owner")       \
     X(APPEND_GLOBAL, 2, "str global [a] += the top [b] strings, in place if it has one owner")     \
     /* Lists */                                                                                    \

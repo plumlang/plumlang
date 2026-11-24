@@ -780,29 +780,56 @@ static void compile_binary(Compiler *c, const PlumExpr *e) {
 }
 
 /* Push the text of each part of an interpolated string. */
-static void compile_interp_parts(Compiler *c, const PlumExpr *e) {
+/*
+ * Push the parts of an interpolated string, each as its text. With
+ * `kinds`, an int or bool part with no format, and a str part with none,
+ * is pushed as it is, and kinds[i] says which ('i', 'b', 's'): BUILD_TEXT
+ * writes its text straight into the result, with no string made for it
+ * (#122). Making the text of an int or bool can't fail or run any code, so
+ * doing it at the end changes nothing a program can see.
+ */
+static void compile_interp_parts(Compiler *c, const PlumExpr *e, char *kinds) {
     for (size_t i = 0; i < e->as.interp.count; i++) {
         const PlumInterpPart *part = &e->as.interp.parts[i];
+        if (kinds != NULL) {
+            kinds[i] = 's';
+        }
         if (part->expr == NULL) {
             emit_const(c, plum_obj(&plum_string_new(part->text, part->len)->obj), e->span);
-        } else {
-            compile_expr(c, part->expr);
-            uint16_t fmt = NO_FORMAT;
-            if (part->format != NULL) {
-                fmt =
-                    constant(c, plum_obj(&plum_string_new(part->format, strlen(part->format))->obj),
-                             e->span);
-            }
-            op1(c, PLUM_OP_TO_STRING, fmt, part->expr->span.line);
+            continue;
         }
+        compile_expr(c, part->expr);
+        const PlumTy *t = part->expr->ty;
+        if (kinds != NULL && part->format == NULL &&
+            (ty_is(t, PLUM_TY_INT) || ty_is(t, PLUM_TY_BOOL) || ty_is(t, PLUM_TY_STR))) {
+            kinds[i] = ty_is(t, PLUM_TY_INT) ? 'i' : ty_is(t, PLUM_TY_BOOL) ? 'b' : 's';
+            continue;
+        }
+        uint16_t fmt = NO_FORMAT;
+        if (part->format != NULL) {
+            fmt = constant(c, plum_obj(&plum_string_new(part->format, strlen(part->format))->obj),
+                           e->span);
+        }
+        op1(c, PLUM_OP_TO_STRING, fmt, part->expr->span.line);
     }
 }
 
 static void compile_interp(Compiler *c, const PlumExpr *e) {
-    compile_interp_parts(c, e);
-    if (e->as.interp.count != 1) {
-        op1(c, PLUM_OP_BUILD_STRING, (uint16_t)e->as.interp.count, e->span.line);
+    size_t n = e->as.interp.count;
+    if (n == 1) {
+        compile_interp_parts(c, e, NULL);
+        return;
     }
+    char *kinds = plum_alloc(n + 1);
+    compile_interp_parts(c, e, kinds);
+    kinds[n] = '\0';
+    if (strspn(kinds, "s") == n) {
+        op1(c, PLUM_OP_BUILD_STRING, (uint16_t)n, e->span.line);
+    } else {
+        uint16_t k = constant(c, plum_obj(&plum_string_new(kinds, n)->obj), e->span);
+        op2(c, PLUM_OP_BUILD_TEXT, (uint16_t)n, k, e->span.line);
+    }
+    plum_free(kinds);
 }
 
 /* ------------------------------------------------------------------ */
@@ -843,7 +870,7 @@ static size_t emit_text_pieces(Compiler *c, const PlumExpr *e, const PlumExpr *s
         return n + emit_text_pieces(c, e->as.binary.right, skip);
     }
     if (e->kind == PLUM_EXPR_INTERP && e->as.interp.count > 1) {
-        compile_interp_parts(c, e);
+        compile_interp_parts(c, e, NULL);
         return e->as.interp.count;
     }
     compile_expr(c, e);
