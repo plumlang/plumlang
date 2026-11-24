@@ -1,0 +1,16 @@
+tests/lang/testing/failing_test.plum
+  ok   test_average
+  FAIL test_average_rounds_down
+       tests/lang/testing/failing_test.plum:12: AssertError: assertion failed: average of 1 and 2 should round up
+         in test_average_rounds_down, line 12
+       output:
+         checking 1 and 2
+  FAIL test_empty_list
+       tests/lang/testing/failing_test.plum:4: ZeroDivisionError: division by zero: 0 // 0
+         in average, line 4
+         in test_empty_list, line 16
+  ok   test_after_failures
+  FAIL test_with_parameter
+       tests/lang/testing/failing_test.plum:23: a test takes no parameters and returns nothing
+
+2 passed, 3 failed

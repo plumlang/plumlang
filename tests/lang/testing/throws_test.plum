@@ -1,0 +1,28 @@
+# exit: 1
+# test.throws: the error a function throws, checked with `is`.
+seed test
+
+tree Overdrawn : Error {
+    short_by: int
+}
+
+branch withdraw(balance: int, amount: int) -> int {
+    if amount > balance {
+        throw Overdrawn("not enough money", amount - balance)
+    }
+    return balance - amount
+}
+
+branch test_parse_error() {
+    assert(test.throws(() => { int("abc") }) is ParseError)
+}
+
+branch test_own_error() {
+    plant e = test.throws(() => { withdraw(10, 25) })
+    assert(e is Overdrawn)
+    assert(e.message == "not enough money")
+}
+
+branch test_nothing_thrown() {
+    test.throws(() => { withdraw(10, 5) })
+}

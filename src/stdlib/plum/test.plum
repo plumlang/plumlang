@@ -1,0 +1,18 @@
+# module: test, helpers for the tests that `plum test` runs (docs/test.md).
+#
+# Plain `assert(condition, message)` covers most checks; this module adds
+# what assert can't say on its own. The source is src/stdlib/plum/test.plum;
+# `make stdlib-embed` builds it into the binary.
+
+# Run `f` and return the error it throws. If it throws nothing, the test
+# fails with an AssertError. Check which error with `is`:
+#
+#     assert(test.throws(() => { int("abc") }) is ParseError)
+branch throws(f: () -> none) -> Error {
+    try {
+        f()
+    } catch e {
+        return e
+    }
+    throw AssertError("expected an error, but none was thrown")
+}

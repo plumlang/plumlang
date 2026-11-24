@@ -1,0 +1,9 @@
+tests/lang/testing/throws_test.plum
+  ok   test_parse_error
+  ok   test_own_error
+  FAIL test_nothing_thrown
+       tests/lang/testing/throws_test.plum:27: AssertError: expected an error, but none was thrown
+         in throws, line 17 of <stdlib test>
+         in test_nothing_thrown, line 27
+
+2 passed, 1 failed

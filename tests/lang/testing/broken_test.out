@@ -1,0 +1,4 @@
+tests/lang/testing/broken_test.plum
+  FAIL it has errors, so its tests did not run
+
+0 passed, 0 failed, 1 file with errors

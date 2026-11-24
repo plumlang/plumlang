@@ -13,6 +13,7 @@
  *   plum check <file>        report every error without running the program
  *   plum dis <file>          print the compiled bytecode (for debugging)
  *   plum fmt <paths>         format source files (src/fmt/command.c)
+ *   plum test [paths]        run the tests (src/cli/test.c)
  *   plum add, remove, install, package, publish, search
  *                            the package commands (src/cli/orchard.c)
  *   plum lsp                 the language server, for editors (src/lsp/)
@@ -20,10 +21,9 @@
  * Exit codes: 0 success, 1 the program failed, 2 wrong usage,
  * 3 the source file could not be read.
  */
-#include "check/flow.h"
-#include "check/resolve.h"
-#include "check/typecheck.h"
 #include "cli/orchard.h"
+#include "cli/pipeline.h"
+#include "cli/test.h"
 #include "compiler/chunk.h"
 #include "compiler/compiler.h"
 #include "diag/diag.h"
@@ -67,6 +67,9 @@ static void print_help(FILE *out) {
           "  plum fmt <paths...>         Format files, and the .plum files in directories\n"
           "    --check                   ...change nothing; list files that would change\n"
           "  plum fmt --stdin            Format standard input to standard output (or `-`)\n"
+          "  plum test [paths...]        Run the tests: test_ functions in *_test.plum files\n"
+          "    --filter TEXT             ...only those whose name contains TEXT\n"
+          "    --json                    ...and report as JSON\n"
           "  plum repl                   Type and run code interactively (also plain `plum`)\n"
           "  plum lsp                    The language server, for editors (docs/lsp.md)\n"
           "  plum version                Show the version and build\n"
@@ -237,33 +240,10 @@ static int cmd_front(const char *name, FrontStage stage, int argc, char **argv,
         return PLUM_EXIT_NOINPUT;
     }
 
-    /* Each module in order, imports first: one that fails stops the rest,
-     * whose imports would only look wrong. */
-    bool ok = !plum_modules_failed(&modules);
-    for (size_t i = 0; ok && i < modules.count; i++) {
-        PlumModule *m = modules.items[i];
-        plum_resolve(&m->program, &modules.arena, &modules.names, &m->diags, &m->exports);
-        if (m->diags.errors == 0) {
-            plum_typecheck(&m->program, &modules.arena, &modules.names, &m->diags);
-        }
-        if (m->diags.errors == 0) {
-            plum_check_flow(&m->program, &m->diags);
-        }
-        ok = m->diags.errors == 0;
-    }
+    bool ok = plum_cli_check(&modules);
     PlumCompiled compiled = {0};
     if (ok && (stage == STAGE_DIS || stage == STAGE_RUN)) {
-        PlumCompileModule *list = calloc(modules.count, sizeof *list);
-        for (size_t i = 0; list != NULL && i < modules.count; i++) {
-            PlumModule *m = modules.items[i];
-            list[i].program = &m->program;
-            list[i].diags = &m->diags;
-            list[i].path = i + 1 < modules.count ? m->path : NULL;
-        }
-        if (list != NULL) {
-            compiled = plum_compile_modules(list, modules.count, &modules.names);
-        }
-        free(list);
+        compiled = plum_cli_compile(&modules);
         if (compiled.main != NULL && stage == STAGE_DIS) {
             plum_disassemble(stdout, compiled.main);
         }
@@ -384,6 +364,9 @@ int main(int argc, char **argv) {
     }
     if (strcmp(cmd, "fmt") == 0) {
         return plum_fmt_command(argc - 2, argv + 2);
+    }
+    if (strcmp(cmd, "test") == 0) {
+        return plum_test_command(argc - 2, argv + 2);
     }
     if (strcmp(cmd, "lsp") == 0) {
         return plum_lsp_command(argc - 2, argv + 2);

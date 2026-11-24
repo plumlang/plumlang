@@ -6,6 +6,10 @@ Each `NAME.plum` here is a program run by `make test` (through
 - `NAME.out` holds the expected standard output; the program must exit 0.
 - `NAME.err` holds the expected standard error; the program must exit 1.
 
+A file named `NAME_test.plum` is run with `plum test` instead (the tests
+of the test runner are in `testing/`); a `# command: test --json` line
+among the first three gives it options.
+
 A first line `# pending: <reason>` marks a test that cannot pass until a
 feature lands. It runs, is reported as pending, and doesn't fail the run;
 once it passes, the run fails until the line is removed.
