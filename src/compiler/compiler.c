@@ -216,21 +216,33 @@ static void finish_moves(FnState *fs) {
     plum_array_free(&fs->movable);
 }
 
+/* What a slot holds, for finish_moves: a number or bool (no reference to
+ * move, and no change to the slot's state), a value whose freeing no one
+ * can see (moved on its last read), or anything else (never moved). */
+enum { SLOT_NUMBER, SLOT_MOVABLE, SLOT_OTHER };
+
+static int slot_holds(const PlumTy *t) {
+    if (t != NULL && (t->kind == PLUM_TY_INT || t->kind == PLUM_TY_FLOAT ||
+                      t->kind == PLUM_TY_BOOL || t->kind == PLUM_TY_BYTE)) {
+        return SLOT_NUMBER;
+    }
+    return freed_unseen(t) ? SLOT_MOVABLE : SLOT_OTHER;
+}
+
 /* Record what a slot holds, for finish_moves. */
-static void mark_slot(FnState *fs, int slot, bool unseen) {
+static void mark_slot(FnState *fs, int slot, int holds) {
     while (fs->movable.len <= (size_t)slot) {
         plum_array_push(&fs->movable, 0);
     }
-    if (!unseen) {
+    if (holds == SLOT_OTHER) {
         fs->movable.items[slot] = 2;
-    } else if (fs->movable.items[slot] == 0) {
+    } else if (holds == SLOT_MOVABLE && fs->movable.items[slot] == 0) {
         fs->movable.items[slot] = 1;
     }
 }
 
-/* A slot for `sym` (NULL: a hidden one); `unseen` if what it holds can be
- * freed with no program seeing when (finish_moves). */
-static uint16_t new_slot(Compiler *c, PlumSymbol *sym, PlumSpan span, bool unseen) {
+/* A slot for `sym` (NULL: a hidden one), which holds `holds` (SLOT_...). */
+static uint16_t new_slot(Compiler *c, PlumSymbol *sym, PlumSpan span, int holds) {
     FnState *fs = c->fs;
     if (fs->next_slot >= MAX_SLOTS) {
         plum_diag_error(c->diags, span, "E0602",
@@ -241,7 +253,7 @@ static uint16_t new_slot(Compiler *c, PlumSymbol *sym, PlumSpan span, bool unsee
     if (fs->next_slot > fs->fn->slot_count) {
         fs->fn->slot_count = fs->next_slot;
     }
-    mark_slot(fs, slot, unseen);
+    mark_slot(fs, slot, holds);
     if (sym != NULL) {
         sym->slot = slot;
         sym->has_slot = true;
@@ -250,7 +262,7 @@ static uint16_t new_slot(Compiler *c, PlumSymbol *sym, PlumSpan span, bool unsee
 }
 
 static uint16_t new_local(Compiler *c, PlumSymbol *sym, PlumSpan span) {
-    return new_slot(c, sym, span, sym != NULL && freed_unseen(sym->ty));
+    return new_slot(c, sym, span, sym != NULL ? slot_holds(sym->ty) : SLOT_OTHER);
 }
 
 /*
@@ -2876,7 +2888,7 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
     uint32_t line = s->span.line;
     int saved = c->fs->next_slot;
     uint16_t list = new_local(c, NULL, s->span);
-    new_slot(c, NULL, s->span, true); /* list + 1: the position, an int */
+    new_slot(c, NULL, s->span, SLOT_NUMBER); /* list + 1: the position */
     uint16_t var = new_local(c, s->symbol, s->span);
     if (two) {
         new_local(c, s->symbol2, s->span); /* var + 1: the item, or the value */
@@ -2924,7 +2936,7 @@ static void compile_for(Compiler *c, const PlumStmt *s) {
      * loop counts in a hidden slot and copies the count into it. */
     bool boxed = s->symbol != NULL && s->symbol->captured;
     uint16_t var = new_local(c, boxed ? NULL : s->symbol, s->span); /* `for _ in`: no symbol */
-    new_slot(c, NULL, s->span, true);                               /* var + 1: the end, an int */
+    new_slot(c, NULL, s->span, SLOT_NUMBER);                        /* var + 1: the end */
     uint16_t user = boxed ? new_local(c, s->symbol, s->span) : var;
     bool inclusive = it->as.range.inclusive;
 
