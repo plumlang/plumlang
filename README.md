@@ -56,7 +56,7 @@ app.listen(8080)
 | **Object-oriented** | Classes (`tree`), single inheritance, traits, operator methods, `to_str` and `equals`. |
 | **Expressive** | Closures, `map` / `filter` / `reduce`, kinds with `match`, `try` / `catch` / `finally`, modules. |
 | **Concurrent** | Tasks (`spawn`) and channels on one thread, with an event loop over epoll, kqueue or WSAPoll. |
-| **Batteries included** | `math`, `str`, `io`, `os`, `time`, `fs`, `path`, `json`, `csv`, `base64`, `hex`, `utf8`, `hash`, `uuid`, `semver`, `net` (TCP, UDP, DNS, TLS), and an HTTP server and client. |
+| **Batteries included** | `math`, `str`, `io`, `os`, `time`, `fs`, `path`, `json`, `csv`, `base64`, `hex`, `utf8`, `hash`, `uuid`, `semver`, `url`, `net` (TCP, UDP, DNS, TLS), and an HTTP server and client. |
 | **One binary** | A single `plum` for Linux, macOS and Windows, built with GCC, Clang or MSVC. |
 
 ## Install

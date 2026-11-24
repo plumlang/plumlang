@@ -185,5 +185,6 @@ extern const PlumNativeModule plum_module_utf8;
 extern const PlumNativeModule plum_module_csv;
 extern const PlumNativeModule plum_module_uuid;
 extern const PlumNativeModule plum_module_semver;
+extern const PlumNativeModule plum_module_url;
 
 #endif /* PLUM_STDLIB_NATIVE_H */
