@@ -1,0 +1,139 @@
+https://User:Pa%20ss@example.com/a/c%20d?x=1&y=%C3%A9#frag%20ment
+   scheme=https user=User pass=Pa%20ss host=example.com port= path=/a/c%20d query=x=1&y=%C3%A9 fragment=frag%20ment
+http://example.com:8080/
+   scheme=http user= pass= host=example.com port=8080 path=/ query= fragment=
+http://example.com/ab
+   scheme=http user= pass= host=example.com port= path=/ab query= fragment=
+http://:secret@example.com/
+   scheme=http user= pass=secret host=example.com port= path=/ query= fragment=
+http://a%40b@example.com/
+   scheme=http user=a%40b pass= host=example.com port= path=/ query= fragment=
+http://[2001:db8::1]:8080/p
+   scheme=http user= pass= host=[2001:db8::1] port=8080 path=/p query= fragment=
+http://[::1]/
+   scheme=http user= pass= host=[::1] port= path=/ query= fragment=
+http://[1:0:0:2::3]/
+   scheme=http user= pass= host=[1:0:0:2::3] port= path=/ query= fragment=
+http://[1::2:0:0:3]/
+   scheme=http user= pass= host=[1::2:0:0:3] port= path=/ query= fragment=
+http://[::]/
+   scheme=http user= pass= host=[::] port= path=/ query= fragment=
+http://[::ffff:c0a8:1]/
+   scheme=http user= pass= host=[::ffff:c0a8:1] port= path=/ query= fragment=
+http://127.0.0.1/
+   scheme=http user= pass= host=127.0.0.1 port= path=/ query= fragment=
+http://127.0.0.1/
+   scheme=http user= pass= host=127.0.0.1 port= path=/ query= fragment=
+http://127.0.0.1/
+   scheme=http user= pass= host=127.0.0.1 port= path=/ query= fragment=
+http://192.168.0.1/x
+   scheme=http user= pass= host=192.168.0.1 port= path=/x query= fragment=
+http://a/%7Euser/x
+   scheme=http user= pass= host=a port= path=/%7Euser/x query= fragment=
+http://a/b/c/
+   scheme=http user= pass= host=a port= path=/b/c/ query= fragment=
+http://a.b/d
+   scheme=http user= pass= host=a.b port= path=/d query= fragment=
+http://a/%7Bx%7D/%60y%60/%3Cz%3E/%22w%22/^|
+   scheme=http user= pass= host=a port= path=/%7Bx%7D/%60y%60/%3Cz%3E/%22w%22/^| query= fragment=
+http://a/?q=%27x%27%20%3Cy%3E#%60frag%60
+   scheme=http user= pass= host=a port= path=/ query=q=%27x%27%20%3Cy%3E fragment=%60frag%60
+http://a/
+   scheme=http user= pass= host=a port= path=/ query= fragment=
+http://example.com/?
+   scheme=http user= pass= host=example.com port= path=/ query= fragment=
+https://x/
+   scheme=https user= pass= host=x port= path=/ query= fragment=
+mailto:Someone@Example.com?subject=hi%20there
+   scheme=mailto user= pass= host= port= path=Someone@Example.com query=subject=hi%20there fragment=
+urn:isbn:0451450523
+   scheme=urn user= pass= host= port= path=isbn:0451450523 query= fragment=
+file:///etc/hosts
+   scheme=file user= pass= host= port= path=/etc/hosts query= fragment=
+file:///y
+   scheme=file user= pass= host= port= path=/y query= fragment=
+file:///tmp/a
+   scheme=file user= pass= host= port= path=/tmp/a query= fragment=
+foo://Host/B?Q#F
+   scheme=foo user= pass= host=Host port= path=/B query=Q fragment=F
+foo:/.//x
+   scheme=foo user= pass= host= port= path=//x query= fragment=
+git+ssh://git@github.com:22/plumlang/plumlang.git
+   scheme=git+ssh user=git pass= host=github.com port=22 path=/plumlang/plumlang.git query= fragment=
+https://example.com/b/
+https://example.com/a%20b/c%3Fd%23e?x=1%202%233#top
+http://me%40home:p%3Aw@[::1]:8080/x
+mailto:x@y.z
+http://a/
+https://example.com/search?q=2#r
+g:h -> g:h
+g -> http://a/b/c/g
+./g -> http://a/b/c/g
+g/ -> http://a/b/c/g/
+/g -> http://a/g
+//g -> http://g/
+?y -> http://a/b/c/d;p?y
+g?y -> http://a/b/c/g?y
+#s -> http://a/b/c/d;p?q#s
+g#s -> http://a/b/c/g#s
+g?y#s -> http://a/b/c/g?y#s
+;x -> http://a/b/c/;x
+g;x -> http://a/b/c/g;x
+g;x?y#s -> http://a/b/c/g;x?y#s
+ -> http://a/b/c/d;p?q
+. -> http://a/b/c/
+./ -> http://a/b/c/
+.. -> http://a/b/
+../ -> http://a/b/
+../g -> http://a/b/g
+../.. -> http://a/
+../../ -> http://a/
+../../g -> http://a/g
+../../../g -> http://a/g
+../../../../g -> http://a/g
+/./g -> http://a/g
+/../g -> http://a/g
+g. -> http://a/b/c/g.
+.g -> http://a/b/c/.g
+g.. -> http://a/b/c/g..
+..g -> http://a/b/c/..g
+./../g -> http://a/b/g
+./g/. -> http://a/b/c/g/
+g/./h -> http://a/b/c/g/h
+g/../h -> http://a/b/c/h
+g;x=1/./y -> http://a/b/c/g;x=1/y
+g;x=1/../y -> http://a/b/c/y
+g?y/./x -> http://a/b/c/g?y/./x
+g?y/../x -> http://a/b/c/g?y/../x
+g#s/./x -> http://a/b/c/g#s/./x
+g#s/../x -> http://a/b/c/g#s/../x
+https://x/y mailto:a@b?c#x http://a/b
+http://other/x foo://h/c http://a/b?q#g
+a%20b%26c%3Dd%2F%C3%A9~%21%2A%27%28%29 
+a b&c 100% %zz%4% 🍑 a+b
+any text: ä ö ü / ? # & =
+{"a": ["1", "2", "3"], "b": ["x y"], "c": [""], "d": ["&"], "": ["e"]}
+{:} {:} {"q": ["a=b"]}
+q=plum+lang&a=1&a=2%263&%C3%A9=*-._%7E
+["a b", "c+d", "e%f"]
+url.parse: "example.com/x" isn't a URL: it has no scheme, like https:, at the start; for a URL relative to another, use url.join(base, ref)
+url.parse: "/just/a/path" isn't a URL: it has no scheme, like https:, at the start; for a URL relative to another, use url.join(base, ref)
+url.parse: "http://" isn't a URL: it has no host; write one after http://
+url.parse: "http://a:99999/" isn't a URL: the port is past 65535
+url.parse: "http://a:8x/" isn't a URL: the port must be a number, not "8x"
+url.parse: "http://[1::2::3]/" isn't a URL: "[1::2::3]" isn't an IPv6 address
+url.parse: "http://[1:2:3:4:5:6:7:8:9]/" isn't a URL: "[1:2:3:4:5:6:7:8:9]" isn't an IPv6 address
+url.parse: "http://[::1/" isn't a URL: "[::1" isn't an IPv6 address
+url.parse: "http://exa mple.com/" isn't a URL: a host can't hold ' '
+url.parse: "http://a%20b/" isn't a URL: a host can't hold ' '
+url.parse: "http://a<b/" isn't a URL: a host can't hold '<'
+url.parse: "http://1.2.3.256/" isn't a URL: the host ends in a number but isn't an IPv4 address
+url.parse: "http://1.2.3.4.5/" isn't a URL: the host ends in a number but isn't an IPv4 address
+url.parse: "http://user@/x" isn't a URL: it has no host; write one after http://
+url.parse: "http://:80/" isn't a URL: it has no host; write one after http://
+url.parse: "file://user@host/x" isn't a URL: a file: URL can't have a user name, password or port
+url.parse: "file://host:21/x" isn't a URL: a file: URL can't have a user name, password or port
+url.parse: "foo://a b/" isn't a URL: a host can't hold the character 0x20
+url.build: the parts need a scheme, like {"scheme": "https", ...}
+url.build: "hostname" isn't a part of a URL; the parts are scheme, username, password, host, port, path, query and fragment
+url.join: "mailto:a@b" can't have a relative URL resolved against it, only a #fragment

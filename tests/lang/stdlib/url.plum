@@ -1,0 +1,116 @@
+# url: parsing tricky URLs (IPv6 and IPv4 hosts, encoded paths, dot
+# segments, special and opaque schemes), building, joining relative
+# references (RFC 3986 section 5.4 examples), percent-encoding and query
+# strings with repeated keys, and what parse rejects.
+seed url
+
+branch show(text: str) {
+    plant p = url.parse(text)
+    drop(p["href"])
+    drop("   scheme={p["scheme"]} user={p["username"]} pass={p["password"]} host={p["host"]} port={p["port"]} path={p["path"]} query={p["query"]} fragment={p["fragment"]}")
+}
+
+# the usual parts; host and scheme lowercased, the default port dropped
+show("https://User:Pa ss@EXAMPLE.com:443/a/./b/../c d?x=1&y=é#frag ment")
+show("http://example.com:8080")
+show("  http://example.com/\ta\nb  ")
+show("http://:secret@example.com/")
+show("http://a@b@example.com/")
+
+# IPv6 hosts, written shortest; IPv4 in the forms browsers take
+show("http://[2001:DB8:0:0:0:0:0:1]:8080/p")
+show("http://[::1]/")
+show("http://[1:0:0:2:0:0:0:3]/")
+show("http://[1:0:0:0:2:0:0:3]/")
+show("http://[0:0:0:0:0:0:0:0]/")
+show("http://[::ffff:192.168.0.1]/")
+show("http://127.1/")
+show("http://0x7f.0.0.1:80/")
+show("http://0177.0.0.1/")
+show("http://192.168.0.1./x")
+
+# encoded paths: existing %XX kept, %2e counts as a dot, \ is / in http
+show("http://a/%7Euser/a%2Fb/%2e%2E/x")
+show("http://a/b/c/%2e/d/..")
+show("HTTP://a.b\\c\\..\\d")
+show("http://a/\{x\}/`y`/<z>/\"w\"/^|")
+show("http://a/?q='x' <y>#`frag`")
+show("http://a/b/../../../..")
+show("http://example.com?")
+show("https:///x")
+
+# other schemes: opaque paths, file:, an authority but no special rules
+show("mailto:Someone@Example.com?subject=hi there")
+show("urn:isbn:0451450523")
+show("file:///etc/hosts")
+show("file://localhost/x/../y")
+show("file:/tmp/a")
+show("foo://Host/A/../B?Q#F")
+show("foo:/a/..//x")
+show("git+ssh://git@github.com:22/plumlang/plumlang.git")
+
+# normalize is parse's href
+drop(url.normalize("HTTPS://Example.COM:443/./a/../b/"))
+
+# build: each part encoded as it needs, then normalized
+drop(url.build({"scheme": "https", "host": "Example.com", "path": "a b/c?d#e", "query": "x=1 2#3", "fragment": "top"}))
+drop(url.build({"scheme": "http", "username": "me@home", "password": "p:w", "host": "[::1]", "port": "8080", "path": "/x"}))
+drop(url.build({"scheme": "mailto", "path": "x@y.z"}))
+drop(url.build({"scheme": "http", "host": "a", "port": "80"}))
+plant parts = url.parse("https://example.com/search?q=1#r")
+parts["query"] = "q=2"
+drop(url.build(parts))
+
+# join: RFC 3986 section 5.4.1 (normal) and 5.4.2 (abnormal) examples
+plant base = "http://a/b/c/d;p?q"
+for ref in ["g:h", "g", "./g", "g/", "/g", "//g", "?y", "g?y", "#s", "g#s", "g?y#s", ";x", "g;x",
+            "g;x?y#s", "", ".", "./", "..", "../", "../g", "../..", "../../", "../../g"] {
+    drop("{ref} -> {url.join(base, ref)}")
+}
+for ref in ["../../../g", "../../../../g", "/./g", "/../g", "g.", ".g", "g..", "..g", "./../g",
+            "./g/.", "g/./h", "g/../h", "g;x=1/./y", "g;x=1/../y", "g?y/./x", "g?y/../x",
+            "g#s/./x", "g#s/../x"] {
+    drop("{ref} -> {url.join(base, ref)}")
+}
+drop(url.join("http://a/b", "https://x/y"), url.join("mailto:a@b?c", "#x"), url.join("http://a", "b"))
+drop(url.join("http://a/b/c", "\\\\other\\x"), url.join("foo://h/a/b", "../c"), url.join("http://a/b?q#f", "#g"))
+
+# percent-encoding
+drop(url.encode("a b&c=d/é~!*'()"), url.encode(""))
+drop(url.decode("a%20b%26c"), url.decode("100%"), url.decode("%zz%4%"), url.decode("%F0%9F%8D%91"), url.decode("a+b"))
+drop(url.decode(url.encode("any text: ä ö ü / ? # & =")))
+
+# query strings: repeated keys kept in order, + is a space, empty pairs skipped
+drop(url.parse_query("?a=1&b=x+y&a=2&&c&d=%26&=e&a=3"))
+drop(url.parse_query(""), url.parse_query("?"), url.parse_query("q=a=b"))
+drop(url.build_query({"q": ["plum lang"], "a": ["1", "2&3"], "é": ["*-._~"], "none": []}))
+plant q = url.parse_query(url.build_query({"x": ["a b", "c+d", "e%f"]}))
+drop(q["x"])
+
+# what parse, build and join reject
+for text in ["example.com/x", "/just/a/path", "http://", "http://a:99999/",
+             "http://a:8x/", "http://[1::2::3]/", "http://[1:2:3:4:5:6:7:8:9]/",
+             "http://[::1/", "http://exa mple.com/", "http://a%20b/", "http://a<b/",
+             "http://1.2.3.256/", "http://1.2.3.4.5/", "http://user@/x", "http://:80/",
+             "file://user@host/x", "file://host:21/x", "foo://a b/"] {
+    try {
+        drop(url.parse(text))
+    } catch e: ValueError {
+        drop(e.message)
+    }
+}
+try {
+    drop(url.build({"host": "a"}))
+} catch e: ValueError {
+    drop(e.message)
+}
+try {
+    drop(url.build({"scheme": "http", "hostname": "a"}))
+} catch e: ValueError {
+    drop(e.message)
+}
+try {
+    drop(url.join("mailto:a@b", "c"))
+} catch e: ValueError {
+    drop(e.message)
+}

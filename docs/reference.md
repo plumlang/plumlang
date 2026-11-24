@@ -467,6 +467,7 @@ channels) pauses only its own task.
 | `csv` | read and write CSV |
 | `uuid` | unique identifiers: v4 (random) and v7 (time-ordered) |
 | `semver` | semantic versions: compare, sort, ranges, bump |
+| `url` | parse, build and join URLs; percent-encoding, query strings |
 
 Built-in functions, no `seed` needed: `drop`, `ask`, `len`, `int`, `float`,
 `str`, `byte`, `type_of`, `assert`, `exit`.
