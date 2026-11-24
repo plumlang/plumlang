@@ -3,35 +3,32 @@
 0003    |  SET_LOCAL 0
 0006    |  CONST 1  ; 3
 0009    |  SET_LOCAL 1
-0012    |  FOR_RANGE 0 1 40  ; local 0 <= local 1, else -> 0059
+0012    |  FOR_RANGE 0 1 38  ; local 0 <= local 1, else -> 0057
 0019    4  GET_LOCAL 0
-0022    |  CONST 2  ; 1
-0025    |  JUMP_IF_NOT_EQ_INT 3  ; -> 0031
-0028    |  JUMP 21  ; -> 0052
-0031    5  GET_LOCAL 0
-0034    |  CONST 1  ; 3
-0037    |  JUMP_IF_NOT_EQ_INT 3  ; -> 0043
-0040    |  JUMP 16  ; -> 0059
-0043    6  GET_LOCAL 0
-0046    |  CALL_BUILTIN drop 1
-0051    |  POP
-0052    3  FOR_NEXT 0 1 40  ; -> 0019
-0059    8  CONST 0  ; 0
-0062    |  SET_LOCAL 0
-0065    |  CONST 3  ; 2
-0068    |  SET_LOCAL 1
-0071    |  FOR_RANGE 0 0 16  ; local 0 < local 1, else -> 0094
-0078    |  CONST 4  ; "x"
-0081    |  CALL_BUILTIN drop 1
-0086    |  POP
-0087    |  FOR_NEXT 0 0 16  ; -> 0078
-0094    9  CONST 1  ; 3
-0097    |  SET_GLOBAL 0
-0100   10  GET_GLOBAL 0
-0103    |  CONST 0  ; 0
-0106    |  JUMP_IF_NOT_GT_INT 12  ; -> 0121
-0109    |  GET_GLOBAL 0
-0112    |  SUB_INT_K 2  ; 1
-0115    |  SET_GLOBAL 0
-0118    |  LOOP 21  ; -> 0100
-0121    |  RETURN_NONE
+0022    |  JUMP_IF_NOT_EQ_INT_K 2 3  ; 1, else -> 0030
+0027    |  JUMP 20  ; -> 0050
+0030    5  GET_LOCAL 0
+0033    |  JUMP_IF_NOT_EQ_INT_K 1 3  ; 3, else -> 0041
+0038    |  JUMP 16  ; -> 0057
+0041    6  GET_LOCAL 0
+0044    |  CALL_BUILTIN drop 1
+0049    |  POP
+0050    3  FOR_NEXT 0 1 38  ; -> 0019
+0057    8  CONST 0  ; 0
+0060    |  SET_LOCAL 0
+0063    |  CONST 3  ; 2
+0066    |  SET_LOCAL 1
+0069    |  FOR_RANGE 0 0 16  ; local 0 < local 1, else -> 0092
+0076    |  CONST 4  ; "x"
+0079    |  CALL_BUILTIN drop 1
+0084    |  POP
+0085    |  FOR_NEXT 0 0 16  ; -> 0076
+0092    9  CONST 1  ; 3
+0095    |  SET_GLOBAL 0
+0098   10  GET_GLOBAL 0
+0101    |  JUMP_IF_NOT_GT_INT_K 0 12  ; 0, else -> 0118
+0106    |  GET_GLOBAL 0
+0109    |  SUB_INT_K 2  ; 1
+0112    |  SET_GLOBAL 0
+0115    |  LOOP 20  ; -> 0098
+0118    |  RETURN_NONE

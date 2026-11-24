@@ -543,7 +543,30 @@ static void compile_cond(Compiler *c, const PlumExpr *e, Jumps *out) {
               : tok == PLUM_TOK_LESS_EQ ? 3
               : tok == PLUM_TOK_GREATER ? 4
                                         : 5;
-    compile_compared(c, e->as.binary.left, e->as.binary.right, kind == 1, line);
+    const PlumExpr *l = e->as.binary.left, *r = e->as.binary.right;
+    if (r->kind == PLUM_EXPR_INT || (kind == 1 && r->kind == PLUM_EXPR_FLOAT)) {
+        /* Against a literal, which becomes an operand of the instruction; an
+         * int literal against a float is converted here, as INT_TO_FLOAT would. */
+        static const PlumOpcode jumps_k[6][2] = {
+            {PLUM_OP_JUMP_IF_NOT_EQ_INT_K, PLUM_OP_JUMP_IF_NOT_EQ_FLOAT_K},
+            {PLUM_OP_JUMP_IF_NOT_NE_INT_K, PLUM_OP_JUMP_IF_NOT_NE_FLOAT_K},
+            {PLUM_OP_JUMP_IF_NOT_LT_INT_K, PLUM_OP_JUMP_IF_NOT_LT_FLOAT_K},
+            {PLUM_OP_JUMP_IF_NOT_LE_INT_K, PLUM_OP_JUMP_IF_NOT_LE_FLOAT_K},
+            {PLUM_OP_JUMP_IF_NOT_GT_INT_K, PLUM_OP_JUMP_IF_NOT_GT_FLOAT_K},
+            {PLUM_OP_JUMP_IF_NOT_GE_INT_K, PLUM_OP_JUMP_IF_NOT_GE_FLOAT_K},
+        };
+        PlumValue k = kind == 0                    ? plum_int(r->as.i)
+                      : r->kind == PLUM_EXPR_FLOAT ? plum_float(r->as.f)
+                                                   : plum_float((double)r->as.i);
+        compile_expr(c, l);
+        if (kind == 1 && int_like(l->ty)) {
+            op(c, PLUM_OP_INT_TO_FLOAT, line);
+        }
+        op2(c, jumps_k[row][kind], constant(c, k, r->span), 0xFFFF, line);
+        plum_array_push(out, chunk(c)->code.len - 2);
+        return;
+    }
+    compile_compared(c, l, r, kind == 1, line);
     plum_array_push(out, emit_jump(c, jumps[row][kind], line));
 }
 

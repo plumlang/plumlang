@@ -43,3 +43,17 @@ branch overflow(big: int, two: int) {
     drop(small // 1, small % 1, big % 7, small % 7, small // 7)
 }
 overflow(9223372036854775807, 2)
+
+# Small positive operands divide in 32 bits; powers of two take a mask.
+# Every other case divides in 64 bits, with the same results.
+branch divisions(a: int, b: int) {
+    drop(a // b, a % b, a % 4, a % 8, a // 4, a % 1, a // 1)
+}
+divisions(7, 2)
+divisions(-7, 2)
+divisions(-7, -2)
+divisions(4294967295, 4294967295)
+divisions(4294967296, 3)
+divisions(-4294967297, 4294967296)
+divisions(9223372036854775807, 4294967296)
+divisions(-9223372036854775807 - 1, 8)

@@ -186,15 +186,27 @@ from `src/compiler/opcodes.h` by `make bytecode-doc`; `make test` checks it.
 | 122 | `JUMP_IF_NOT_GE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a >= b |
 | 123 | `JUMP_IF_NOT_EQ_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a == b |
 | 124 | `JUMP_IF_NOT_NE_FLOAT` | 1 | pop two floats; jump forward [a] bytes unless a != b |
-| 125 | `LOOP` | 1 | jump back [a] bytes |
-| 126 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
-| 127 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
-| 128 | `END_TRY` | 1 | the last [a] tries are over |
-| 129 | `THROW` | 0 | throw the error on top |
-| 130 | `CALL` | 1 | call the function under [a] arguments |
-| 131 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
-| 132 | `SPAWN` | 1 | a task running the function under [a] arguments; push the task |
-| 133 | `CALL_NATIVE` | 2 | call standard-library function [a] with [b] arguments |
-| 134 | `RETURN` | 0 | return the top value |
-| 135 | `RETURN_NONE` | 0 | return none |
+| 125 | `JUMP_IF_NOT_LT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a < constant [a] |
+| 126 | `JUMP_IF_NOT_LE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a <= constant [a] |
+| 127 | `JUMP_IF_NOT_GT_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a > constant [a] |
+| 128 | `JUMP_IF_NOT_GE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a >= constant [a] |
+| 129 | `JUMP_IF_NOT_EQ_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a == constant [a] |
+| 130 | `JUMP_IF_NOT_NE_INT_K` | 2 | pop a (int); jump forward [b] bytes unless a != constant [a] |
+| 131 | `JUMP_IF_NOT_LT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a < constant [a] |
+| 132 | `JUMP_IF_NOT_LE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a <= constant [a] |
+| 133 | `JUMP_IF_NOT_GT_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a > constant [a] |
+| 134 | `JUMP_IF_NOT_GE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a >= constant [a] |
+| 135 | `JUMP_IF_NOT_EQ_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a == constant [a] |
+| 136 | `JUMP_IF_NOT_NE_FLOAT_K` | 2 | pop a (float); jump forward [b] bytes unless a != constant [a] |
+| 137 | `LOOP` | 1 | jump back [a] bytes |
+| 138 | `FOR_RANGE` | 3 | jump forward [c] if local [a] is past local [a+1] (<, or <= if [b]) |
+| 139 | `TRY` | 1 | until END_TRY: on an error, unwind and jump forward [a] with the error pushed |
+| 140 | `END_TRY` | 1 | the last [a] tries are over |
+| 141 | `THROW` | 0 | throw the error on top |
+| 142 | `CALL` | 1 | call the function under [a] arguments |
+| 143 | `CALL_BUILTIN` | 2 | call built-in [a] with [b] arguments |
+| 144 | `SPAWN` | 1 | a task running the function under [a] arguments; push the task |
+| 145 | `CALL_NATIVE` | 2 | call standard-library function [a] with [b] arguments |
+| 146 | `RETURN` | 0 | return the top value |
+| 147 | `RETURN_NONE` | 0 | return none |
 <!-- opcodes:end -->

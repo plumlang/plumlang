@@ -384,7 +384,19 @@ static bool pow_overflows(int64_t base, int64_t exp, int64_t *out) {
 }
 
 /* Floor division and a remainder with the sign of the divisor (spec 4.4). */
-static int64_t floor_div(int64_t a, int64_t b) {
+/*
+ * A 64-bit division is several times slower than a 32-bit one on common
+ * processors, and most operands are small and positive: those take the
+ * 32-bit path, where floor division and C's truncating one agree.
+ */
+static inline bool small_positive(int64_t a, int64_t b) {
+    return a >= 0 && a <= UINT32_MAX && b > 0 && b <= UINT32_MAX;
+}
+
+static inline int64_t floor_div(int64_t a, int64_t b) {
+    if (small_positive(a, b)) {
+        return (int64_t)((uint32_t)a / (uint32_t)b);
+    }
     int64_t q = a / b;
     if ((a % b != 0) && ((a < 0) != (b < 0))) {
         q--;
@@ -392,7 +404,13 @@ static int64_t floor_div(int64_t a, int64_t b) {
     return q;
 }
 
-static int64_t floor_mod(int64_t a, int64_t b) {
+static inline int64_t floor_mod(int64_t a, int64_t b) {
+    if (b > 0 && (b & (b - 1)) == 0) {
+        return a & (b - 1); /* a power of two: two's complement gives the floor remainder */
+    }
+    if (small_positive(a, b)) {
+        return (int64_t)((uint32_t)a % (uint32_t)b);
+    }
     if (b == -1) {
         return 0; /* INT64_MIN % -1 is undefined in C */
     }
@@ -2027,6 +2045,15 @@ static bool execute(VM *vm) {
             ip += d_;                                    \
         }                                                \
     } while (0)
+#define JUMP_UNLESS_K(field, operator)                     \
+    do {                                                   \
+        uint16_t k_ = READ_U16();                          \
+        uint16_t d_ = READ_U16();                          \
+        PlumValue *s_ = &vm->stack[--vm->top];             \
+        if (!(s_->as.field operator KONST(k_).as.field)) { \
+            ip += d_;                                      \
+        }                                                  \
+    } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
 #define CHECK_GLOBAL(n)                                                                      \
     do {                                                                                     \
@@ -3051,6 +3078,42 @@ static bool execute(VM *vm) {
             break;
         case PLUM_OP_JUMP_IF_NOT_NE_FLOAT:
             JUMP_UNLESS(f, !=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_LT_INT_K:
+            JUMP_UNLESS_K(i, <);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_LE_INT_K:
+            JUMP_UNLESS_K(i, <=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_GT_INT_K:
+            JUMP_UNLESS_K(i, >);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_GE_INT_K:
+            JUMP_UNLESS_K(i, >=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_EQ_INT_K:
+            JUMP_UNLESS_K(i, ==);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_NE_INT_K:
+            JUMP_UNLESS_K(i, !=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_LT_FLOAT_K:
+            JUMP_UNLESS_K(f, <);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_LE_FLOAT_K:
+            JUMP_UNLESS_K(f, <=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_GT_FLOAT_K:
+            JUMP_UNLESS_K(f, >);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_GE_FLOAT_K:
+            JUMP_UNLESS_K(f, >=);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_EQ_FLOAT_K:
+            JUMP_UNLESS_K(f, ==);
+            break;
+        case PLUM_OP_JUMP_IF_NOT_NE_FLOAT_K:
+            JUMP_UNLESS_K(f, !=);
             break;
         case PLUM_OP_LOOP: {
             uint16_t d = READ_U16();
