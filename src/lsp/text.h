@@ -12,6 +12,7 @@
 #ifndef PLUM_LSP_TEXT_H
 #define PLUM_LSP_TEXT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /* Where each line of a text starts. */
@@ -37,5 +38,9 @@ void plum_lsp_position(const PlumLspLines *lines, size_t offset, long long *line
 char *plum_lsp_uri_to_path(const char *uri, size_t len);
 /* The file URI for a path (malloc'd). */
 char *plum_lsp_path_to_uri(const char *path);
+
+/* Do two paths name the same file? On Windows, '\\' and '/' are the
+ * same and case doesn't matter. */
+bool plum_lsp_same_path(const char *a, const char *b);
 
 #endif /* PLUM_LSP_TEXT_H */

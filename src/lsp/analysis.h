@@ -59,6 +59,39 @@ void plum_lsp_hover(PlumJsonWriter *w, const PlumLspAnalysis *a, size_t offset);
 void plum_lsp_definition(PlumJsonWriter *w, const PlumLspAnalysis *a, size_t offset,
                          const PlumLspNamer *namer);
 void plum_lsp_document_symbols(PlumJsonWriter *w, const PlumLspAnalysis *a);
+/*
+ * What references and rename are about: a declaration, named by the file
+ * declaring it and the place of the declared name there. The same thing
+ * found while checking another file has the same place, so the answers
+ * hold across files, each checked on its own.
+ */
+typedef struct PlumLspTarget {
+    char *path;              /* the declaring file (malloc'd) */
+    size_t start, end;       /* the declared name in it; 0, 0 for a file module */
+    char *name;              /* the declared name (malloc'd); NULL for a file module */
+    size_t at_start, at_end; /* the name at the offset asked about */
+    char no_rename[160];     /* why it can't be renamed, or "" */
+} PlumLspTarget;
+
+/* The declaration the name at `offset` stands for. False when there is
+ * none to look for (a keyword, a built-in, nothing there), with the
+ * reason in t->no_rename. */
+bool plum_lsp_target(const PlumLspAnalysis *a, size_t offset, PlumLspTarget *t);
+void plum_lsp_target_free(PlumLspTarget *t);
+
+typedef struct PlumLspRange {
+    size_t start, end; /* bytes */
+} PlumLspRange;
+typedef PLUM_ARRAY(PlumLspRange) PlumLspRanges;
+
+/* Each name in the analysis's own file that stands for `t`, in order;
+ * with `declaration`, the declaration's own name too. */
+void plum_lsp_references(const PlumLspAnalysis *a, const PlumLspTarget *t, bool declaration,
+                         PlumLspRanges *out);
+
+/* Can `name` be declared (a name, not a keyword)? If not, why. */
+bool plum_lsp_valid_name(const char *name, size_t len, char *why, size_t size);
+
 /* Completion needs the file's text again, to check it with the name being
  * typed in place of what is there. */
 void plum_lsp_completion(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *text, size_t len,

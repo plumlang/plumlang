@@ -1,0 +1,14 @@
+# A module of the package, on disk only.
+tree Bed {
+    plants: int
+    width: float = 1.0
+
+    branch area() -> float => self.width * self.plants
+}
+
+branch make_bed(plants: int) -> Bed => Bed(plants: plants)
+
+kind Soil {
+    Clay
+    Sand(grain: float)
+}

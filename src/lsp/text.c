@@ -185,3 +185,24 @@ char *plum_lsp_path_to_uri(const char *path) {
     out[n] = '\0';
     return out;
 }
+
+bool plum_lsp_same_path(const char *a, const char *b) {
+#ifdef _WIN32
+    for (; *a != '\0' && *b != '\0'; a++, b++) {
+        char x = *a == '\\' ? '/' : *a;
+        char y = *b == '\\' ? '/' : *b;
+        if (x >= 'A' && x <= 'Z') {
+            x = (char)(x - 'A' + 'a');
+        }
+        if (y >= 'A' && y <= 'Z') {
+            y = (char)(y - 'A' + 'a');
+        }
+        if (x != y) {
+            return false;
+        }
+    }
+    return *a == *b;
+#else
+    return strcmp(a, b) == 0;
+#endif
+}

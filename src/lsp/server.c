@@ -10,12 +10,14 @@
 #include "lsp/json.h"
 #include "lsp/text.h"
 #include "plum/version.h"
+#include "stdlib/platform.h"
 #include "util/alloc.h"
 #include "util/arena.h"
 #include "util/array.h"
 
 #include <errno.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,6 +33,7 @@ enum {
     ERR_METHOD_NOT_FOUND = -32601,
     ERR_INVALID_PARAMS = -32602,
     ERR_NOT_INITIALIZED = -32002,
+    ERR_REQUEST_FAILED = -32803,
 };
 
 /* A message bigger than this is read and dropped. */
@@ -204,27 +207,6 @@ static int read_message(Server *s, char **body, size_t *len) {
 /* Documents                                                           */
 /* ------------------------------------------------------------------ */
 
-static bool same_path(const char *a, const char *b) {
-#ifdef _WIN32
-    for (; *a != '\0' && *b != '\0'; a++, b++) {
-        char x = *a == '\\' ? '/' : *a;
-        char y = *b == '\\' ? '/' : *b;
-        if (x >= 'A' && x <= 'Z') {
-            x = (char)(x - 'A' + 'a');
-        }
-        if (y >= 'A' && y <= 'Z') {
-            y = (char)(y - 'A' + 'a');
-        }
-        if (x != y) {
-            return false;
-        }
-    }
-    return *a == *b;
-#else
-    return strcmp(a, b) == 0;
-#endif
-}
-
 static Doc *doc_by_uri(Server *s, const char *uri) {
     for (size_t i = 0; i < s->docs.len; i++) {
         if (strcmp(s->docs.items[i]->uri, uri) == 0) {
@@ -236,7 +218,7 @@ static Doc *doc_by_uri(Server *s, const char *uri) {
 
 static Doc *doc_by_path(Server *s, const char *path) {
     for (size_t i = 0; i < s->docs.len; i++) {
-        if (same_path(s->docs.items[i]->path, path)) {
+        if (plum_lsp_same_path(s->docs.items[i]->path, path)) {
             return s->docs.items[i];
         }
     }
@@ -374,7 +356,7 @@ static void publish_imports(Server *s) {
 static void changed(Server *s, const char *path) {
     for (size_t i = 0; i < s->docs.len; i++) {
         Doc *d = s->docs.items[i];
-        if (same_path(d->path, path) ||
+        if (plum_lsp_same_path(d->path, path) ||
             (d->analysis != NULL && plum_lsp_analysis_uses(d->analysis, path))) {
             analyze(s, d);
             publish_doc(s, d);
@@ -389,6 +371,143 @@ static void doc_free(Doc *d) {
     plum_free(d->path);
     plum_free(d->text);
     plum_free(d);
+}
+
+/* ------------------------------------------------------------------ */
+/* The package                                                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * References and rename look through the files of the package the file
+ * belongs to: every .plum file under the nearest directory up with a
+ * plum.toml, or, without one, the .plum files beside it; and every file
+ * that is open, or that an open file imports.
+ */
+#define PACKAGE_FILES 4096
+#define PACKAGE_DEPTH 16
+
+typedef PLUM_ARRAY(char *) Paths;
+
+static void add_path(Paths *paths, const char *path) {
+    if (path == NULL || path[0] == '<' || paths->len >= PACKAGE_FILES) {
+        return;
+    }
+    for (size_t i = 0; i < paths->len; i++) {
+        if (plum_lsp_same_path(paths->items[i], path)) {
+            return;
+        }
+    }
+    plum_array_push(paths, plum_strdup(path));
+}
+
+static void free_paths(Paths *paths) {
+    for (size_t i = 0; i < paths->len; i++) {
+        plum_free(paths->items[i]);
+    }
+    plum_array_free(paths);
+}
+
+static void add_entry(void *ctx, const char *name) {
+    Paths *names = ctx;
+    plum_array_push(names, plum_strdup(name));
+}
+
+static int by_name(const void *a, const void *b) {
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+static bool is_plum_file(const char *name) {
+    size_t n = strlen(name);
+    return n > 5 && strcmp(name + n - 5, ".plum") == 0;
+}
+
+/* The .plum files in `dir` (and below it, with `deep`), in name order;
+ * hidden entries are skipped. */
+static void add_dir(Paths *paths, const char *dir, bool deep, int depth) {
+    Paths names = {0};
+    if (depth > PACKAGE_DEPTH || plum_os_list_dir(dir, add_entry, &names) != 0) {
+        free_paths(&names);
+        return;
+    }
+    if (names.len > 1) {
+        qsort(names.items, names.len, sizeof(char *), by_name);
+    }
+    for (size_t i = 0; i < names.len; i++) {
+        const char *name = names.items[i];
+        if (name[0] == '.') {
+            continue;
+        }
+        size_t size = strlen(dir) + strlen(name) + 2;
+        char *path = plum_alloc(size);
+        snprintf(path, size, "%s/%s", dir, name);
+        if (is_plum_file(name)) {
+            add_path(paths, path);
+        } else if (deep && plum_os_is_dir(path)) {
+            add_dir(paths, path, deep, depth + 1);
+        }
+        plum_free(path);
+    }
+    free_paths(&names);
+}
+
+static bool file_exists(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (f != NULL) {
+        fclose(f);
+    }
+    return f != NULL;
+}
+
+/* The directory of the package `path` is in, and whether it has a
+ * plum.toml (malloc'd); NULL for a path with no directory. */
+static char *package_dir(const char *path, bool *manifest) {
+    *manifest = false;
+    const char *slash = strrchr(path, '/');
+    if (slash == NULL || slash == path) {
+        return NULL;
+    }
+    char *own = plum_strndup(path, (size_t)(slash - path));
+    char *dir = plum_strdup(own);
+    for (int up = 0; up < 32; up++) {
+        size_t size = strlen(dir) + sizeof "/plum.toml";
+        char *toml = plum_alloc(size);
+        snprintf(toml, size, "%s/plum.toml", dir);
+        bool found = file_exists(toml);
+        plum_free(toml);
+        if (found) {
+            *manifest = true;
+            plum_free(own);
+            return dir;
+        }
+        char *parent = strrchr(dir, '/');
+        if (parent == NULL || parent == dir) {
+            break;
+        }
+        *parent = '\0';
+    }
+    plum_free(dir);
+    return own;
+}
+
+/* The files to look through for `t`, asked about in `d`: `d` first. */
+static void package_files(Server *s, const Doc *d, const PlumLspTarget *t, Paths *out) {
+    add_path(out, d->path);
+    add_path(out, t->path);
+    for (size_t i = 0; i < s->docs.len; i++) {
+        add_path(out, s->docs.items[i]->path);
+    }
+    for (size_t i = 0; i < s->docs.len; i++) {
+        const PlumLspAnalysis *a = s->docs.items[i]->analysis;
+        for (size_t k = 0; a != NULL && k < a->count; k++) {
+            add_path(out, a->order[k]->path);
+        }
+    }
+    bool manifest = false;
+    char *dir = package_dir(d->path, &manifest);
+    if (dir != NULL) {
+        add_dir(out, dir, manifest, 0);
+    }
+    plum_free(dir);
 }
 
 /* ------------------------------------------------------------------ */
@@ -521,6 +640,13 @@ static void initialize_result(PlumJsonWriter *w) {
     plum_jw_bool(w, true);
     plum_jw_key(w, "documentFormattingProvider");
     plum_jw_bool(w, true);
+    plum_jw_key(w, "referencesProvider");
+    plum_jw_bool(w, true);
+    plum_jw_key(w, "renameProvider");
+    plum_jw_object(w);
+    plum_jw_key(w, "prepareProvider");
+    plum_jw_bool(w, true);
+    plum_jw_object_end(w);
     plum_jw_object_end(w);
     plum_jw_key(w, "serverInfo");
     plum_jw_object(w);
@@ -588,6 +714,149 @@ static size_t offset_of(const Doc *d, const PlumJson *pos) {
     return offset;
 }
 
+static void write_range(PlumJsonWriter *w, const PlumLspLines *lines, size_t start, size_t end) {
+    long long line, character;
+    plum_jw_object(w);
+    plum_jw_key(w, "start");
+    plum_lsp_position(lines, start, &line, &character);
+    plum_jw_object(w);
+    plum_jw_key(w, "line");
+    plum_jw_int(w, line);
+    plum_jw_key(w, "character");
+    plum_jw_int(w, character);
+    plum_jw_object_end(w);
+    plum_jw_key(w, "end");
+    plum_lsp_position(lines, end, &line, &character);
+    plum_jw_object(w);
+    plum_jw_key(w, "line");
+    plum_jw_int(w, line);
+    plum_jw_key(w, "character");
+    plum_jw_int(w, character);
+    plum_jw_object_end(w);
+    plum_jw_object_end(w);
+}
+
+/*
+ * Every place in the package that names `t`: Location[] for references,
+ * or, with `new_name`, a WorkspaceEdit that renames them all.
+ */
+static void references(Server *s, PlumJsonWriter *w, const Doc *d, const PlumLspTarget *t,
+                       bool declaration, const char *new_name) {
+    Paths paths = {0};
+    package_files(s, d, t, &paths);
+    if (new_name != NULL) {
+        plum_jw_object(w);
+        plum_jw_key(w, "changes");
+        plum_jw_object(w);
+    } else {
+        plum_jw_array(w);
+    }
+    for (size_t i = 0; i < paths.len; i++) {
+        const char *path = paths.items[i];
+        Doc *open = doc_by_path(s, path);
+        PlumLspAnalysis *own = NULL;
+        const PlumLspAnalysis *a = open != NULL ? open->analysis : NULL;
+        if (open == NULL) {
+            size_t len = 0;
+            int err = 0;
+            char *text = plum_read_file(path, &len, &err);
+            if (text == NULL) {
+                continue;
+            }
+            own = plum_lsp_analyze(path, text, len, read_module, s);
+            free(text); /* plum_read_file's text is malloc'd */
+            a = own;
+        }
+        PlumLspRanges found = {0};
+        if (a != NULL) {
+            plum_lsp_references(a, t, declaration, &found);
+        }
+        if (found.len > 0) {
+            char *uri = open != NULL ? plum_strdup(open->uri) : plum_lsp_path_to_uri(path);
+            PlumLspLines lines;
+            plum_lsp_lines_init(&lines, a->main->text, a->main->len);
+            if (new_name != NULL) {
+                plum_jw_key(w, uri);
+                plum_jw_array(w);
+            }
+            for (size_t k = 0; k < found.len; k++) {
+                plum_jw_object(w);
+                if (new_name == NULL) {
+                    plum_jw_key(w, "uri");
+                    plum_jw_string(w, uri);
+                }
+                plum_jw_key(w, "range");
+                write_range(w, &lines, found.items[k].start, found.items[k].end);
+                if (new_name != NULL) {
+                    plum_jw_key(w, "newText");
+                    plum_jw_string(w, new_name);
+                }
+                plum_jw_object_end(w);
+            }
+            if (new_name != NULL) {
+                plum_jw_array_end(w);
+            }
+            plum_lsp_lines_free(&lines);
+            plum_free(uri);
+        }
+        plum_array_free(&found);
+        plum_lsp_analysis_free(own);
+    }
+    if (new_name != NULL) {
+        plum_jw_object_end(w);
+        plum_jw_object_end(w);
+    } else {
+        plum_jw_array_end(w);
+    }
+    free_paths(&paths);
+}
+
+/* prepareRename: the name and its range; rename: the edits. A name that
+ * can't be renamed is an error, with the reason for the editor to show. */
+static void rename_request(Server *s, const PlumJson *id, const PlumJson *params, const Doc *d,
+                           size_t offset, bool rename) {
+    PlumLspTarget t;
+    bool found = plum_lsp_target(d->analysis, offset, &t);
+    if (!found || t.no_rename[0] != '\0') {
+        send_error(s, id, ERR_REQUEST_FAILED, t.no_rename);
+        plum_lsp_target_free(&t);
+        return;
+    }
+    size_t len = 0;
+    const char *new_name = rename ? plum_json_str(params, "newName", &len) : NULL;
+    char why[160];
+    if (rename && new_name == NULL) {
+        send_error(s, id, ERR_INVALID_PARAMS, "missing newName");
+        plum_lsp_target_free(&t);
+        return;
+    }
+    if (rename && !plum_lsp_valid_name(new_name, len, why, sizeof why)) {
+        send_error(s, id, ERR_INVALID_PARAMS, why);
+        plum_lsp_target_free(&t);
+        return;
+    }
+    PlumJsonWriter w;
+    response_start(&w, id);
+    plum_jw_key(&w, "result");
+    if (rename) {
+        references(s, &w, d, &t, true, new_name);
+    } else {
+        PlumLspLines lines;
+        plum_lsp_lines_init(&lines, d->text, d->len);
+        plum_jw_object(&w);
+        plum_jw_key(&w, "range");
+        write_range(&w, &lines, t.at_start, t.at_end);
+        plum_jw_key(&w, "placeholder");
+        plum_jw_stringn(&w, d->text + t.at_start, t.at_end - t.at_start);
+        plum_jw_object_end(&w);
+        plum_lsp_lines_free(&lines);
+    }
+    plum_jw_object_end(&w);
+    send(s, &w);
+    plum_jw_free(&w);
+    plum_lsp_target_free(&t);
+}
+
 static void request(Server *s, const char *method, const PlumJson *id, const PlumJson *params) {
     if (s->shutdown) {
         send_error(s, id, ERR_INVALID_REQUEST, "the server is shutting down");
@@ -624,7 +893,11 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
     bool completion = strcmp(method, "textDocument/completion") == 0;
     bool symbols = strcmp(method, "textDocument/documentSymbol") == 0;
     bool format = strcmp(method, "textDocument/formatting") == 0;
-    if (!hover && !definition && !completion && !symbols && !format) {
+    bool refs = strcmp(method, "textDocument/references") == 0;
+    bool prepare = strcmp(method, "textDocument/prepareRename") == 0;
+    bool rename = strcmp(method, "textDocument/rename") == 0;
+    if (!hover && !definition && !completion && !symbols && !format && !refs && !prepare &&
+        !rename) {
         send_error(s, id, ERR_METHOD_NOT_FOUND, "unknown method");
         return;
     }
@@ -634,7 +907,8 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
         return;
     }
     const PlumJson *pos = plum_json_get(params, "position");
-    if ((hover || definition || completion) && (pos == NULL || pos->kind != PLUM_JSON_OBJECT)) {
+    if ((hover || definition || completion || refs || prepare || rename) &&
+        (pos == NULL || pos->kind != PLUM_JSON_OBJECT)) {
         send_error(s, id, ERR_INVALID_PARAMS, "missing position");
         return;
     }
@@ -642,6 +916,10 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
     size_t offset = 0;
     if (d != NULL && pos != NULL) {
         offset = offset_of(d, pos);
+    }
+    if ((prepare || rename) && d != NULL && d->analysis != NULL) {
+        rename_request(s, id, params, d, offset, rename);
+        return;
     }
     PlumJsonWriter w;
     response_start(&w, id);
@@ -657,6 +935,20 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
         plum_lsp_completion(&w, d->analysis, d->text, d->len, offset, read_module, s);
     } else if (symbols) {
         plum_lsp_document_symbols(&w, d->analysis);
+    } else if (refs) {
+        PlumLspTarget t;
+        if (plum_lsp_target(d->analysis, offset, &t)) {
+            const PlumJson *ctx = plum_json_get(params, "context");
+            const PlumJson *decl = plum_json_get(ctx, "includeDeclaration");
+            references(s, &w, d, &t, decl == NULL || decl->kind != PLUM_JSON_BOOL || decl->as.b,
+                       NULL);
+        } else {
+            plum_jw_array(&w);
+            plum_jw_array_end(&w);
+        }
+        plum_lsp_target_free(&t);
+    } else if (prepare || rename) {
+        plum_jw_null(&w);
     } else {
         formatting(&w, d);
     }

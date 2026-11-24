@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /* The language server's JSON, positions and file URIs. */
 #include "check.h"
+#include "lsp/analysis.h"
 #include "lsp/json.h"
 #include "lsp/text.h"
 #include "suites.h"
@@ -125,8 +126,33 @@ static void test_uris(void) {
     plum_free(path);
 }
 
+/* What a rename may call a name. */
+static void test_names(void) {
+    char why[160];
+    CHECK(plum_lsp_valid_name("count", 5, why, sizeof why));
+    CHECK(plum_lsp_valid_name("_x2", 3, why, sizeof why));
+    CHECK(plum_lsp_valid_name("caf\xC3\xA9", 5, why, sizeof why));
+    CHECK(!plum_lsp_valid_name("2x", 2, why, sizeof why));
+    CHECK_STR(why, "'2x' isn't a name: use letters, digits and '_', not starting with a digit");
+    CHECK(!plum_lsp_valid_name("a-b", 3, why, sizeof why));
+    CHECK(!plum_lsp_valid_name("a b", 3, why, sizeof why));
+    CHECK(!plum_lsp_valid_name("", 0, why, sizeof why));
+    CHECK(!plum_lsp_valid_name("plant", 5, why, sizeof why));
+    CHECK_STR(why, "'plant' is a keyword; choose another name");
+    CHECK(!plum_lsp_valid_name("self", 4, why, sizeof why));
+    CHECK(!plum_lsp_valid_name("_", 1, why, sizeof why));
+
+    CHECK(plum_lsp_same_path("/a/b.plum", "/a/b.plum"));
+    CHECK(!plum_lsp_same_path("/a/b.plum", "/a/c.plum"));
+    CHECK(!plum_lsp_same_path("/a/b.plum", "/a/b.plum2"));
+#ifdef _WIN32
+    CHECK(plum_lsp_same_path("C:\\a\\B.plum", "c:/a/b.plum"));
+#endif
+}
+
 void plum_test_lsp(void) {
     test_json();
     test_positions();
     test_uris();
+    test_names();
 }
