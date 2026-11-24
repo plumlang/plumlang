@@ -1,0 +1,56 @@
+# Tables: dotted keys, implicit and quoted names, inline tables, and
+# arrays of tables.
+name = "Orange"
+physical.color = "orange"
+physical.shape = "round"
+site."google.com" = true
+"" = "an empty key"
+"ʎǝʞ" = "a key that isn't ASCII"
+'quoted "key"' = 1
+3.14159 = "pi"
+
+[x.y.z.w]  # x, x.y and x.y.z are made on the way
+deep = true
+
+[x]  # and x itself may come after
+top = true
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+
+[fruit.apple.texture]  # a table under one that dotted keys made
+smooth = true
+
+[ dog . "tater.man" ]
+type.name = "pug"
+
+[inline]
+point = { x = 1, y = 2 }
+nested = { a.b = 1, c = { d = [1, { e = 2 }] } }
+empty = {}
+
+[[fruits]]
+name = "apple"
+
+[fruits.physical]
+color = "red"
+
+[[fruits.varieties]]
+name = "red delicious"
+
+[[fruits.varieties]]
+name = "granny smith"
+
+[[fruits]]
+name = "banana"
+
+[[fruits.varieties]]
+name = "plantain"
+
+[mixed]
+array = [1, "two", 3.0, [4], { five = 5 }]
+trailing = [
+  1,
+  2,  # a comment in an array
+]

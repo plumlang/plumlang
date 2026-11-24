@@ -1,0 +1,401 @@
+== example.toml
+{
+  "title": "TOML Example",
+  "owner": {
+    "name": "Tom Preston-Werner",
+    "dob": "1979-05-27T07:32:00-08:00"
+  },
+  "database": {
+    "enabled": true,
+    "ports": [
+      8000,
+      8001,
+      8002
+    ],
+    "data": [
+      [
+        "delta",
+        "phi"
+      ],
+      [
+        3.14
+      ]
+    ],
+    "temp_targets": {
+      "cpu": 79.5,
+      "case": 72.0
+    }
+  },
+  "servers": {
+    "alpha": {
+      "ip": "10.0.0.1",
+      "role": "frontend"
+    },
+    "beta": {
+      "ip": "10.0.0.2",
+      "role": "backend"
+    }
+  },
+  "products": [
+    {
+      "name": "Hammer",
+      "sku": 738594937
+    },
+    {},
+    {
+      "name": "Nail",
+      "sku": 284758393,
+      "color": "gray"
+    }
+  ]
+}
+== values.toml
+{
+  "plain": 42,
+  "signed": [
+    17,
+    -17,
+    0,
+    0,
+    0
+  ],
+  "underscores": 1000000,
+  "hex": [
+    3735928559,
+    3735928559,
+    0
+  ],
+  "octal": 493,
+  "binary": 214,
+  "max": 9223372036854775807,
+  "min": -9223372036854775808
+}
+{
+  "yes": true,
+  "no": false
+}
+{
+  "basic": "I'm a string. \"You can quote me\". Name\tJosé\nLocation\tSF. 🍑",
+  "literal": "C:\\Users\\nodejs\\templates",
+  "empty": "",
+  "multi": "Roses are red\nViolets are blue",
+  "folded": "The quick brown fox jumps over the lazy dog.",
+  "quotes": "Here are two quotation marks: \"\". Simple enough.\"",
+  "literal_multi": "The first newline is\ntrimmed in raw strings.\n   All other whitespace\n   is preserved. \\n stays.\n",
+  "apostrophes": "'That,' she said, 'is still pointless.'",
+  "nul": "a\u0000b"
+}
+{
+  "offset": "1979-05-27T07:32:00Z",
+  "offset_fraction": "1979-05-27T00:32:00.999999-07:00",
+  "lower": "1979-05-27T07:32:00Z",
+  "space": "1979-05-27T07:32:00+05:30",
+  "local_datetime": "1979-05-27T07:32:00",
+  "local_date": "1979-05-27",
+  "local_time": "00:32:00.5",
+  "leap_day": "2024-02-29"
+}
+[1.0, 3.1415, -0.01, 0.0, -0.0] [5e+22, 1000000.0, -0.02, 6.626e-34, 10005000000000.0] [inf, inf, -inf]
+3
+== tables.toml
+{
+  "name": "Orange",
+  "physical": {
+    "color": "orange",
+    "shape": "round"
+  },
+  "site": {
+    "google.com": true
+  },
+  "": "an empty key",
+  "ʎǝʞ": "a key that isn't ASCII",
+  "quoted \"key\"": 1,
+  "3": {
+    "14159": "pi"
+  },
+  "x": {
+    "y": {
+      "z": {
+        "w": {
+          "deep": true
+        }
+      }
+    },
+    "top": true
+  },
+  "fruit": {
+    "apple": {
+      "color": "red",
+      "taste": {
+        "sweet": true
+      },
+      "texture": {
+        "smooth": true
+      }
+    }
+  },
+  "dog": {
+    "tater.man": {
+      "type": {
+        "name": "pug"
+      }
+    }
+  },
+  "inline": {
+    "point": {
+      "x": 1,
+      "y": 2
+    },
+    "nested": {
+      "a": {
+        "b": 1
+      },
+      "c": {
+        "d": [
+          1,
+          {
+            "e": 2
+          }
+        ]
+      }
+    },
+    "empty": {}
+  },
+  "fruits": [
+    {
+      "name": "apple",
+      "physical": {
+        "color": "red"
+      },
+      "varieties": [
+        {
+          "name": "red delicious"
+        },
+        {
+          "name": "granny smith"
+        }
+      ]
+    },
+    {
+      "name": "banana",
+      "varieties": [
+        {
+          "name": "plantain"
+        }
+      ]
+    }
+  ],
+  "mixed": {
+    "array": [
+      1,
+      "two",
+      3.0,
+      [
+        4
+      ],
+      {
+        "five": 5
+      }
+    ],
+    "trailing": [
+      1,
+      2
+    ]
+  }
+}
+== stringify
+title = "TOML Example"
+
+[owner]
+name = "Tom Preston-Werner"
+dob = "1979-05-27T07:32:00-08:00"
+
+[database]
+enabled = true
+ports = [8000, 8001, 8002]
+data = [["delta", "phi"], [3.14]]
+
+[database.temp_targets]
+cpu = 79.5
+case = 72.0
+
+[servers]
+
+[servers.alpha]
+ip = "10.0.0.1"
+role = "frontend"
+
+[servers.beta]
+ip = "10.0.0.2"
+role = "backend"
+
+[[products]]
+name = "Hammer"
+sku = 738594937
+
+[[products]]
+
+[[products]]
+name = "Nail"
+sku = 284758393
+color = "gray"
+
+name = "Orange"
+"" = "an empty key"
+"ʎǝʞ" = "a key that isn't ASCII"
+"quoted \"key\"" = 1
+
+[physical]
+color = "orange"
+shape = "round"
+
+[site]
+"google.com" = true
+
+[3]
+14159 = "pi"
+
+[x]
+top = true
+
+[x.y]
+
+[x.y.z]
+
+[x.y.z.w]
+deep = true
+
+[fruit]
+
+[fruit.apple]
+color = "red"
+
+[fruit.apple.taste]
+sweet = true
+
+[fruit.apple.texture]
+smooth = true
+
+[dog]
+
+[dog."tater.man"]
+
+[dog."tater.man".type]
+name = "pug"
+
+[inline]
+
+[inline.point]
+x = 1
+y = 2
+
+[inline.nested]
+
+[inline.nested.a]
+b = 1
+
+[inline.nested.c]
+d = [1, { e = 2 }]
+
+[inline.empty]
+
+[mixed]
+array = [1, "two", 3.0, [4], { five = 5 }]
+trailing = [1, 2]
+
+[[fruits]]
+name = "apple"
+
+[fruits.physical]
+color = "red"
+
+[[fruits.varieties]]
+name = "red delicious"
+
+[[fruits.varieties]]
+name = "granny smith"
+
+[[fruits]]
+name = "banana"
+
+[[fruits.varieties]]
+name = "plantain"
+
+good good
+good
+"plain key" = "tab\there"
+"quote\"d" = [1.5, 1e+300, -0.0, true]
+list = []
+
+[empty]
+
+mixed = [{ a = 1 }, 2]
+ctl = "\u0007\u007Fé"
+
+[[tables]]
+a = 1
+
+[[tables]]
+
+[tables.b]
+c = 2
+
+[]
+0 0
+toml.stringify: TOML has no null; leave the key out instead
+toml.stringify: a TOML document is a map (a table) at the top
+toml.stringify: a TOML document is a map (a table) at the top
+toml.parse: line 2, column 1: 'a' is already set on line 1; keep one
+toml.parse: line 2, column 1: 't' is already a table, defined on line 1; define a table once
+toml.parse: line 2, column 1: 'a' is already a value, defined on line 1; define a table once
+toml.parse: line 2, column 1: 'a' is already a table, defined on line 1; define a table once
+toml.parse: line 4, column 1: 'b' is already a table, defined on line 1; a dotted key can't add to it
+toml.parse: line 2, column 1: 'a' is already an inline table, defined on line 1; a dotted key can't add to it
+toml.parse: line 2, column 1: 'a' is already an inline table, defined on line 1; a [table] can't go in it
+toml.parse: line 2, column 1: 'a' is already an array, defined on line 1; it can't be an array of tables too
+toml.parse: line 2, column 1: 'a' is already a table, defined on line 1; it can't be an array of tables too
+toml.parse: line 1, column 12: no ',' after an inline table's last value
+toml.parse: line 1, column 11: expected ',' or '}': an inline table stays on one line
+toml.parse: line 1, column 8: expected ',' or ']' in the array
+toml.parse: line 1, column 5: this array has no closing ']'
+toml.parse: line 1, column 4: a value is missing here
+toml.parse: line 1, column 1: expected a key (letters, digits, '_' and '-'), found '='
+toml.parse: line 1, column 5: 'b' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '01' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '1__0' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '_1' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '1_' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '+0x1' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '0X1' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '0o8' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: this integer doesn't fit in 64 bits
+toml.parse: line 1, column 5: this integer doesn't fit in 64 bits
+toml.parse: line 1, column 5: '1.' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '.5' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '1e' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '1.e5' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: 'infinity' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '1979-02-29' isn't a date or time TOML takes, like 1979-05-27, 07:32:00 or 1979-05-27T07:32:00Z
+toml.parse: line 1, column 5: '1979-13-01' isn't a date or time TOML takes, like 1979-05-27, 07:32:00 or 1979-05-27T07:32:00Z
+toml.parse: line 1, column 5: '1979-05-27T25:00:00' isn't a date or time TOML takes, like 1979-05-27, 07:32:00 or 1979-05-27T07:32:00Z
+toml.parse: line 1, column 5: '07:32' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 5: '1979-05-27T07:32:00+5:00' isn't a date or time TOML takes, like 1979-05-27, 07:32:00 or 1979-05-27T07:32:00Z
+toml.parse: line 1, column 6: an unknown escape; use \\ for a backslash
+toml.parse: line 1, column 6: \u names no character a string can hold
+toml.parse: line 1, column 5: this string has no closing " on its line
+toml.parse: line 1, column 5: this string has no closing ' on its line
+toml.parse: line 1, column 5: this string has no closing """
+toml.parse: line 1, column 8: too many " in a row; escape one
+toml.parse: line 1, column 9: a control character in a string; write it as an escape
+toml.parse: line 1, column 9: a control character in a comment
+toml.parse: line 1, column 7: unexpected 'b' after the value; put one key = value on each line
+toml.parse: line 1, column 3: expected ']' to close the table name
+toml.parse: line 1, column 4: expected ']]' to close the table name
+toml.parse: line 1, column 4: expected a table name (letters, digits, '_' and '-'), found ']'
+toml.parse: line 1, column 2: expected a table name (letters, digits, '_' and '-'), found ']'
+toml.parse: line 2, column 1: 'b' is already set on line 1; keep one
+toml.parse: line 1, column 1: a key can't be a multi-line string
+toml.parse: line 2, column 5: 'tru' isn't a value TOML takes: a number (42, 3.14, 0xff), true or false, or a date; text goes in quotes
+toml.parse: line 1, column 13: unexpected ']' after the value; put one key = value on each line
+toml.parse: line 1, column 6: an unknown escape; use \\ for a backslash
+toml.parse: line 1, column 262: arrays and inline tables nested more than 256 deep

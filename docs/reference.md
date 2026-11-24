@@ -468,6 +468,7 @@ channels) pauses only its own task.
 | `uuid` | unique identifiers: v4 (random) and v7 (time-ordered) |
 | `semver` | semantic versions: compare, sort, ranges, bump |
 | `url` | parse, build and join URLs; percent-encoding, query strings |
+| `toml` | read and write TOML 1.0 (`Json` values) |
 
 Built-in functions, no `seed` needed: `drop`, `ask`, `len`, `int`, `float`,
 `str`, `byte`, `type_of`, `assert`, `exit`.
