@@ -1,0 +1,16 @@
+# module: a tree whose method a tree in the importing file overrides
+tree Greeter {
+    name: str
+    branch word() -> str => "hello"
+    branch greet() -> str => "{self.word()}, {self.name}"
+}
+
+branch greet_all(gs: list[Greeter]) -> list[str] {
+    plant out: list[str] = []
+    for g in gs {
+        out.push(g.greet())
+    }
+    return out
+}
+
+branch word_of(g: Greeter) -> str => g.word()

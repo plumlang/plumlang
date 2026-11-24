@@ -1,0 +1,77 @@
+# Method calls the compiler resolves (no tree extending the receiver's
+# overrides the method) and those the object's own tree decides: both
+# run the method the object's tree has (#119).
+tree Animal {
+    name: str
+    sound: str = "..."
+    branch speak() -> str => self.sound
+    branch intro() -> str => "{self.name}: {self.speak()}"
+    branch rename(to: str) {
+        self.name = to
+    }
+}
+tree Dog : Animal {
+    branch speak() -> str => "woof"
+}
+tree Puppy : Dog {
+    branch speak() -> str => super.speak() + " (squeaky)"
+    branch tiny() -> bool => good
+}
+tree Cat : Animal {
+    branch init(name: str) {
+        self.name = name
+        self.sound = "meow"
+    }
+}
+
+# Animal.speak is overridden: the object decides, even through a parent's type.
+plant pets: list[Animal] = [Animal("Generic"), Dog("Rex"), Puppy("Bit"), Cat("Tom")]
+for pet in pets {
+    drop(pet.intro())
+}
+# Dog.speak is overridden by Puppy: a Dog variable may hold a Puppy.
+plant d: Dog = Puppy("Pip")
+drop(d.speak())
+d = Dog("Max")
+drop(d.speak())
+# Puppy.tiny and Animal.rename are never overridden: direct calls.
+plant p = Puppy("Bit")
+drop(p.tiny())
+p.rename("Bitsy")
+drop(p.intro())
+plant c = Cat("Tom")
+c.rename("Thomas")
+drop(c.intro(), c.speak())
+
+# Trait calls: each object's own tree, through the trait's type.
+trait Shape {
+    branch area() -> float
+    branch name() -> str => "shape"
+}
+tree Circle : Shape {
+    r: float
+    branch area() -> float => 3.0 * self.r * self.r
+    branch name() -> str => "circle"
+}
+tree Rect : Shape {
+    w: float
+    h: float
+    branch area() -> float => self.w * self.h
+}
+tree Square : Rect {
+    branch init(side: float) {
+        self.w = side
+        self.h = side
+    }
+    branch name() -> str => "square"
+}
+plant shapes: list[Shape] = [Circle(1.0), Rect(2.0, 3.0), Square(2.0)]
+plant total = 0.0
+for s in shapes {
+    total += s.area()
+    drop(s.name(), s.area())
+}
+drop(total)
+# A Rect variable holding a Square runs Square's name, Rect's area.
+plant r: Rect = Square(3.0)
+drop(r.name(), r.area())

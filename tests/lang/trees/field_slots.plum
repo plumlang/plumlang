@@ -1,0 +1,81 @@
+# Fields read and changed through a local (self, a parameter, a variable),
+# inherited fields included, and optional chaining on fields (#119).
+tree Counter {
+    count: int = 0
+    total: float = 0.0
+    label: str = "c"
+    branch add(x: float) {
+        self.total += x
+        self.count += 1
+    }
+    branch take(x: float) {
+        self.total -= x
+        self.count -= 1
+    }
+    branch scaled(k: int) -> int => self.count * k
+}
+tree Named : Counter {
+    owner: str
+    branch add(x: float) {
+        super.add(x * 2.0)
+        self.label = "{self.owner}'s"
+    }
+    branch bump(by: int) {
+        self.count += by
+        self.total += 0.5
+        self.total -= 0.25
+        self.count -= 2
+        self.count *= 3
+        self.total = self.total * 2.0
+    }
+}
+
+plant c = Counter()
+c.add(1.5)
+c.add(2.5)
+c.take(1.0)
+drop(c.count, c.total, c.scaled(10))
+
+# The subclass changes fields its parent declared; every holder sees it.
+plant n = Named(owner: "ana")
+plant same: Counter = n
+n.add(1.0)
+n.bump(4)
+drop(n.count, n.total, n.label, same.count, same.label)
+same.add(1.0)
+drop(n.count, n.total)
+
+# A parameter and a local variable, not self.
+branch refill(k: Counter, amount: int) {
+    plant step = 2
+    k.count += amount
+    k.count -= step
+    k.count += 1
+    plant half = 0.5
+    k.total += half
+    k.total += 2
+    k.label = "refilled"
+}
+refill(n, 10)
+drop(n.count, n.total, n.label)
+plant local = Counter()
+local.count = 7
+local.total += 1.25
+drop(local.count, local.total)
+
+# Optional chaining on fields: none?.field is none.
+tree Node {
+    value: int
+    next: Node? = none
+}
+branch second(head: Node?) -> int? => head?.next?.value
+plant list = Node(1, Node(2))
+drop(second(list), second(Node(5)), second(none))
+plant maybe: Node? = list
+drop(maybe?.value, maybe?.next?.value)
+maybe = none
+drop(maybe?.value)
+if plant m = list.next {
+    m.value += 40
+    drop(m.value, list.next?.value)
+}

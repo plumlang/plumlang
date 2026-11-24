@@ -1,0 +1,18 @@
+# A runtime error in a method the compiler calls directly, and in one the
+# object's tree chooses, has the same message and calls as before (#119).
+tree Box {
+    items: list[int] = []
+    branch first() -> int => self.items[0]
+    branch peek() -> int => self.first()
+}
+tree Crate : Box {
+    branch first() -> int => self.items[1]
+}
+plant c = Crate([5])
+try {
+    drop(c.peek())
+} catch e: IndexError {
+    drop(e.message)
+}
+plant b = Box()
+drop(b.peek())

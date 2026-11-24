@@ -1,0 +1,27 @@
+# command: dis
+# Fields by slot (GET_FIELD_L, FIELD_ADD_INT_K) and direct method calls
+# (CALL_METHOD); INVOKE where the object's tree decides (#119).
+trait Shape {
+    branch area() -> float
+}
+tree Rect : Shape {
+    w: float
+    h: float
+    n: int = 0
+    branch area() -> float => self.w * self.h
+    branch grow(by: float) {
+        self.w += by
+        self.n += 1
+    }
+}
+tree Square : Rect {
+    branch init(side: float) {
+        self.w = side
+        self.h = side
+    }
+    branch area() -> float => super.area()
+}
+plant s: Shape = Square(2.0)
+plant r = Rect(1.0, 2.0)
+r.grow(0.5)
+drop(s.area(), r.area(), r.n)
