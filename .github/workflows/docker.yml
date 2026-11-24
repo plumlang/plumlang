@@ -1,0 +1,162 @@
+# SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
+#
+# Publish the plum container image for a release, to Docker Hub
+# (plumlang/plum) and GitHub Container Registry (ghcr.io/plumlang/plum),
+# for linux/amd64, linux/arm64 and linux/riscv64.
+#
+#   after the Release workflow publishes a tag   automatic
+#   Actions > Docker > Run workflow (version)    a release again, or a dry run
+#
+# The image holds the release's own static binaries, checked against its
+# SHA256SUMS. Docker Hub needs the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN
+# secrets; without them the image goes to GHCR only (docs/releasing.md).
+name: Docker
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to publish, such as 2.2.0
+        required: true
+      push:
+        description: Push the image (otherwise build and test only)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    # A tag build of Release that succeeded, or a manual run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+      PUSH: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Version
+        id: v
+        env:
+          INPUT: ${{ inputs.version }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          v="${INPUT:-$TAG}"
+          v="${v#v}"
+          case "$v" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::not a release version: '$v'"; exit 1 ;;
+          esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Download and check the release binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          mkdir -p dl ctx/bin
+          gh release download "v$V" -R "$GITHUB_REPOSITORY" -D dl \
+            -p SHA256SUMS -p "plum-$V-linux-x86_64.tar.gz" \
+            -p "plum-$V-linux-arm64.tar.gz" -p "plum-$V-linux-riscv64.tar.gz"
+          (cd dl && sha256sum -c --ignore-missing SHA256SUMS)
+          for pair in amd64:x86_64 arm64:arm64 riscv64:riscv64; do
+            arch="${pair%%:*}"; target="${pair#*:}"
+            mkdir -p "ctx/bin/$arch" x
+            tar -xzf "dl/plum-$V-linux-$target.tar.gz" -C x
+            install -m 0755 "$(find x -type f -name plum | head -1)" "ctx/bin/$arch/plum"
+            rm -rf x
+          done
+          cp packaging/docker/Dockerfile ctx/
+          file ctx/bin/*/plum
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to Docker Hub
+        if: env.HAS_DOCKERHUB == 'true' && env.PUSH == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        if: env.PUSH == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Image names and tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            name=plumlang/plum,enable=${{ env.HAS_DOCKERHUB }}
+            name=ghcr.io/plumlang/plum
+          tags: |
+            type=semver,pattern={{version}},value=v${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ steps.v.outputs.version }}
+            type=raw,value=latest
+
+      - name: Build and test (amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ctx
+          platforms: linux/amd64
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          load: true
+          tags: plum-test
+
+      - name: Smoke test
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          docker run --rm plum-test version | tee out.txt
+          grep -q "plum $V" out.txt
+          printf 'drop("hello from {1 + 1} containers")\n' > hello.plum
+          docker run --rm -v "$PWD":/src plum-test run hello.plum | grep -qx 'hello from 2 containers'
+
+      - name: Build and push (amd64, arm64, riscv64)
+        if: env.PUSH == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ctx
+          platforms: linux/amd64,linux/arm64,linux/riscv64
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Summary
+        if: env.PUSH == 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Published"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+            [ "$HAS_DOCKERHUB" = true ] || echo "Docker Hub skipped: set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN."
+          } >> "$GITHUB_STEP_SUMMARY"
