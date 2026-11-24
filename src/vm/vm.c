@@ -2210,10 +2210,20 @@ static bool execute(VM *vm) {
 #define OVERFLOW(a, symbol, b)                                                                \
     FAIL(PLUM_ERROR_OVERFLOW, "integer overflow: %lld %s %lld doesn't fit in an int",       \
          (long long)(a), symbol, (long long)(b))
-/* r = x fn y, when x and y are inline ints and so is the result. */
-#define INT_FAST(fn, x, y, r)                                                                 \
-    (plum_both_small_ints((x), (y)) && !fn(plum_small_int_of(x), plum_small_int_of(y), &(r)) && \
-     plum_int_inline(r))
+/* r = x fn y, when x and y are inline ints and so is the result. Two
+ * NaN-boxed inline ints are at most 50 bits, so their sum or difference
+ * can't overflow 64 bits: only the inline range is checked. */
+#if PLUM_NANBOX
+#define add_overflows_inline(a, b, out) (*(out) = (a) + (b), false)
+#define sub_overflows_inline(a, b, out) (*(out) = (a) - (b), false)
+#else
+#define add_overflows_inline add_overflows
+#define sub_overflows_inline sub_overflows
+#endif
+#define mul_overflows_inline mul_overflows
+#define INT_FAST(fn, x, y, r)                                                     \
+    (plum_both_small_ints((x), (y)) &&                                            \
+     !fn##_inline(plum_small_int_of(x), plum_small_int_of(y), &(r)) && plum_int_inline(r))
 #define INT_BINARY(expr)                                      \
     do {                                                      \
         PlumValue *s_ = &vm->stack[--vm->top];                \

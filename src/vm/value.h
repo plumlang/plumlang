@@ -255,12 +255,6 @@ static inline PlumValueType plum_value_type(PlumValue v) {
     return (v.bits & 2u) != 0 ? PLUM_VAL_BOOL : PLUM_VAL_NONE;
 }
 
-/* Is the whole of `v` the same as the whole of `w` (not equality of
- * values: two boxed ints can be equal and differ)? */
-static inline bool plum_same_bits(PlumValue v, PlumValue w) {
-    return v.bits == w.bits;
-}
-
 #else /* the wide layout */
 
 typedef struct PlumValue {
@@ -363,10 +357,6 @@ static inline int64_t plum_as_int(PlumValue v) {
 
 static inline PlumValueType plum_value_type(PlumValue v) {
     return v.type;
-}
-
-static inline bool plum_same_bits(PlumValue v, PlumValue w) {
-    return v.type == w.type && v.as.i == w.as.i;
 }
 
 #endif /* PLUM_NANBOX */
