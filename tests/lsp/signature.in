@@ -1,0 +1,30 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"@ROOT@","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"@ROOT@/main.plum","languageId":"plum","version":1,"text":"seed math\n\ntree Bed {\n    plants: int\n    width: float = 1.0\n\n    branch resize(by: float, keep: bool = good) -> float => self.width * by\n}\n\nkind Soil {\n    Clay\n    Sand(grain: float, wet: bool)\n}\n\nbranch grow(by: int, step: int = 1) -> int => by * step\n\nplant bed = Bed(3, width: 2.0)\ndrop(grow(1, step: 2), bed.resize(2.0), math.sqrt(4.0), Soil.Sand(0.5, bad))\ndrop(\"a,b\".replace(\",\", \";\"), len(\"x(y\"))\n"}}}
+# a function, after its (
+{"jsonrpc":"2.0","id":2,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":17,"character":10}}}
+# the second argument, given by name
+{"jsonrpc":"2.0","id":3,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":17,"character":20}}}
+# a constructor: the fields, parents' first; width by name
+{"jsonrpc":"2.0","id":4,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":16,"character":25}}}
+# a method
+{"jsonrpc":"2.0","id":5,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":17,"character":34}}}
+# a standard library function
+{"jsonrpc":"2.0","id":6,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":17,"character":50}}}
+# a kind's case, second argument
+{"jsonrpc":"2.0","id":7,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":17,"character":71}}}
+# a str method: the receiver isn't a parameter
+{"jsonrpc":"2.0","id":8,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":18,"character":24}}}
+# a built-in, inside a string's ( nothing changes
+{"jsonrpc":"2.0","id":9,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":18,"character":37}}}
+# outside any call
+{"jsonrpc":"2.0","id":10,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":16,"character":6}}}
+# A call being typed: the file doesn't parse, so it is checked again with the call closed.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":2},"contentChanges":[{"text":"seed math\n\ntree Bed {\n    plants: int\n    width: float = 1.0\n\n    branch resize(by: float, keep: bool = good) -> float => self.width * by\n}\n\nkind Soil {\n    Clay\n    Sand(grain: float, wet: bool)\n}\n\nbranch grow(by: int, step: int = 1) -> int => by * step\n\nplant bed = Bed(3, width: 2.0)\ndrop(grow(1, step: 2), bed.resize(2.0), math.sqrt(4.0), Soil.Sand(0.5, bad))\ndrop(\"a,b\".replace(\",\", \";\"), len(\"x(y\"))\nplant z = grow(1, "}]}}
+# the argument being typed
+{"jsonrpc":"2.0","id":11,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":19,"character":18}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"@ROOT@/main.plum","version":3},"contentChanges":[{"text":"seed math\n\ntree Bed {\n    plants: int\n    width: float = 1.0\n\n    branch resize(by: float, keep: bool = good) -> float => self.width * by\n}\n\nkind Soil {\n    Clay\n    Sand(grain: float, wet: bool)\n}\n\nbranch grow(by: int, step: int = 1) -> int => by * step\n\nplant bed = Bed(3, width: 2.0)\ndrop(grow(1, step: 2), bed.resize(2.0), math.sqrt(4.0), Soil.Sand(0.5, bad))\ndrop(\"a,b\".replace(\",\", \";\"), len(\"x(y\"))\nplant z = drop(1, 2, Bed(plants: "}]}}
+# nested calls being typed: the innermost, by keyword
+{"jsonrpc":"2.0","id":12,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"@ROOT@/main.plum"},"position":{"line":19,"character":33}}}
+{"jsonrpc":"2.0","id":13,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

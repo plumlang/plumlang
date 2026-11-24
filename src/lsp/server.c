@@ -647,6 +647,18 @@ static void initialize_result(PlumJsonWriter *w) {
     plum_jw_key(w, "prepareProvider");
     plum_jw_bool(w, true);
     plum_jw_object_end(w);
+    plum_jw_key(w, "signatureHelpProvider");
+    plum_jw_object(w);
+    plum_jw_key(w, "triggerCharacters");
+    plum_jw_array(w);
+    plum_jw_string(w, "(");
+    plum_jw_string(w, ",");
+    plum_jw_array_end(w);
+    plum_jw_key(w, "retriggerCharacters");
+    plum_jw_array(w);
+    plum_jw_string(w, ")");
+    plum_jw_array_end(w);
+    plum_jw_object_end(w);
     plum_jw_object_end(w);
     plum_jw_key(w, "serverInfo");
     plum_jw_object(w);
@@ -896,8 +908,9 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
     bool refs = strcmp(method, "textDocument/references") == 0;
     bool prepare = strcmp(method, "textDocument/prepareRename") == 0;
     bool rename = strcmp(method, "textDocument/rename") == 0;
+    bool signature = strcmp(method, "textDocument/signatureHelp") == 0;
     if (!hover && !definition && !completion && !symbols && !format && !refs && !prepare &&
-        !rename) {
+        !rename && !signature) {
         send_error(s, id, ERR_METHOD_NOT_FOUND, "unknown method");
         return;
     }
@@ -907,7 +920,7 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
         return;
     }
     const PlumJson *pos = plum_json_get(params, "position");
-    if ((hover || definition || completion || refs || prepare || rename) &&
+    if ((hover || definition || completion || refs || prepare || rename || signature) &&
         (pos == NULL || pos->kind != PLUM_JSON_OBJECT)) {
         send_error(s, id, ERR_INVALID_PARAMS, "missing position");
         return;
@@ -947,6 +960,8 @@ static void request(Server *s, const char *method, const PlumJson *id, const Plu
             plum_jw_array_end(&w);
         }
         plum_lsp_target_free(&t);
+    } else if (signature) {
+        plum_lsp_signature_help(&w, d->analysis, d->text, d->len, offset, read_module, s);
     } else if (prepare || rename) {
         plum_jw_null(&w);
     } else {

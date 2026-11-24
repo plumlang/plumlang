@@ -26,6 +26,7 @@ Format for a new entry:
 - **Tooling**: `plum fmt --stdin` reads source from standard input and writes the formatted source to standard output, for editors that pipe a buffer through a formatter (Helix's `formatter`); syntax errors go to standard error with exit 1 and nothing on standard output (#113).
 - **Benchmarks**: every benchmark in `bench/` also has Lua and Node.js versions, and there are four new ones (`jsondoc`, `textbuild`, `words`, `cart`). `bench/run.py` runs whichever interpreters are installed, checks their output matches before timing, and writes JSON; `bench/compare.py` compares two results. A CI job (`.github/workflows/bench.yml`) runs them on every pull request and fails one that makes a benchmark more than 15% slower than `main` (#116).
 - **Tools**: `plum lsp` finds references and renames (#114): every use of a variable, parameter, function, tree, trait, kind, case, field, method or module alias in the package, imports and keyword arguments included, as one edit across files open or not; built-ins, the standard library and keywords are refused with the reason (docs/lsp.md).
+- **Tools**: `plum lsp` signature help (#114): the signature of the call being typed, with the argument under the cursor (by position or by keyword) highlighted, for functions, methods, constructors, kind cases, built-ins and the standard library.
 
 ## v2.1.4 — 2026-11-16
 

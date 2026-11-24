@@ -21,6 +21,7 @@ plum lsp --stdio    # the same (some editors add the flag)
 | Document symbols | The outline: functions, trees and traits with their fields and methods, kinds with their cases, top-level variables, constants and imports. |
 | Formatting | The whole file in `plum fmt`'s layout (spec 14.1). A file with syntax errors is left alone. |
 | Find references | Every place in the package that names the same variable, parameter, function, tree, trait, kind, case, field, method or module alias: uses, imports (`seed ./beds { Bed }`, `beds.Bed`), keyword arguments (`Bed(plants: 4)` names the field `plants`) and, if asked, the declaration. |
+| Signature help | While you type a call's arguments (after `(` and `,`): the signature of the function, method, constructor (`init`'s parameters, or the fields, parents' first), kind case, built-in or standard-library function, with the argument you are on highlighted; a keyword argument (`step: 2`) highlights the parameter it names. Works on a call you are still typing. |
 | Rename | Renames all of those at once, in every file of the package, open or not, as one edit. Built-ins (`drop`, `int`, `ValueError`), the standard library, keywords and a module's file name can't be renamed; the editor shows why. The new name must be a name and not a keyword. |
 
 Details:
@@ -60,6 +61,7 @@ Details:
 |---|---|---|---|---|---|
 | Find references | Shift+F12 | `grr` | `gr` | Alt+Shift+F12 | `M-?` |
 | Rename | F2 | `grn` | `Space r` | F2 | `M-x eglot-rename` |
+| Signature help | as you type | `Ctrl-S` in insert mode | as you type | as you type | in the echo area (ElDoc) |
 
 The server needs only the path of `plum`; with `plum` on your `PATH`, the
 command is `plum lsp`. Associate the `.plum` extension with a `plum`

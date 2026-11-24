@@ -2438,3 +2438,473 @@ void plum_lsp_completion(PlumJsonWriter *w, const PlumLspAnalysis *a, const char
     plum_array_free(&items.list);
     plum_map_free(&items.seen);
 }
+
+/* ------------------------------------------------------------------ */
+/* Signature help                                                      */
+/* ------------------------------------------------------------------ */
+
+/* The tokens of a text, lexed again: they skip strings and comments. */
+typedef struct Lexed {
+    PlumArena arena;
+    PlumInterner names;
+    PlumDiagList diags;
+    PlumTokenList tokens;
+    PlumCommentList comments;
+} Lexed;
+
+static void lex_text(Lexed *l, const char *path, const char *text, size_t len) {
+    PlumSource source = {path, text, len};
+    plum_arena_init(&l->arena);
+    plum_interner_init(&l->names);
+    plum_diag_init(&l->diags, &source);
+    memset(&l->tokens, 0, sizeof l->tokens);
+    memset(&l->comments, 0, sizeof l->comments);
+    plum_lex_comments(&source, &l->arena, &l->names, &l->diags, &l->tokens, &l->comments);
+}
+
+static void lexed_free(Lexed *l) {
+    plum_array_free(&l->tokens);
+    plum_array_free(&l->comments);
+    plum_diag_free(&l->diags);
+    plum_interner_free(&l->names);
+    plum_arena_free(&l->arena);
+}
+
+#define CALL_DEPTH 256
+
+/* An open bracket before the offset. */
+typedef struct Open {
+    PlumTokenKind kind; /* LPAREN, LBRACKET, LBRACE or STRING_HEAD */
+    size_t token;       /* its index */
+    size_t commas;      /* commas in it so far */
+    size_t arg;         /* the token starting its last argument */
+} Open;
+
+/* The call the offset is in the arguments of. */
+typedef struct CallAt {
+    size_t paren;        /* the '(' */
+    size_t callee_end;   /* the end of the name before it */
+    size_t commas;       /* the argument's index */
+    const char *keyword; /* `name:` starting the argument, or NULL (interned in the Lexed) */
+    char closers[CALL_DEPTH * 2 + 1]; /* what closes every bracket open at the offset */
+} CallAt;
+
+static bool call_at(const Lexed *l, size_t offset, CallAt *out) {
+    Open stack[CALL_DEPTH];
+    size_t depth = 0;
+    const PlumToken *t = l->tokens.items;
+    size_t n = l->tokens.len;
+    size_t i = 0;
+    for (; i < n && t[i].span.offset < offset && t[i].kind != PLUM_TOK_EOF; i++) {
+        switch (t[i].kind) {
+        case PLUM_TOK_LPAREN:
+        case PLUM_TOK_LBRACKET:
+        case PLUM_TOK_LBRACE:
+        case PLUM_TOK_STRING_HEAD:
+            if (depth < CALL_DEPTH) {
+                Open o = {t[i].kind, i, 0, i + 1};
+                stack[depth++] = o;
+            }
+            break;
+        case PLUM_TOK_RPAREN:
+        case PLUM_TOK_RBRACKET:
+        case PLUM_TOK_RBRACE:
+        case PLUM_TOK_STRING_TAIL:
+            if (depth > 0) {
+                depth--;
+            }
+            break;
+        case PLUM_TOK_COMMA:
+            if (depth > 0) {
+                stack[depth - 1].commas++;
+                stack[depth - 1].arg = i + 1;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    /* the innermost '(' not inside a block or an interpolation */
+    size_t k = depth;
+    while (k > 0 && stack[k - 1].kind != PLUM_TOK_LPAREN) {
+        if (stack[k - 1].kind == PLUM_TOK_LBRACE || stack[k - 1].kind == PLUM_TOK_STRING_HEAD) {
+            return false;
+        }
+        k--;
+    }
+    if (k == 0) {
+        return false;
+    }
+    const Open *o = &stack[k - 1];
+    if (o->token == 0 || t[o->token - 1].kind != PLUM_TOK_IDENT) {
+        return false; /* (a + b), or a call of something without a name */
+    }
+    out->paren = t[o->token].span.offset;
+    out->callee_end = span_end(t[o->token - 1].span, (size_t)-1);
+    out->commas = o->commas;
+    out->keyword = NULL;
+    if (o->arg + 1 < i && t[o->arg].kind == PLUM_TOK_IDENT &&
+        t[o->arg + 1].kind == PLUM_TOK_COLON) {
+        out->keyword = t[o->arg].as.name;
+    }
+    size_t c = 0;
+    for (size_t d = depth; d > 0; d--) {
+        switch (stack[d - 1].kind) {
+        case PLUM_TOK_LPAREN:
+            out->closers[c++] = ')';
+            break;
+        case PLUM_TOK_LBRACKET:
+            out->closers[c++] = ']';
+            break;
+        case PLUM_TOK_LBRACE:
+            out->closers[c++] = '}';
+            break;
+        default:
+            out->closers[c++] = '}';
+            out->closers[c++] = '"';
+            break;
+        }
+    }
+    out->closers[c] = '\0';
+    return true;
+}
+
+typedef struct CallFinder {
+    const CallAt *at;
+    const PlumExpr *call;
+} CallFinder;
+
+static void call_visit(Walk *w, const Occ *o) {
+    CallFinder *f = w->ctx;
+    const PlumExpr *e = o->expr;
+    if (o->kind == OCC_EXPR && e->kind == PLUM_EXPR_CALL && e->as.call.callee != NULL &&
+        span_end(e->as.call.callee->span, w->m->len) == f->at->callee_end &&
+        e->span.offset <= f->at->paren) {
+        f->call = e;
+    }
+}
+
+static const PlumExpr *find_call(const PlumModule *m, const CallAt *at) {
+    CallFinder f = {at, NULL};
+    Walk w = {m, call_visit, &f, 0};
+    for (size_t i = 0; i < m->program.count; i++) {
+        walk_stmt(&w, m->program.stmts[i]);
+    }
+    return f.call;
+}
+
+/* "branch area(r: float) -> float" without its "branch ". */
+static void branch_label(const PlumModule *m, const PlumBranch *b, const char *name, Buf *out) {
+    Buf h = {0};
+    header_text(m, b->span.offset, span_end(b->span, m->len), &h);
+    const char *text = buf_text(&h);
+    const char *paren = strchr(text, '(');
+    buf_str(out, name != NULL ? name : b->name);
+    buf_str(out, paren != NULL ? paren : "()");
+    plum_array_free(&h);
+}
+
+/* A tree's constructor: init's parameters, or every field, parents' first. */
+static void constructor_label(const PlumLspAnalysis *a, const PlumSymbol *tree, Buf *out) {
+    const PlumSymbol *owner = NULL;
+    const PlumBranch *init = find_method(tree, "init", &owner, 0);
+    if (init != NULL) {
+        branch_label(module_of(a, owner->decl, a->main), init, tree->name, out);
+        return;
+    }
+    const PlumSymbol *chain[32];
+    size_t depth = 0;
+    for (const PlumSymbol *t = tree; t != NULL && depth < 32; t = parent_tree(t)) {
+        chain[depth++] = t;
+    }
+    buf_str(out, tree->name);
+    buf_str(out, "(");
+    bool first = true;
+    for (size_t d = depth; d > 0; d--) {
+        const PlumStmt *s = chain[d - 1]->decl;
+        if (s == NULL) {
+            buf_str(out, first ? "message: str" : ", message: str");
+            first = false;
+            continue;
+        }
+        const PlumModule *m = module_of(a, s, a->main);
+        for (size_t i = 0; i < s->as.tree.field_count; i++) {
+            if (!first) {
+                buf_str(out, ", ");
+            }
+            header_text(m, s->as.tree.fields[i].span.offset,
+                        span_end(s->as.tree.fields[i].span, m->len), out);
+            first = false;
+        }
+    }
+    buf_str(out, ")");
+}
+
+/* The signature of what a call calls, as a label like "f(a: int, b: str) -> bool",
+ * and its documentation. False if it isn't known. */
+static bool call_label(const PlumLspAnalysis *a, const PlumExpr *call, Buf *label,
+                       const char **doc) {
+    const PlumExpr *callee = call->as.call.callee;
+    *doc = NULL;
+    const PlumSymbol *kind = NULL;
+    const char *case_name = NULL;
+    if (callee->kind == PLUM_EXPR_NAME && callee->symbol != NULL) {
+        const PlumSymbol *sym = callee->symbol;
+        switch (sym->kind) {
+        case PLUM_SYM_FUNC:
+            if (sym->decl == NULL || sym->decl->kind != PLUM_STMT_BRANCH) {
+                return false;
+            }
+            branch_label(module_of(a, sym->decl, a->main), &sym->decl->as.branch, NULL, label);
+            return true;
+        case PLUM_SYM_TREE:
+            constructor_label(a, sym, label);
+            return true;
+        case PLUM_SYM_CASE:
+            kind = sym->owner;
+            case_name = sym->name;
+            break;
+        case PLUM_SYM_BUILTIN_FUNC:
+            for (size_t i = 0; i < sizeof builtin_docs / sizeof builtin_docs[0]; i++) {
+                if (strcmp(builtin_docs[i].name, sym->name) == 0) {
+                    buf_str(label, builtin_docs[i].signature);
+                    *doc = builtin_docs[i].doc;
+                    return true;
+                }
+            }
+            return false;
+        case PLUM_SYM_NATIVE: {
+            const PlumNativeModule *nm = native_module_of(sym);
+            const PlumNativeFunction *fn = nm != NULL ? plum_native_function(nm, sym->name) : NULL;
+            if (fn == NULL) {
+                return false;
+            }
+            buf_str(label, sym->name);
+            buf_str(label, fn->signature);
+            *doc = fn->doc;
+            return true;
+        }
+        default:
+            return false;
+        }
+    } else if (callee->kind == PLUM_EXPR_FIELD && callee->as.field.name != NULL) {
+        const PlumExpr *obj = callee->as.field.object;
+        const char *name = callee->as.field.name;
+        if (obj != NULL && obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+            obj->symbol->kind == PLUM_SYM_KIND) {
+            kind = obj->symbol;
+            case_name = name;
+        } else {
+            const PlumSymbol *tree = tree_of(obj != NULL ? obj->ty : NULL);
+            const PlumSymbol *owner = NULL;
+            const PlumBranch *m = tree != NULL ? find_method(tree, name, &owner, 0) : NULL;
+            if (m != NULL) {
+                branch_label(module_of(a, owner->decl, a->main), m, NULL, label);
+                return true;
+            }
+            const PlumNativeFunction *fn = NULL;
+            bool method = false;
+            if (obj != NULL && obj->kind == PLUM_EXPR_NAME && obj->symbol != NULL &&
+                obj->symbol->kind == PLUM_SYM_MODULE) {
+                const PlumNativeModule *nm = native_module_of(obj->symbol);
+                fn = nm != NULL ? plum_native_function(nm, name) : NULL;
+            } else if (obj != NULL && obj->ty != NULL) {
+                fn = plum_callee_native(callee, &method);
+            }
+            if (fn == NULL) {
+                return false;
+            }
+            buf_str(label, name);
+            const char *sig = fn->signature;
+            if (method && strncmp(sig, "(self", 5) == 0) {
+                /* "(self: str, old: str)": the receiver is before the dot */
+                const char *comma = strchr(sig, ',');
+                const char *close = strchr(sig, ')');
+                buf_str(label, "(");
+                sig = comma != NULL && (close == NULL || comma < close) ? comma + 1 : close;
+                while (sig != NULL && *sig == ' ') {
+                    sig++;
+                }
+                if (sig == NULL) {
+                    sig = ")";
+                }
+            }
+            buf_str(label, sig);
+            *doc = fn->doc;
+            return true;
+        }
+    } else {
+        return false;
+    }
+    const PlumCase *c = kind != NULL ? find_case(kind, case_name) : NULL;
+    if (c == NULL || c->param_count == 0) {
+        return false;
+    }
+    case_text(module_of(a, kind->decl, a->main), kind->decl, c, label);
+    return true;
+}
+
+/* The parameters in a label: [start, end) of each, between its first
+ * parentheses, split at commas outside brackets and strings. */
+typedef struct LabelParam {
+    size_t start, end;
+} LabelParam;
+
+static size_t label_params(const char *label, LabelParam *out, size_t max) {
+    const char *open = strchr(label, '(');
+    if (open == NULL) {
+        return 0;
+    }
+    size_t count = 0;
+    int depth = 0;
+    bool in_string = false;
+    size_t start = (size_t)(open - label) + 1;
+    for (size_t i = start; label[i] != '\0'; i++) {
+        char c = label[i];
+        if (in_string) {
+            if (c == '\\' && label[i + 1] != '\0') {
+                i++;
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (c == '"') {
+            in_string = true;
+        } else if (c == '(' || c == '[' || c == '{') {
+            depth++;
+        } else if ((c == ')' || c == ']' || c == '}') && depth > 0) {
+            depth--;
+        } else if (depth == 0 && (c == ',' || c == ')')) {
+            size_t s = start, e = i;
+            while (s < e && label[s] == ' ') {
+                s++;
+            }
+            while (e > s && label[e - 1] == ' ') {
+                e--;
+            }
+            if (e > s && count < max) {
+                out[count].start = s;
+                out[count].end = e;
+                count++;
+            }
+            start = i + 1;
+            if (c == ')') {
+                break;
+            }
+        }
+    }
+    return count;
+}
+
+/* The UTF-16 length of label[0, n). */
+static long long utf16_at(const char *label, size_t n) {
+    PlumLspLines lines;
+    plum_lsp_lines_init(&lines, label, strlen(label));
+    long long line, character;
+    plum_lsp_position(&lines, n, &line, &character);
+    plum_lsp_lines_free(&lines);
+    return character;
+}
+
+#define MAX_PARAMS 64
+
+void plum_lsp_signature_help(PlumJsonWriter *w, const PlumLspAnalysis *a, const char *text,
+                             size_t len, size_t offset, PlumModuleReader read, void *read_ctx) {
+    if (offset > len) {
+        offset = len;
+    }
+    Lexed l;
+    lex_text(&l, a->main->path, text, len);
+    CallAt at;
+    if (!call_at(&l, offset, &at)) {
+        lexed_free(&l);
+        plum_jw_null(w);
+        return;
+    }
+    const PlumLspAnalysis *in = a;
+    PlumLspAnalysis *patched = NULL;
+    const PlumExpr *call = find_call(a->main, &at);
+    if (call == NULL) {
+        /* A call being typed: check the text with its brackets closed
+         * where the offset is, and the rest of its line left out. */
+        size_t rest = offset;
+        while (rest < len && text[rest] != '\n') {
+            rest++;
+        }
+        size_t nc = strlen(at.closers);
+        size_t plen = offset + nc + (len - rest);
+        char *p = plum_alloc(plen + 1);
+        memcpy(p, text, offset);
+        memcpy(p + offset, at.closers, nc);
+        memcpy(p + offset + nc, text + rest, len - rest);
+        p[plen] = '\0';
+        patched = plum_lsp_analyze(a->main->path, p, plen, read, read_ctx);
+        plum_free(p);
+        in = patched;
+        call = find_call(patched->main, &at);
+    }
+    Buf label = {0};
+    const char *doc = NULL;
+    if (call == NULL || !call_label(in, call, &label, &doc)) {
+        plum_array_free(&label);
+        plum_lsp_analysis_free(patched);
+        lexed_free(&l);
+        plum_jw_null(w);
+        return;
+    }
+    const char *text_label = buf_text(&label);
+    LabelParam params[MAX_PARAMS];
+    size_t count = label_params(text_label, params, MAX_PARAMS);
+    size_t active = at.commas;
+    if (at.keyword != NULL) {
+        size_t kn = strlen(at.keyword);
+        for (size_t i = 0; i < count; i++) {
+            const char *p = text_label + params[i].start;
+            if ((size_t)(params[i].end - params[i].start) >= kn && memcmp(p, at.keyword, kn) == 0 &&
+                !is_name_char(p[kn])) {
+                active = i;
+                break;
+            }
+        }
+    }
+    /* drop(values...): every argument is the last parameter */
+    if (count > 0 && active >= count && params[count - 1].end - params[count - 1].start > 3 &&
+        memcmp(text_label + params[count - 1].end - 3, "...", 3) == 0) {
+        active = count - 1;
+    }
+    plum_jw_object(w);
+    plum_jw_key(w, "signatures");
+    plum_jw_array(w);
+    plum_jw_object(w);
+    plum_jw_key(w, "label");
+    plum_jw_string(w, text_label);
+    if (doc != NULL && doc[0] != '\0') {
+        plum_jw_key(w, "documentation");
+        plum_jw_string(w, doc);
+    }
+    plum_jw_key(w, "parameters");
+    plum_jw_array(w);
+    for (size_t i = 0; i < count; i++) {
+        plum_jw_object(w);
+        plum_jw_key(w, "label");
+        plum_jw_array(w);
+        plum_jw_int(w, utf16_at(text_label, params[i].start));
+        plum_jw_int(w, utf16_at(text_label, params[i].end));
+        plum_jw_array_end(w);
+        plum_jw_object_end(w);
+    }
+    plum_jw_array_end(w);
+    plum_jw_key(w, "activeParameter");
+    plum_jw_int(w, (long long)active);
+    plum_jw_object_end(w);
+    plum_jw_array_end(w);
+    plum_jw_key(w, "activeSignature");
+    plum_jw_int(w, 0);
+    plum_jw_key(w, "activeParameter");
+    plum_jw_int(w, (long long)active);
+    plum_jw_object_end(w);
+    plum_array_free(&label);
+    plum_lsp_analysis_free(patched);
+    lexed_free(&l);
+}
