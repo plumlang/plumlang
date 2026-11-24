@@ -37,9 +37,11 @@ show_diff() {
 }
 
 # The comments of a file, one per line: from a '#' outside a string to
-# the end of the line. Strings are followed well enough for the test
-# files: "..." with \" escapes (an interpolation's inner strings come in
-# pairs, so they leave the count even) and """...""" over several lines.
+# the end of the line, with `##text` written `## text` as plum fmt does;
+# a block comment #[ ... ]# (nested ones included) as its piece of each
+# line it is on. Strings are followed well enough for the test files:
+# "..." with \" escapes (an interpolation's inner strings come in pairs,
+# so they leave the count even) and """...""" over several lines.
 comments() {
     awk '
     {
@@ -47,8 +49,21 @@ comments() {
         sub(/\r$/, "", line)
         n = length(line)
         i = 1
+        from = 1
         while (i <= n) {
             c = substr(line, i, 1)
+            if (depth) {
+                two = substr(line, i, 2)
+                if (two == "#[") { depth++; i += 2; continue }
+                if (two == "]#") {
+                    depth--
+                    i += 2
+                    if (!depth) { print substr(line, from, i - from) }
+                    continue
+                }
+                i++
+                continue
+            }
             if (triple) {
                 if (substr(line, i, 3) == "\"\"\"") { triple = 0; i += 3; continue }
                 i++
@@ -62,13 +77,20 @@ comments() {
             }
             if (substr(line, i, 3) == "\"\"\"") { triple = 1; i += 3; continue }
             if (c == "\"") { quote = 1; i++; continue }
+            if (substr(line, i, 2) == "#[") { depth = 1; from = i; i += 2; continue }
             if (c == "#") {
                 text = substr(line, i)
                 sub(/[ \t]+$/, "", text)
+                if (text ~ /^##[^# \t]/) { text = "## " substr(text, 3) }
                 print text
                 break
             }
             i++
+        }
+        if (depth) {
+            text = substr(line, from)
+            sub(/[ \t]+$/, "", text)
+            if (text != "") { print text }
         }
         quote = 0
     }' "$1"

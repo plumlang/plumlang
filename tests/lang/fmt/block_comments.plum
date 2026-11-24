@@ -1,0 +1,28 @@
+# command: fmt --stdout
+# plum fmt keeps block comments as written, puts a space after `##`, and
+# keeps doc comments on the declaration they document.
+#[
+    A block comment keeps its lines
+  exactly   as written.
+]#
+plant a = 1
+##Space added after the hashes.
+##   Markdown indentation is kept.
+##
+branch first() -> int {
+        #[ indented
+      differently ]#
+    return a
+}
+plant b = 2 #[ trailing,
+over two lines ]#
+plant c = 3
+plant d = #[ inside ]# 4
+## The tree.
+tree Pot {
+    ##The size.
+    size: int
+}
+### Three hashes: an ordinary comment, left alone.
+###no space
+drop(a, b, c, d) ## after code

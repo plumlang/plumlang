@@ -46,9 +46,10 @@ typedef struct Fmt {
 
     const PlumComment *comments;
     size_t comment_count;
-    bool *done;   /* each comment, once written */
-    size_t next;  /* no comment before this one is left */
-    uint32_t pos; /* how far into the source the output has got */
+    bool *done;           /* each comment, once written */
+    size_t next;          /* no comment before this one is left */
+    uint32_t comment_end; /* the last source line of the comments written */
+    uint32_t pos;         /* how far into the source the output has got */
 
     CharBuf out;
     CharBuf notes;
@@ -251,6 +252,23 @@ static size_t comment_len(const Fmt *f, const PlumComment *c) {
     return n;
 }
 
+/*
+ * Whether a doc comment needs a space put after its `##`: `##text` is
+ * written `## text`. Block comments are kept exactly as written.
+ */
+static bool doc_needs_space(const Fmt *f, const PlumComment *c, size_t n) {
+    return c->kind == PLUM_COMMENT_DOC && n > 2 && f->src[c->span.offset + 2] != ' ' &&
+           f->src[c->span.offset + 2] != '\t';
+}
+
+/* A comment has been written. */
+static void comment_done(Fmt *f, size_t i) {
+    f->done[i] = true;
+    if (f->comments[i].end_line > f->comment_end) {
+        f->comment_end = f->comments[i].end_line;
+    }
+}
+
 /* The first comment not yet written, or comment_count. */
 static size_t next_comment(Fmt *f) {
     while (f->next < f->comment_count && f->done[f->next]) {
@@ -280,9 +298,15 @@ static void blank_line(Fmt *f) {
 /* Comment `i` on a line of its own. */
 static void comment_line(Fmt *f, size_t i) {
     const PlumComment *c = &f->comments[i];
-    put_n(f, f->src + c->span.offset, comment_len(f, c));
+    size_t n = comment_len(f, c);
+    if (doc_needs_space(f, c, n)) {
+        put_n(f, "## ", 3);
+        put_n(f, f->src + c->span.offset + 2, n - 2);
+    } else {
+        put_n(f, f->src + c->span.offset, n);
+    }
     push_line(f, 0, 0);
-    f->done[i] = true;
+    comment_done(f, i);
 }
 
 /*
@@ -310,10 +334,17 @@ static void end_line_after(Fmt *f, bool take_after) {
             plum_array_push(&f->notes, ' ');
         }
         size_t n = comment_len(f, c);
-        plum_array_reserve(&f->notes, n);
-        memcpy(f->notes.items + f->notes.len, f->src + c->span.offset, n);
-        f->notes.len += n;
-        f->done[i] = true;
+        size_t from = 0;
+        if (doc_needs_space(f, c, n)) {
+            plum_array_push(&f->notes, '#');
+            plum_array_push(&f->notes, '#');
+            plum_array_push(&f->notes, ' ');
+            from = 2;
+        }
+        plum_array_reserve(&f->notes, n - from);
+        memcpy(f->notes.items + f->notes.len, f->src + c->span.offset + from, n - from);
+        f->notes.len += n - from;
+        comment_done(f, i);
     }
     if (f->line_open) {
         push_line(f, note, f->notes.len - note);
@@ -324,6 +355,15 @@ static void end_line(Fmt *f) {
     end_line_after(f, true);
 }
 
+/* A comment written after what was written last in a sequence (at the
+ * end of its line, a block comment perhaps spanning several) ends on a
+ * later line: blank lines are counted from there. */
+static void after_comments(Fmt *f, uint32_t *prev_line) {
+    if (*prev_line != 0 && f->comment_end > *prev_line) {
+        *prev_line = f->comment_end;
+    }
+}
+
 /*
  * The comments before `limit` in the source, each on its own line, with
  * the blank lines the source has between them. `*prev_line` is the
@@ -332,12 +372,13 @@ static void end_line(Fmt *f) {
 static void leading_comments(Fmt *f, uint32_t limit, uint32_t *prev_line) {
     size_t i;
     while ((i = next_comment(f)) < f->comment_count && f->comments[i].span.offset < limit) {
+        after_comments(f, prev_line);
         uint32_t line = f->comments[i].span.line;
         if (*prev_line != 0 && line > *prev_line + 1) {
             blank_line(f);
         }
         comment_line(f, i);
-        *prev_line = line;
+        *prev_line = f->comments[i].end_line;
     }
 }
 
@@ -345,6 +386,7 @@ static void leading_comments(Fmt *f, uint32_t limit, uint32_t *prev_line) {
  * its comments, and a blank line if the source has one before it. */
 static void before_item(Fmt *f, uint32_t offset, uint32_t *prev_line) {
     leading_comments(f, offset, prev_line);
+    after_comments(f, prev_line);
     uint32_t line = line_of(f, offset);
     if (*prev_line != 0 && line > *prev_line + 1) {
         blank_line(f);
