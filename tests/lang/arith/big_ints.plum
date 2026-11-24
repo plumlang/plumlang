@@ -1,0 +1,146 @@
+# Ints are 64 bits whatever the VM's value layout (#121). NaN-boxed values
+# keep ints from -2^49 to 2^49 - 1 inline and box the rest on the heap; this
+# runs every kind of int instruction across that edge, and keeps boxed ints
+# in every place a value can live, with the same results either way.
+seed json
+
+root EDGE = 562949953421311          # 2^49 - 1, the largest inline int
+root LOW = -562949953421312          # -2^49, the smallest
+root MAX = 9223372036854775807
+
+branch show(e: Error) {
+    drop("{type_of(e)}: {e.message}")
+}
+
+# Across the edge on the stack, with a literal, with a local.
+branch stack(a: int, b: int) {
+    drop(a + b, a - b, a * b, a // b, a % b)
+    drop(a + 1, a - 1, a * 2, a // 2, a % 2, a + 70000, a - 70000)
+    drop(-a, ~a, a & b, a | b, a ^ b, a << 1, a >> 1, a ** 1)
+    drop(a < b, a <= b, a > b, a >= b, a == b, a != b)
+    drop(a == EDGE + 1, a != LOW - 1, a < MAX, a > -MAX)
+    if a > EDGE {
+        drop("above the edge")
+    }
+    if a < LOW {
+        drop("below the edge")
+    }
+    if a == b + 1 {
+        drop("one more")
+    }
+}
+stack(EDGE, 1)
+stack(EDGE + 1, 1)
+stack(LOW, 1)
+stack(LOW - 1, -1)
+stack(-(1 << 55), 7)
+stack(1 << 58, 3)
+
+# In place: a local, a module variable and a field, across the edge and back.
+plant total = EDGE - 1
+tree Counter {
+    n: int = 0
+    branch add(by: int) {
+        self.n += by
+        self.n -= 1
+        self.n += 1
+    }
+}
+branch walk() {
+    plant x = EDGE - 1
+    plant c = Counter(EDGE - 1)
+    for step in 0..4 {
+        x += 1
+        total += 1
+        c.add(1)
+        drop(x, total, c.n)
+    }
+    for step in 0..4 {
+        x -= 1
+        x = x - 1
+        x = x + 1
+        total -= 1
+        c.add(-1)
+        drop(x, total, c.n)
+    }
+    x = LOW
+    x -= 1
+    x *= 2
+    x //= 2
+    x = x // 3
+    x = x % 1000000000000000
+    drop(x)
+}
+walk()
+
+# Ranges that start, end or step over the edge.
+for i in EDGE - 1..EDGE + 2 {
+    drop(i, i % 10)
+}
+for i in LOW - 2..=LOW {
+    drop(i)
+}
+plant count = 0
+for i in MAX - 3..=MAX {
+    count += 1
+}
+drop(count)
+
+# Boxed ints held by lists, maps, sets, objects, closures and tasks.
+plant xs = [EDGE, EDGE + 1, LOW - 1, MAX, 3]
+xs.push(MAX - 1)
+xs[0] = EDGE + 5
+drop(xs, xs.sorted(), xs.contains(MAX - 1), xs.index_of(LOW - 1), len(xs))
+plant ys = xs
+ys[1] = 0
+drop(xs[1], ys[1], xs == ys, xs[0..2])
+plant m = {EDGE + 1: "a", MAX: "b", 1: "c"}
+m[EDGE + 1] = "A"
+drop(m[EDGE + 1], m[MAX], m.get(LOW - 9) ?? "none", MAX in m, len(m))
+plant s = set([EDGE + 1, EDGE + 1, MAX, MAX - 0])
+drop(len(s), MAX in s, EDGE in s)
+drop(EDGE + 1 == (EDGE + 1) * 1.0, MAX == 9.223372036854775807e18, 1 << 60 == 2.0 ** 60)
+plant big = EDGE + 10
+plant add_big = (n: int) => n + big
+drop(add_big(1), add_big(-big))
+branch twice(n: int) -> int => n * 2
+plant t = spawn twice(EDGE)
+drop(t.wait())
+plant ch = Channel[int]()
+spawn ((n: int) => {
+    ch.send(n)
+    ch.send(n + 1)
+})(MAX - 1)
+drop(ch.receive(), ch.receive())
+plant firsts = xs.map((n: int) => n // 2).filter((n: int) => n > EDGE)
+drop(firsts, xs.reduce((a: int, n: int) => a ^ n, 0))
+drop(xs.sorted_by((n: int) => -n))
+tree Big {
+    v: int
+    branch compare(other: Big) -> int => self.v - other.v   # beyond the edge
+    branch to_str() -> str => "Big({self.v})"
+}
+drop([Big(EDGE * 4), Big(-EDGE * 4), Big(0), Big(EDGE * 2)].sorted(), Big(1) < Big(EDGE * 8))
+
+# Conversions, text and the standard library.
+drop(float(MAX - 1023), int(9.0e15), int("{EDGE + 1}"), "{LOW - 1:x}", "{EDGE + 1:>20}", "{MAX:b}")
+drop(str(MAX), byte(255), type_of(EDGE + 1), [EDGE + 1].contains(EDGE + 1))
+drop(json.stringify([EDGE + 1, LOW - 1, MAX]), json.parse("{EDGE + 1}").int())
+drop(json.parse("[562949953421312]").at(0).int() == EDGE + 1)
+
+# The errors are the 64-bit ones, with the same messages.
+try { drop(MAX + 1) } catch e: OverflowError { show(e) }
+try { drop((EDGE + 1) * (EDGE + 1)) } catch e: OverflowError { show(e) }
+try { drop(-(-MAX - 1)) } catch e: OverflowError { show(e) }
+try { drop(xs[EDGE + 1]) } catch e: IndexError { show(e) }
+try { drop(xs[LOW - 1]) } catch e: IndexError { show(e) }
+try { drop(1 << (EDGE + 1)) } catch e: ValueError { show(e) }
+try { drop((EDGE + 1) // 0) } catch e: ZeroDivisionError { show(e) }
+plant g = MAX - 1
+try {
+    g += 1
+    g += 1
+} catch e: OverflowError {
+    show(e)
+}
+drop(g)
