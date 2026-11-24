@@ -77,28 +77,36 @@ to `main`, on `ubuntu-latest`:
 
 1. builds the release binary (`make`) and installs Lua 5.4 (Python and
    Node.js come with the runner);
-2. runs `bench/run.py --runs 5 --json bench-results/results.json`; a
-   program that fails or prints the wrong output fails the job;
-3. uploads `results.json` as the `bench-results` artifact (kept 90 days);
-4. downloads `bench-results` from the last successful `push` run on `main`
-   (`gh run list` / `gh run download`);
+2. on a pull request, also builds `main` in a worktree: the first parent
+   of the merge commit GitHub tests, so `main` as the pull request would
+   merge into it;
+3. runs `bench/run.py --json bench-results/results.json`, on a pull
+   request with `--baseline` main's `plum`: each benchmark runs the two
+   binaries in turn, 7 times each (swapping which goes first every pair),
+   and takes each one's median. A program that fails or prints the wrong
+   output fails the job;
+4. uploads `results.json`, every run's time included, as the
+   `bench-results` artifact (kept 90 days);
 5. runs `bench/compare.py`, which writes a table to the job summary and,
-   on a pull request, fails if a benchmark's Plumlang time is more than
+   on a pull request, fails if a benchmark's Plumlang median is more than
    15% **and** more than 0.02 s slower than `main`'s. The 0.02 s keeps a
    very short benchmark's noise from failing it alone. On `main` the
-   comparison is only reported, so each push becomes the next baseline.
-   With no baseline (the first run, or an expired artifact) it passes.
+   times are only recorded.
 
-Python, Lua and Node.js times are in the table for reference and never
-fail the check. Runners vary from run to run, which is why the threshold
-is 15%; to change it, set the repository variable `BENCH_THRESHOLD` (a
-percentage) under Settings, Secrets and variables, Actions, Variables. To
-check a change locally against a saved result:
+Both binaries are timed on the same runner, interleaved, so a slow or
+busy runner slows both alike; comparing with an earlier run on another
+runner (as the job did before #172) failed pull requests that didn't
+touch the VM by 15-47%. Python, Lua and Node.js times (fastest of 5) are
+in the table for reference and never fail the check. To change the
+threshold, set the repository variable `BENCH_THRESHOLD` (a percentage)
+under Settings, Secrets and variables, Actions, Variables. To compare a
+change locally with `main` the same way:
 
 ```bash
-python3 bench/run.py --runs 5 --json before.json     # on main
-python3 bench/run.py --runs 5 --json after.json      # with the change
-python3 bench/compare.py after.json before.json --threshold 10
+git worktree add ../plum-main origin/main && make -C ../plum-main
+make
+python3 bench/run.py --baseline ../plum-main/plum --json after.json
+python3 bench/compare.py after.json --threshold 10
 ```
 
 ## Idle connections

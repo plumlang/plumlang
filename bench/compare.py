@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
-"""Compare a bench/run.py --json result with a baseline (the last on main).
+"""Compare Plumlang's times in a bench/run.py --json result with main's.
+
+When the result was made with run.py --baseline (main's plum timed in
+the same job, interleaved with this build's), main's times are in it and
+no BASELINE.json is needed: each benchmark compares the two medians.
+Otherwise BASELINE.json is an earlier result (from main) to compare with.
 
 A benchmark regresses when its Plumlang time is more than --threshold
 percent (default 15) slower than the baseline's, and at least --min-delta
@@ -10,7 +15,7 @@ reference and never fail it.
 
 Prints a Markdown table (and appends it to --summary FILE, for
 $GITHUB_STEP_SUMMARY). Exits 1 if anything regressed, unless --warn-only.
-With no baseline (the first run, or an expired artifact) it passes.
+With no baseline (a run on main, which only records) it passes.
 
 Usage: python3 bench/compare.py CURRENT.json [BASELINE.json]
            [--threshold PCT] [--min-delta SECONDS] [--summary FILE] [--warn-only]
@@ -46,16 +51,26 @@ def main():
     if cur is None:
         print(f"compare.py: no results in {args.current}", file=sys.stderr)
         return 2
-    base = load(args.baseline)
+    paired = "pairs" in cur
+    if paired:
+        base = {"seconds": {b: {"plum": row["base"]} for b, row in cur["seconds"].items()
+                            if "base" in row}}
+    else:
+        base = load(args.baseline)
     others = [k for k in cur["versions"] if k != "plum"]
 
+    rule_text = (f"a benchmark fails when it is more than {args.threshold:g}% "
+                 f"and {args.min_delta:g} s slower")
     lines = ["## Benchmarks", ""]
-    if base is None:
-        lines.append("No baseline from `main` yet, so nothing is compared; "
-                     "this run's results become one once it is on `main`.")
+    if paired:
+        lines.append(f"This build against `main` ({cur.get('base_version', '?')}), both "
+                     f"built and run in this job, taking turns: median of {cur['pairs']} "
+                     f"runs each; {rule_text}. Other languages: fastest of {cur['runs']} runs.")
+    elif base is None:
+        lines.append("Nothing to compare with: this run records the times. "
+                     f"Fastest of {cur['runs']} runs.")
     else:
-        lines.append(f"Plumlang against the last `main` run: a benchmark fails when it is "
-                     f"more than {args.threshold:g}% and {args.min_delta:g} s slower. "
+        lines.append(f"Plumlang against the last `main` run: {rule_text}. "
                      f"Fastest of {cur['runs']} runs.")
     lines.append("")
     head = "| Benchmark | main | this run | change |"

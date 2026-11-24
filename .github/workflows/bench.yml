@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
-# Benchmarks (bench/README.md, issue #116): build the release binary, run
-# bench/run.py against Python, Lua and Node.js, upload the results as the
-# `bench-results` artifact, and compare Plumlang's times with the last
-# successful run on main. On a pull request, a benchmark more than
-# BENCH_THRESHOLD percent slower than main fails the job; on main the
-# comparison is only reported, so every main run becomes the next baseline.
+# Benchmarks (bench/README.md, issues #116 and #172): build the release
+# binary, run bench/run.py against Python, Lua and Node.js, upload the
+# results as the `bench-results` artifact and write a table to the job
+# summary.
+#
+# On a pull request the job also builds `main` (the first parent of the
+# merge commit GitHub tests, so `main` as the pull request would merge
+# into it) in a worktree, and times the two binaries in turn on this same
+# runner, so that a slow or busy runner slows both alike. A benchmark more
+# than BENCH_THRESHOLD percent (and 0.02 s) slower than `main`, comparing
+# the medians, fails the job. On `main` the results are only recorded.
 #
 # To change the threshold, set the repository variable BENCH_THRESHOLD
 # (Settings > Secrets and variables > Actions > Variables), e.g. 10;
@@ -20,7 +25,6 @@ on:
 
 permissions:
   contents: read
-  actions: read # to find and download main's last results
 
 concurrency:
   group: bench-${{ github.ref }}
@@ -28,46 +32,44 @@ concurrency:
 
 env:
   BENCH_THRESHOLD: ${{ vars.BENCH_THRESHOLD || '15' }}
-  BENCH_RUNS: "5"
+  BENCH_RUNS: "5" # Python, Lua and Node.js: fastest of this many
+  BENCH_PAIRS: "7" # this build and main: median of this many each
 
 jobs:
   bench:
     name: bench
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 2 # the merge commit and its parents
       - name: Install Lua
         run: sudo apt-get update -q && sudo apt-get install -y -q lua5.4
       - name: Build (release)
         run: make -j"$(nproc)"
+      - name: Build main (release)
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "main: $(git log -1 --format='%h %s' HEAD^1)"
+          git worktree add --detach "$RUNNER_TEMP/main" HEAD^1
+          make -C "$RUNNER_TEMP/main" -j"$(nproc)"
       - name: Run the benchmarks
+        env:
+          BASELINE: ${{ github.event_name == 'pull_request' && format('--baseline {0}/main/plum', runner.temp) || '' }}
         run: |
           mkdir -p bench-results
-          python3 bench/run.py ./plum --runs "$BENCH_RUNS" --json bench-results/results.json
+          # shellcheck disable=SC2086 # BASELINE is two words or none
+          python3 bench/run.py ./plum --runs "$BENCH_RUNS" --pairs "$BENCH_PAIRS" $BASELINE \
+            --json bench-results/results.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bench-results
           path: bench-results/results.json
           retention-days: 90
-      - name: Fetch main's last results
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          id=$(gh run list -R "$REPO" --workflow bench.yml --branch main --event push \
-                 --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-          if [ -z "$id" ]; then
-            echo "No successful run on main yet: nothing to compare with."
-            exit 0
-          fi
-          echo "Baseline: run $id"
-          gh run download "$id" -R "$REPO" -n bench-results -D baseline \
-            || echo "Couldn't download run $id's results (expired?): nothing to compare with."
       - name: Compare with main
         run: |
-          python3 bench/compare.py bench-results/results.json baseline/results.json \
+          python3 bench/compare.py bench-results/results.json \
             --threshold "$BENCH_THRESHOLD" --summary "$GITHUB_STEP_SUMMARY" \
             ${{ github.event_name == 'pull_request' && ' ' || '--warn-only' }}
