@@ -700,7 +700,8 @@ alignment removes is the noise from changes anywhere else, so a pull
 request's numbers measure the pull request. (`loop` runs in about 390 M
 cycles with GCC 13 and 907 M with GCC 15 in every placement: that is a
 difference in the code the two compilers generate, not in where it
-lands.)
+lands: GCC 15 made the compare-and-jump a conditional move, which #123
+found and fixed; "Superinstructions (#123)" below.)
 
 What was tried:
 
@@ -831,9 +832,300 @@ the temporaries and the copies a move avoids are no longer made
 | Parts with a format, floats and objects in `BUILD_TEXT` | not done: a format can fail and `to_str()` runs code, which must happen in order (the test checks it); floats need their own buffer per part. They keep `TO_STRING` | no |
 | Borrowed parameters (the callee doesn't own its arguments) | not done: every return, unwind and tail call would have to know which slots it may not release, and a move out of such a slot would give away a reference it doesn't hold. The profile shows a call's arguments cost one count each per call, not per iteration | no |
 | Borrowing an indexed temporary (`grid[r][c]`'s row) | not done: the row's count goes up and down inline now; the rest is a new instruction per shape | no |
-| Fewer instructions for int arithmetic on list items | out of #122's scope (it is not counting); #123 | — |
+| Fewer instructions for int arithmetic on list items | out of #122's scope (it is not counting); #123 did it (`LOCAL_ADD_INT`) | — |
 
 `--mem-stats` reports fewer strings made by programs that interpolate
 ints and bools (`tests/lang/memory/mem_stats.plum`: 17 instead of 27),
 since those temporaries are no longer made.
 
+
+## Superinstructions (#123)
+
+#123 asked which pairs of instructions to join, and whether a
+register-based VM would cut dispatch further. Linux x86_64, Intel Core
+i5-13450HX, GCC 15.2 unless marked (GCC 13.4 too, Clang isn't installed on
+this machine). Cycles, instructions and times are medians of interleaved
+rounds (the builds taking turns, the order reversed every round) of
+`perf stat -e cpu_core/cycles/,cpu_core/instructions/,task-clock`,
+pinned to one P-core (`taskset -c 6`), 7 rounds while choosing and 11 for
+the final tables. The machine was running other work, which moved single
+benchmarks by up to 5% between runs with the same instructions; every
+number that decided something was measured again.
+
+**Measure first.** A build with `-DPLUM_OP_COUNTS=1` counts every
+instruction it runs, every pair of instructions run one after the other
+(apart, where the second was jumped to) and every triple, and adds them to
+the file named by `PLUM_OP_COUNTS` at exit; normal builds have none of it.
+`bench/oppairs.py` runs bench/ and examples/ with it and prints the
+tables:
+
+```bash
+make DEFS=-DPLUM_OP_COUNTS=1 BUILD=build/opcounts
+python3 bench/oppairs.py build/opcounts/plum --top 15 --triples
+```
+
+The top 15 pairs on main, where the second instruction is the next one in
+the code (a superinstruction could join them), over the 16 programs (780 M
+instructions run). "Of all" weights each pair by how often it ran; "mean
+share" is the mean of its share in each program, so `collatz` and `loop`
+don't decide alone:
+
+| Pair (in code order) | run | of all | mean share | most in |
+|---|---|---|---|---|
+| `MOD_INT_LK` `JUMP_IF_NOT_EQ_INT_K` | 55.7 M | 7.1% | 2.7% | loop 30%, collatz 13% |
+| `LOCAL_ADD_INT_K` `LOOP` | 41.4 M | 5.3% | 1.1% | collatz 13%, mandelbrot 4% |
+| `JUMP_IF_NOT_NE_INT_LK` `MOD_INT_LK` | 35.7 M | 4.6% | 0.8% | collatz 13% |
+| `LOCAL_FLOORDIV_INT_K` `JUMP` | 23.8 M | 3.1% | 0.5% | collatz 9% |
+| `JUMP_IF_NOT_EQ_INT_K` `LOCAL_FLOORDIV_INT_K` | 23.8 M | 3.1% | 0.5% | collatz 9% |
+| `GET_LOCAL` `MUL_FLOAT_L` | 23.2 M | 3.0% | 1.1% | mandelbrot 17% |
+| `SET_LOCAL` `LOCAL_ADD_INT_K` | 17.6 M | 2.3% | 0.5% | collatz 4%, mandelbrot 4% |
+| `ADD_INT_K` `SET_LOCAL` | 11.8 M | 1.5% | 0.3% | collatz 4% |
+| `CONST` `MUL_INT_L` | 11.8 M | 1.5% | 0.3% | collatz 4% |
+| `MUL_INT_L` `ADD_INT_K` | 11.8 M | 1.5% | 0.3% | collatz 4% |
+| `GET_LOCAL` `INDEX_LIST_LL` | 11.6 M | 1.5% | 0.6% | lists 10% |
+| `SET_LOCAL` `FOR_NEXT` | 11.6 M | 1.5% | 0.6% | lists 10% |
+| `ADD_INT` `SET_LOCAL` | 11.6 M | 1.5% | 0.6% | lists 10% |
+| `MUL_FLOAT_L` `GET_LOCAL` | 11.6 M | 1.5% | 0.5% | mandelbrot 9% |
+| `ADD_FLOAT_L` `SET_LOCAL` | 11.5 M | 1.5% | 0.5% | mandelbrot 9% |
+
+The most-run pairs with a jump between them: `LOOP` then the `while`
+test (`JUMP_IF_NOT_NE_INT_LK`, 4.6%), `JUMP` then `LOCAL_ADD_INT_K`
+(3.1%), `FOR_NEXT` then `MOD_INT_LK` (2.6%), `LOOP` then `FOR_EACH`
+(2.3%, the highest mean share of any pair: 2.4%). The single
+instructions: `MOD_INT_LK` 7.8%, `LOOP` 7.6%, `GET_LOCAL` 7.5%,
+`JUMP_IF_NOT_EQ_INT_K` 7.1%, `SET_LOCAL` 5.8%; by mean share `CONST`
+(9.3%) and `GET_LOCAL` (7.9%) lead. The examples run 4,500 instructions in all and
+change none of this.
+
+**First, a finding that wasn't a superinstruction.** `loop` ran in 904 M
+cycles with GCC 15 and 387 M with GCC 13, with the same instructions to
+within 3% ("Code placement" and "Value layout" above put it down to the
+stack top's store and reload). `perf annotate` shows why: GCC 15 compiled
+`if (!holds) ip += d`, the end of every compare-and-jump, into a
+conditional move. The address of the next instruction then waits for the
+comparison, and in `loop` the comparison waits for a division
+(`MOD_INT_LK`), so nothing after it can start: 45 cycles a time round.
+GCC 13 kept a branch, which the processor predicts and runs past. An
+empty `asm volatile("")` in the taken path (`TAKE_JUMP` in src/vm/vm.c,
+GCC and Clang, not WebAssembly) keeps it a branch: `loop` −57%, `collatz`
+−18%, `mandelbrot` −4% with GCC 15, the rest within ±3%; GCC 13's code
+already branched and is unchanged (geometric mean 1.000). The NaN-boxed
+build had the same conditional move (its `loop` at 1014 M cycles, likely
+the "1011 M" of "Value layout"); `make release-pgo` had none, so what
+kept PGO's `loop` at 739 M is something else.
+
+**Superinstructions.** Each was built on its own (the compiler emitting
+it or not, the VM the same) and measured against the build without it,
+GCC 15, 7 rounds:
+
+| Instructions | Instead of | Where | Cycles | Instructions run | Kept |
+|---|---|---|---|---|---|
+| `JUMP_IF_NOT_MOD_EQ0_LK`, `_NE0_LK`: `if x % k == 0` (or `!= 0`) for an int local and a literal from 1 to 32767 | `MOD_INT_LK`, `JUMP_IF_NOT_EQ_INT_K` (a push, a pop and a constant load) | `loop`, `collatz` | loop −10.7%, collatz −9.7% | loop −32%, collatz −15% | yes |
+| `LOCAL_ADD_INT`, `LOCAL_SUB_INT`: `s += v` and `s = s + v` on an int local, `v` on the stack | `GET_LOCAL s`, ..., `ADD_INT`, `SET_LOCAL s` | `lists` (`s += a[i] * b[i]`, `s += grid[r][c]`) | lists −18.3% | lists −14% | yes |
+| `ADD_INT_LL` ... `MUL_FLOAT_LL`: local op local, two ints or two floats, `+ - *` | `GET_LOCAL`, `MUL_FLOAT_L` | `mandelbrot` (`x * x`, `y * y`) | mandelbrot −15.9% | mandelbrot −13% | yes |
+| `LOOP_IF_LT_INT_LK` ...: a `while` on an int local against a literal tests again at the bottom, counting a step as `LOOP` did | `LOOP`, `JUMP_IF_NOT_NE_INT_LK` | `collatz` (`while n != 1`) | collatz −12.9% | collatz −5% | yes |
+| `LOOP_FOR_EACH`: `LOOP` back to a `FOR_EACH` running it with no dispatch of its own | `LOOP`, `FOR_EACH` | `lists`, `cart`, `dispatch`, `words` | lists −1.8%, cart +1.3%, the rest ±0.3% (11 rounds) | lists −1.5%, cart −0.8% | no: within noise; a dispatch that is always predicted costs little next to `FOR_EACH`'s own work |
+| `FOR_EACH_NEXT`: `for x in xs` tested at the bottom, like `FOR_NEXT` (one `FOR_EACH` case taking the place of the code to go on or out) | `LOOP`, `FOR_EACH` | the same | — | +8.6% on `mandelbrot`, which runs no `FOR_EACH` | no: GCC allocated the whole run loop's registers worse |
+
+Each gives the same results, the same errors at the same lines and the
+same step counts as what it replaces. Every other benchmark moved by under
+±3%, with the same instructions. The tests: `tests/lang/arith/fused.plum`
+(every new instruction: negative, power-of-two, 32-bit and 64-bit
+operands, ints at the edges, NaN, infinities and -0.0, every loop
+comparison with `continue` and `break`, the overflow errors and their
+messages), `tests/lang/errors/fused_add_overflow.plum` and
+`fused_mul_overflow.plum` (an uncaught overflow: its line and stack trace),
+and a unit test that a step-limited `while` stops after the same output as
+main's. All of them print the same with main's binary, in both value
+layouts. So did 600 random programs (int and float arithmetic on locals
+near the overflow edges, `+=`, `x % k` conditions, `while` loops with
+`break` and `continue`, uncaught errors in half of them): stdout, stderr
+and exit status were byte-identical to main's, `make` and `NANBOX=1`.
+
+**The stack top in a register.** The run loop split in two: an outer
+`switch` for the instructions of hot loops (constants, locals, int and
+float arithmetic, the compare-and-jumps, `LOOP`, `FOR_*`, fields of a
+local, `INDEX_LIST_LL`), which keep the top in a local `top`, and an inner
+`switch` for every other one, with `vm->top` stored before it and loaded
+after; errors store it before they unwind. Measured on top of the branch
+fix, against it, 5 rounds:
+
+| Benchmark | GCC 15: cycles | instructions | GCC 13: cycles | instructions |
+|---|---|---|---|---|
+| cart | +19.2% | +8.0% | +8.5% | +5.6% |
+| collatz | +19.1% | +7.4% | −3.9% | +4.2% |
+| dispatch | +6.1% | +7.2% | +4.3% | +5.4% |
+| fib | +31.8% | +9.5% | +3.1% | +6.8% |
+| jsondoc | +0.3% | +0.3% | −0.9% | +0.4% |
+| lists | +1.8% | +5.5% | +2.4% | +4.1% |
+| loop | +3.6% | +5.2% | +8.1% | +4.7% |
+| mandelbrot | +18.7% | +4.9% | −3.1% | +1.5% |
+| strings | +6.9% | +1.0% | −1.0% | +0.8% |
+| textbuild | +0.8% | +2.6% | +2.0% | +3.7% |
+| words | +2.8% | +2.9% | +1.7% | +3.6% |
+
+Geometric mean: +9.7% cycles with GCC 15, +1.9% with GCC 13. It runs
+more instructions in both: the second dispatch for every instruction of
+the inner switch (calls among them, so `fib`), and with one more variable
+live across the whole loop GCC spills more, so even `loop`, which runs only
+outer-switch instructions, runs 5% more. The store-and-reload of
+`vm->top` wasn't what bound the short loops (the conditional move above
+was), so there was little to win. Not kept; Clang wasn't measured (not on
+this machine). The slot base was tried in #120 with the same outcome.
+
+**A register VM.** The prototype: 3-address instructions on a frame's
+slots, `local [a] = local [b] op local [c]` and with a literal on either
+side (`R_ADD_INT`, `R_MUL_INT_KL`, ..., `R_MUL_FLOAT`, `R_ADD_FLOAT_K`,
+23 instructions with `R_MOVE` and two float compare-and-jumps on a slot),
+and a compiler rule that computes `x = e` and `plant x = e` straight into
+`x`'s slot when `e` is `+ - *` (and `//`, `%` by a literal) over int or
+float locals and literals, with hidden slots for the intermediate values,
+and a float comparison against a literal into a hidden slot. Errors keep
+their operands in source order (a literal on the left has its own
+instructions), so messages, lines and the 600 random programs stayed
+byte-identical to main's. `collatz`'s `n = 3 * n + 1` becomes two
+instructions instead of four; `mandelbrot`'s loop body four, three and one
+instead of five, five and two. The same binary was measured with the rule
+on and off (an environment variable), on top of the superinstructions:
+
+| Benchmark | VM instructions run | cycles, GCC 15 | instructions | cycles, GCC 13 |
+|---|---|---|---|---|
+| collatz | 204.7 M → 180.7 M (−11.7%) | −10.5% | −9.5% | −4.6% |
+| mandelbrot | 111.7 M → 88.8 M (−20.5%) | −19.6% | −8.8% | −22.0% |
+| the other nine | unchanged | −1.2% to +1.1% | ±0.1% | lists, loop −0.5%, fib −2.7% (the rest not measured) |
+
+Each instruction the register form saved was worth 4 to 6 cycles. To
+estimate a full rewrite, count what it could remove: the instructions
+that only move values between the stack and the slots, globals or
+constants (`GET_LOCAL`, `SET_LOCAL`, `CONST`, `MOVE_LOCAL`, `POP`,
+`GET_GLOBAL`, `SET_GLOBAL`, ...), after the superinstructions:
+
+| Benchmark | instructions run | of them moves | cycles per instruction | estimated saving |
+|---|---|---|---|---|
+| cart | 72.3 M | 22% | 7.6 | 4–17% |
+| collatz | 204.7 M | 12% | 6.4 | 3–12% (prototype: 10.5%) |
+| dispatch | 50.0 M | 28% | 7.7 | 5–22% |
+| fib | 10.8 M | 0% | 8.0 | 0% |
+| jsondoc | 3.7 M | 47% | 261 | 0–1% |
+| lists | 98.5 M | 6% | 6.9 | 1–6% |
+| loop | 46.7 M | 0% | 6.8 | 0% |
+| mandelbrot | 111.7 M | 27% | 4.5 | 9–35% (prototype: 19.6%) |
+| strings | 7.5 M | 53% | 52 | 2–6% |
+| textbuild | 2.5 M | 45% | 83 | 1–3% |
+| words | 34.1 M | 41% | 33 | 2–7% |
+
+(The range: half of the moves gone at 3 cycles each, to all of them at 6.)
+On the geometric mean that is 3% to 11%. The benchmarks that spend their
+time in the standard library, allocation or reference counts (`jsondoc`,
+`strings`, `textbuild`, `words`: 33 to 261 cycles per instruction) gain
+almost nothing, and `fib` and `loop` already run no moves. Most of what is
+left in `cart` and `dispatch` is a call's arguments, which a register VM
+still has to copy into the callee's frame (Lua's `MOVE` before `CALL`), so
+the upper end there is unlikely.
+
+The cost of a full rewrite: every expression path of the compiler
+(src/compiler/compiler.c, about 4,000 lines) emits stack code and would need a
+register allocator for temporaries; every instruction is re-encoded with a
+destination (wider instructions, more bytecode); calls, natives
+(`call_value` and the standard library take their arguments on the
+stack), tasks (each has its own stack), `try` (unwinds to a stack height)
+and the disassembler change with it; the opcode byte has 48 values left
+(208 used), so a register family beside the stack one doesn't fit without
+a new encoding. The isolates constraint (#150) is no obstacle: the
+bytecode stays read-only either way.
+
+**Recommendation for 3.0.** Not a rewrite. The measured gain is in
+arithmetic on locals (`mandelbrot` −20%, `collatz` −5 to −11%), which a
+hybrid gets: register-form instructions for arithmetic expressions over
+locals, as in the prototype, beside the stack for calls and everything
+else. 3.0 can change the bytecode format, which makes room for them (a
+second opcode page, or 3-address forms that replace the `_K`, `_L`, `_LK`
+and `_LL` families instead of adding to them). The prototype itself isn't
+merged: 23 instructions for two benchmarks would use half the opcode space
+left, which is the decision for 3.0's encoding to make. What would change
+the answer: programs whose time is in moves between the stack and the
+slots, which in this suite only `mandelbrot` is.
+
+**Results.** Main against this change (the branch fix and the four kept
+superinstructions), 11 interleaved rounds. `make` with GCC 15, with the
+branch fix alone in the middle:
+
+| Benchmark | cycles: main | branch fix | #123 | | instructions: main | #123 | | time: main | #123 | |
+|---|---|---|---|---|---|---|---|---|---|---|
+| cart | 556 M | 557 M | 583 M | +4.9% | 2.65 G | 2.65 G | −0.1% | 121 ms | 127 ms | +4.9% |
+| collatz | 2025 M | 1652 M | 1356 M | −33.0% | 6.02 G | 4.81 G | −20.0% | 442 ms | 296 ms | −33.0% |
+| dispatch | 390 M | 402 M | 386 M | −1.0% | 1.92 G | 1.91 G | −0.2% | 85 ms | 84 ms | −1.0% |
+| fib | 88 M | 88 M | 86 M | −2.5% | 0.42 G | 0.42 G | −0.6% | 19 ms | 19 ms | −2.6% |
+| jsondoc | 984 M | 960 M | 1033 M | +4.9% | 3.76 G | 3.76 G | −0.1% | 215 ms | 225 ms | +4.9% |
+| lists | 822 M | 811 M | 688 M | −16.4% | 3.92 G | 3.36 G | −14.2% | 179 ms | 150 ms | −16.4% |
+| loop | 904 M | 392 M | 315 M | −65.1% | 1.94 G | 1.31 G | −32.4% | 197 ms | 69 ms | −65.1% |
+| mandelbrot | 642 M | 615 M | 505 M | −21.3% | 3.02 G | 2.61 G | −13.6% | 140 ms | 110 ms | −21.3% |
+| strings | 388 M | 389 M | 385 M | −0.8% | 1.56 G | 1.56 G | +0.0% | 85 ms | 84 ms | −0.8% |
+| textbuild | 203 M | 205 M | 203 M | −0.1% | 0.72 G | 0.72 G | +0.0% | 44 ms | 44 ms | +0.0% |
+| words | 1141 M | 1150 M | 1144 M | +0.3% | 3.93 G | 3.93 G | −0.1% | 249 ms | 250 ms | +0.3% |
+
+Geometric mean of cycles 0.848 (the branch fix alone 0.907). `cart` and
+`jsondoc` run none of the new instructions and the same instructions as
+main; measured again, 11 rounds each, they were level (cart 537 M and
+537 M, jsondoc 939 M and 939 M).
+
+`make` with GCC 13 (what CI builds with), `make release-pgo` and `make
+NANBOX=1` (GCC 15; 7 rounds), cycles:
+
+| Benchmark | GCC 13: main | #123 | | PGO: main | #123 | | NaN boxing: main | #123 | |
+|---|---|---|---|---|---|---|---|---|---|
+| cart | 585 M | 579 M | −1.0% | 528 M | 508 M | −3.8% | 582 M | 586 M | +0.6% |
+| collatz | 2048 M | 1576 M | −23.0% | 1983 M | 1388 M | −30.0% | 2226 M | 1581 M | −29.0% |
+| dispatch | 415 M | 402 M | −3.1% | 349 M | 348 M | −0.3% | 366 M | 365 M | −0.1% |
+| fib | 97 M | 95 M | −2.3% | 89 M | 83 M | −6.7% | 98 M | 84 M | −13.8% |
+| jsondoc | 999 M | 974 M | −2.5% | 787 M | 774 M | −1.7% | 961 M | 913 M | −4.9% |
+| lists | 845 M | 740 M | −12.4% | 798 M | 664 M | −16.9% | 777 M | 733 M | −5.6% |
+| loop | 387 M | 284 M | −26.5% | 739 M | 301 M | −59.2% | 1014 M | 307 M | −69.8% |
+| mandelbrot | 763 M | 595 M | −22.0% | 703 M | 614 M | −12.7% | 616 M | 512 M | −16.9% |
+| strings | 418 M | 436 M | +4.3% | 345 M | 310 M | −10.1% | 389 M | 392 M | +0.8% |
+| textbuild | 197 M | 202 M | +2.6% | 183 M | 182 M | −0.6% | 186 M | 185 M | −0.5% |
+| words | 1164 M | 1159 M | −0.4% | 1026 M | 1031 M | +0.5% | 1107 M | 1085 M | −1.9% |
+
+Geometric mean: GCC 13 0.915, PGO 0.848, NaN boxing 0.834. Instructions
+run fall by the same amounts in every build (`loop` −32 to −34%,
+`collatz` −20 to −21%, `lists` −12 to −15%, `mandelbrot` −11 to −15%).
+`strings` with GCC 13 is +4.3% with 0.3% fewer instructions, again in a
+second run of 11 rounds (+4.2%). It runs no new instruction: the time
+went to `build_text` (20% of its cycles on main, 24% here), whose machine
+code is byte for byte the same in both binaries and starts at the same
+offset in its 64-byte line; only its address differs. We take it for
+placement, as in "Code placement".
+
+`bench/run.py --baseline` (main's binary and this one in turns, 11 pairs,
+medians, `taskset -c 6`), times:
+
+| Benchmark | `make`: main | #123 | | `release-pgo`: main | #123 | |
+|---|---|---|---|---|---|---|
+| cart | 0.118 s | 0.117 s | −0.1% | 0.115 s | 0.110 s | −4.6% |
+| collatz | 0.442 s | 0.297 s | −33.0% | 0.433 s | 0.303 s | −29.9% |
+| dispatch | 0.085 s | 0.085 s | −1.0% | 0.076 s | 0.076 s | +0.1% |
+| fib | 0.019 s | 0.019 s | −2.6% | 0.020 s | 0.018 s | −6.9% |
+| jsondoc | 0.207 s | 0.207 s | +0.0% | 0.171 s | 0.170 s | −0.3% |
+| lists | 0.180 s | 0.149 s | −17.4% | 0.174 s | 0.137 s | −21.3% |
+| loop | 0.197 s | 0.069 s | −65.0% | 0.161 s | 0.066 s | −59.1% |
+| mandelbrot | 0.140 s | 0.110 s | −21.4% | 0.153 s | 0.134 s | −12.5% |
+| strings | 0.084 s | 0.084 s | −0.5% | 0.075 s | 0.068 s | −10.4% |
+| textbuild | 0.044 s | 0.044 s | −0.2% | 0.039 s | 0.039 s | −0.4% |
+| words | 0.253 s | 0.254 s | +0.6% | 0.230 s | 0.231 s | +0.5% |
+
+With `python3 bench/run.py --runs 7` (fastest of seven, `make`, pinned),
+`loop` takes 0.069 s against CPython 3.14's 0.699 s (10.2 times as fast;
+3.6 before), `collatz` 0.296 s (7.7 times; Node.js takes 0.245 s),
+`mandelbrot` 0.109 s (7.8 times), `lists` 0.151 s (3.2 times).
+
+**What was tried:**
+
+| Change | Result | Kept |
+|---|---|---|
+| Conditional jumps kept as branches (`TAKE_JUMP`) | GCC 15: loop −57%, collatz −18%, mandelbrot −4%; GCC 13 unchanged | yes |
+| `JUMP_IF_NOT_MOD_EQ0_LK` / `_NE0_LK`, `LOCAL_ADD_INT` / `LOCAL_SUB_INT`, the `_LL` forms, `LOOP_IF_*_INT_LK` | the tables above | yes |
+| `LOOP_FOR_EACH` (`LOOP` into `FOR_EACH` with one dispatch) | lists −1.8%, cart +1.3%: noise | no |
+| `FOR_EACH_NEXT` (a bottom-tested `for x in xs`) | the run loop ran 8.6% more instructions on `mandelbrot`, which doesn't use it | no |
+| `x % k == c` for any literal `c` | needs a fourth operand, which the instruction format and `compiler/moves.c` don't have; `== 0` and `!= 0` cover every use in the suite | no |
+| The stack top in a local, two-level `switch` | +9.7% cycles with GCC 15, +1.9% with GCC 13, more instructions in both | no |
+| Register-form arithmetic on locals (23 instructions) | collatz −10.5%, mandelbrot −19.6% (GCC 15); −4.6%, −22.0% (GCC 13); the rest level | no: an evaluation for 3.0's bytecode (above) |

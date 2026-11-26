@@ -129,6 +129,28 @@ the body while the new `i` is still in the range, so each time round runs
 one loop instruction. It checks before adding, so a range ending at the
 largest int (`a..=b`) cannot overflow.
 
+## Superinstructions
+
+Counting the instruction pairs the benchmarks and examples run (a build
+with `-DPLUM_OP_COUNTS=1` and `bench/oppairs.py`, bench/README.md,
+"Superinstructions (#123)") showed which pairs to join. Each of these
+does the work of two or more instructions, with the same results, the
+same errors at the same lines, and the same step count (a `while`
+counts a step each time round, as the jump back to its test did):
+
+| Form | Example | Instead of |
+|---|---|---|
+| `x % k == 0` (or `!= 0`) in a condition, an int local and a literal from 1 to 32767 | `if n % 2 == 0`: `JUMP_IF_NOT_MOD_EQ0_LK` | `MOD_INT_LK`, `JUMP_IF_NOT_EQ_INT_K` |
+| `+=` / `-=` of any int on an int local | `s += a[i] * b[i]`: `LOCAL_ADD_INT` | `GET_LOCAL`, ..., `ADD_INT`, `SET_LOCAL` |
+| local op local, two ints or two floats, for `+ - *` | `x * x`: `MUL_FLOAT_LL` | `GET_LOCAL`, `MUL_FLOAT_L` |
+| `while` on an int local against a literal, tested again at the bottom | `while n != 1`: `LOOP_IF_NE_INT_LK` | `LOOP`, `JUMP_IF_NOT_NE_INT_LK` |
+
+`LOCAL_ADD_INT` reads the local after computing the value it adds; only
+the running function can assign to its locals, so the value read is the
+same, and an overflow error names the same two numbers in the same
+order. A `while` loop of the last kind keeps its test at the top too, for
+the first time round and for `continue`.
+
 ## Fields and method calls
 
 An object stores its fields in one array, the parent tree's fields first,
