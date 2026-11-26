@@ -263,6 +263,27 @@ check "a broken plum.lock"              1 "E0910" err -- run .
 rm plum.lock
 check "no plum.lock"                    1 "E0909.*no plum.lock" err -- run .
 
+# ---- plum new: a project that runs, tests, checks, formats and packages ----
+
+before_new=$(pwd)
+mkdir -p "$tmp/new"
+cd "$tmp/new" || exit 1
+check "new: a project"              0 "created my-app/ with 7 files" out -- new my-app
+for f in plum.toml README.md .gitignore .github/workflows/ci.yml src/main.plum src/my_app.plum src/my_app_test.plum; do
+    expect "new: $f exists" test -f "my-app/$f"
+done
+check "new: an existing name"       1 "E0926.*'my-app' already exists" err -- new my-app
+check "new: an invalid name"        1 "E0926.*'My_App' can't be a project's name" err -- new My_App
+check "new: a standard module name" 1 "E0926.*'json' can't be a project's name" err -- new json
+check "new: no name"                2 "takes the project's name" err -- new
+cd "$tmp/new/my-app" || exit 1
+check "new: runs"                   0 "^Hello, world!$" out -- run .
+check "new: its test passes"        0 "1 passed, 0 failed" out -- test
+expect "new: checks"                "$PLUM" check .
+expect "new: is formatted"          "$PLUM" fmt --check .
+check "new: packages"               0 "packaged my-app 0.1.0" out -- package --out "$(native "$tmp/new")"
+cd "$before_new" || exit 1
+
 # ---- Over HTTP, when python3 can serve the index ----
 
 if command -v python3 >/dev/null 2>&1 && [ -z "$PLUM_ORCHARD_NO_HTTP" ]; then

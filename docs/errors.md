@@ -1045,3 +1045,11 @@ compile errors (`plum check` runs on every `.plum` file), isn't UTF-8
 text, has a name a package can't hold, the bundle is over 1 MB, `entry`
 or `lib` isn't among its files, or (to publish) `repository` isn't a
 `https://github.com/OWNER/REPO` URL.
+
+
+### E0926
+
+`plum new NAME` can't make the project: NAME isn't a valid package name
+(2 to 40 lowercase letters, digits and single `-`, starting with a letter;
+not a standard module's name or a keyword), or a file or directory called
+NAME already exists in the current directory. Nothing is written.
