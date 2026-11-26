@@ -19,7 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const commands[] = {"new", "add", "remove", "install", "package", "publish", "search"};
+static const char *const commands[] = {"new",     "add",     "remove", "install",
+                                       "package", "publish", "search"};
 
 bool plum_orchard_is_command(const char *name) {
     for (size_t i = 0; i < sizeof commands / sizeof commands[0]; i++) {
