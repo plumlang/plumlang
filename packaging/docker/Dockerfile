@@ -5,7 +5,7 @@
 # Built by .github/workflows/docker.yml from a published release; the
 # binaries are checked against the release's SHA256SUMS before this runs.
 #
-#   docker run --rm -v "$PWD":/src plumlang/plum run app.plum
+#   docker run --rm -v "$PWD":/src elixpo/plumlang run app.plum
 FROM alpine:3.22
 
 ARG TARGETARCH

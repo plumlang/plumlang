@@ -16,6 +16,7 @@ Format for a new entry:
 
 ## Unreleased
 
+- **Packaging**: the Docker Hub image is `elixpo/plumlang` (it was to be `plumlang/plum`); `ghcr.io/plumlang/plum` is unchanged.
 ## v2.3.0 — 2026-11-26
 
 Plumlang 2.3.0 is the fast-VM release. The type checker already knows every

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0
 #
 # Publish the plum container image for a release, to Docker Hub
-# (plumlang/plum) and GitHub Container Registry (ghcr.io/plumlang/plum),
+# (elixpo/plumlang) and GitHub Container Registry (ghcr.io/plumlang/plum),
 # for linux/amd64, linux/arm64 and linux/riscv64.
 #
 #   after the Release workflow publishes a tag   automatic
@@ -109,7 +109,7 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: |
-            name=plumlang/plum,enable=${{ env.HAS_DOCKERHUB }}
+            name=elixpo/plumlang,enable=${{ env.HAS_DOCKERHUB }}
             name=ghcr.io/plumlang/plum
           tags: |
             type=semver,pattern={{version}},value=v${{ steps.v.outputs.version }}
