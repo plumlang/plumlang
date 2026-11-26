@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 OR LicenseRef-Plumlang-Commercial-1.0 */
 /*
- * plum add, remove, install, package, publish and search: the package
+ * plum new, add, remove, install, package, publish and search: the package
  * commands (docs/orchard.md). They are a Plumlang program built into plum,
  * src/stdlib/plum/plum_orchard.plum, run here with the command and its
  * arguments as os.args().
@@ -19,7 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const commands[] = {"add", "remove", "install", "package", "publish", "search"};
+static const char *const commands[] = {"new",     "add",     "remove", "install",
+                                       "package", "publish", "search"};
 
 bool plum_orchard_is_command(const char *name) {
     for (size_t i = 0; i < sizeof commands / sizeof commands[0]; i++) {

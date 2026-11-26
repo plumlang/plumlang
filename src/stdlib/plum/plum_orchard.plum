@@ -745,6 +745,119 @@ branch cmd_search(args: list[str]) {
 }
 
 # ------------------------------------------------------------------
+# plum new: start a project
+# ------------------------------------------------------------------
+
+# The files of a new project, path to text. `name` is a valid package name.
+branch project_files(name: str) -> map[str, str] {
+    plant module = name.replace("-", "_")
+    plant v = pkg.plum_version().split(".")
+    plant files: map[str, str] = {:}
+    files["plum.toml"] = """
+        [package]
+        name = "{name}"
+        version = "0.1.0"
+        entry = "src/main.plum"
+        lib = "src/{module}.plum"
+        description = ""
+        plum = ">={v[0]}.{v[1]}"
+
+        [dependencies]
+        """
+    files["src/main.plum"] = """
+        ## The program: `plum run .` runs this file.
+        seed ./{module}
+
+        drop({module}.greet("world"))
+        """
+    files["src/{module}.plum"] = """
+        ## {name}: what `seed {module}` gives a project that depends on this package.
+
+        ## A greeting for `who`.
+        branch greet(who: str) -> str => "Hello, \{who\}!"
+        """
+    files["src/{module}_test.plum"] = """
+        seed ./{module}
+
+        branch test_greet() \{
+            plant text = {module}.greet("Plum")
+            assert(text == "Hello, Plum!", "got \{text\}")
+        \}
+        """
+    files["README.md"] = """
+        # {name}
+
+        A [Plumlang](https://plum.elixpo.com) project.
+
+        ```sh
+        plum run .           # run src/main.plum
+        plum test            # run the tests: test_ functions in *_test.plum files
+        plum fmt .           # format every .plum file
+        plum check .         # report every error without running
+        plum add NAME        # add a package from Orchard
+        ```
+        """
+    files[".gitignore"] = """
+        # Bundles written by `plum package`
+        *.plumpkg
+        """
+    files[".gitattributes"] = """
+        # Plumlang files use LF line endings everywhere, so `plum fmt --check`
+        # agrees on Windows checkouts too.
+        *.plum text eol=lf
+        plum.toml text eol=lf
+        plum.lock text eol=lf
+        """
+    files[".github/workflows/ci.yml"] = """
+        name: ci
+        on: [push, pull_request]
+
+        jobs:
+          test:
+            runs-on: $\{\{ matrix.os \}\}
+            strategy:
+              matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+            steps:
+              - uses: actions/checkout@v4
+              - uses: plumlang/setup-plum@v1
+              - run: plum check .
+              - run: plum fmt --check .
+              - run: plum test
+        """
+    return files
+}
+
+branch cmd_new(args: list[str]) {
+    if len(args) != 1 or args[0].starts_with("-") {
+        throw fail("", "`plum new` takes the project's name", "plum new my-project")
+    }
+    plant name = args[0]
+    if plant problem = pkg.name_problem(name) {
+        throw fail("E0926", "'{name}' can't be a project's name: {problem}", "choose another name, like my-project")
+    }
+    if fs.exists(name) {
+        throw fail("E0926", "'{name}' already exists here", "choose another name, or remove it first")
+    }
+    plant files = project_files(name)
+    fs.make_dir(name)
+    for path, text in files {
+        plant parts = path.split("/")
+        plant dir = name
+        for part in parts[0..len(parts) - 1] {
+            dir = dir + "/" + part
+            fs.make_dir(dir)
+        }
+        fs.write(name + "/" + path, text)
+    }
+    drop("created {name}/ with {len(files)} files")
+    drop("")
+    drop("  cd {name}")
+    drop("  plum run .")
+    drop("  plum test")
+}
+
+# ------------------------------------------------------------------
 # The command
 # ------------------------------------------------------------------
 
@@ -752,6 +865,7 @@ branch run(argv: list[str]) {
     plant command = argv[0]
     plant rest = argv[1..len(argv)]
     match command {
+        "new" => cmd_new(rest)
         "add" => cmd_add(rest)
         "remove" => cmd_remove(rest)
         "install" => cmd_install(rest)

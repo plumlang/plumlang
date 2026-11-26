@@ -487,6 +487,7 @@ page in [docs/stdlib](stdlib/README.md).
 ## The plum command
 
 ```text
+plum new my-app                    start a project (plum.toml, src/, a test, CI)
 plum run program.plum [args...]    run a program (or a folder with plum.toml)
 plum check program.plum            report every error without running
 plum fmt files-or-folders...       format in place (--check, --stdout)

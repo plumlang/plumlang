@@ -11,6 +11,34 @@ JSON files and the packages' bundles, with no server and no accounts. The
 client reads one base URL, so a CDN or a hosted API can take its place
 later without changing any command.
 
+## Starting a project
+
+```sh
+plum new my-app
+cd my-app
+plum run .        # Hello, world!
+plum test         # 1 passed, 0 failed
+```
+
+`plum new NAME` makes a directory NAME holding a project that runs,
+passes its test, is formatted, and packages as it is:
+
+| File | What |
+|---|---|
+| `plum.toml` | The package: `name`, `version = "0.1.0"`, `entry = "src/main.plum"`, `lib`, and the `plum` versions it works with |
+| `src/main.plum` | The program, what `plum run .` runs |
+| `src/NAME.plum` | The library, what `seed NAME` gives a project that depends on it (`-` becomes `_`) |
+| `src/NAME_test.plum` | A test of it, run by `plum test` |
+| `README.md` | How to run, test, format and add packages |
+| `.gitignore` | Ignores the bundles `plum package` writes |
+| `.gitattributes` | LF line endings for `.plum` files, so `plum fmt --check` agrees on Windows checkouts |
+| `.github/workflows/ci.yml` | GitHub Actions on Linux, macOS and Windows: [setup-plum](https://github.com/plumlang/setup-plum), then `plum check .`, `plum fmt --check .` and `plum test` |
+
+NAME follows the package-name rules below. `plum new` writes nothing if
+NAME is invalid or already exists (E0926). The same project is a GitHub
+template: [plumlang/template](https://github.com/plumlang/template),
+"Use this template".
+
 ## Using packages
 
 Run the commands in the project's directory, the one with `plum.toml`:
