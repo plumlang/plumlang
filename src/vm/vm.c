@@ -16,6 +16,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* -DPLUM_OP_COUNTS=1 counts the instructions run (bench/oppairs.py) */
+#ifndef PLUM_OP_COUNTS
+#define PLUM_OP_COUNTS 0
+#endif
+
 /*
  * A call in progress (#120: kept small, since every call writes one). The
  * arguments are where the caller pushed them: they become slots 0 and up
@@ -120,6 +125,9 @@ typedef struct PlumVM {
     bool limited;          /* a step or memory limit to check (step) */
     double slept;          /* seconds spent waiting for sleeps so far (max_sleep) */
     PlumAllocStats *stats; /* the allocator's counts, if it counts */
+#if PLUM_OP_COUNTS
+    struct OpCounts *op_counts; /* -DPLUM_OP_COUNTS=1: instructions run, in pairs */
+#endif
 } VM;
 
 typedef PLUM_ARRAY(struct PlumTask *) TaskList;
@@ -2259,6 +2267,95 @@ static bool outside_world(const PlumNativeFunction *fn, const PlumRunOptions *op
            (fn == plum_native_function(&plum_module_time, "sleep") && options->max_sleep <= 0);
 }
 
+#if PLUM_OP_COUNTS
+/*
+ * Measuring only (bench/README.md, "Superinstructions (#123)"): a build
+ * with -DPLUM_OP_COUNTS=1 counts every instruction it runs, each pair of
+ * instructions run one after the other where the second is the next one
+ * in the code (`seq`) or was jumped to (`jumped`), and each triple of
+ * consecutive instructions, and adds them to the file named by the
+ * PLUM_OP_COUNTS environment variable when the run ends. Off by default:
+ * the normal builds have none of it.
+ */
+#define OP_TRIPLES (1u << 18)
+typedef struct OpCounts {
+    uint64_t single[256];
+    uint64_t seq[256][256];
+    uint64_t jumped[256][256];
+    uint32_t triple_key[OP_TRIPLES]; /* a << 16 | b << 8 | c, + 1; 0: free */
+    uint64_t triple[OP_TRIPLES];
+    const uint8_t *last_ip;
+    int last[2]; /* the last two instructions run, -1 at first */
+} OpCounts;
+
+static void op_count(VM *vm, const uint8_t *ip) {
+    OpCounts *c = vm->op_counts;
+    if (c == NULL) {
+        c = vm->op_counts = plum_alloc_zeroed(1, sizeof *c);
+        c->last[0] = c->last[1] = -1;
+    }
+    int op = *ip;
+    c->single[op]++;
+    if (c->last[1] >= 0) {
+        int prev = c->last[1];
+        bool seq = c->last_ip + 1 + 2 * plum_opcode_operands((PlumOpcode)prev) == ip;
+        (seq ? c->seq : c->jumped)[prev][op]++;
+        if (c->last[0] >= 0) {
+            uint32_t key = ((uint32_t)c->last[0] << 16 | (uint32_t)prev << 8 | (uint32_t)op) + 1;
+            uint32_t h = (key * 2654435761u) & (OP_TRIPLES - 1);
+            while (c->triple_key[h] != 0 && c->triple_key[h] != key) {
+                h = (h + 1) & (OP_TRIPLES - 1);
+            }
+            c->triple_key[h] = key;
+            c->triple[h]++;
+        }
+    }
+    c->last[0] = c->last[1];
+    c->last[1] = op;
+    c->last_ip = ip;
+}
+
+static void op_counts_write(VM *vm) {
+    OpCounts *c = vm->op_counts;
+    const char *path = getenv("PLUM_OP_COUNTS");
+    if (c == NULL || path == NULL) {
+        plum_free(c);
+        return;
+    }
+    FILE *f = fopen(path, "a");
+    if (f != NULL) {
+        fprintf(f, "R %s\n", vm->source != NULL ? vm->source->path : "?");
+        for (int a = 0; a < 256; a++) {
+            if (c->single[a] != 0) {
+                fprintf(f, "S %s %llu\n", plum_opcode_name((PlumOpcode)a),
+                        (unsigned long long)c->single[a]);
+            }
+            for (int b = 0; b < 256; b++) {
+                if (c->seq[a][b] != 0) {
+                    fprintf(f, "P %s %s %llu\n", plum_opcode_name((PlumOpcode)a),
+                            plum_opcode_name((PlumOpcode)b), (unsigned long long)c->seq[a][b]);
+                }
+                if (c->jumped[a][b] != 0) {
+                    fprintf(f, "J %s %s %llu\n", plum_opcode_name((PlumOpcode)a),
+                            plum_opcode_name((PlumOpcode)b), (unsigned long long)c->jumped[a][b]);
+                }
+            }
+        }
+        for (uint32_t h = 0; h < OP_TRIPLES; h++) {
+            if (c->triple_key[h] != 0) {
+                uint32_t k = c->triple_key[h] - 1;
+                fprintf(f, "T %s %s %s %llu\n", plum_opcode_name((PlumOpcode)(k >> 16)),
+                        plum_opcode_name((PlumOpcode)(k >> 8 & 0xFF)),
+                        plum_opcode_name((PlumOpcode)(k & 0xFF)), (unsigned long long)c->triple[h]);
+            }
+        }
+        fclose(f);
+    }
+    plum_free(c);
+    vm->op_counts = NULL;
+}
+#endif
+
 /*
  * The run loop starts on a 64-byte boundary. Where it lands otherwise
  * depends on the size of everything placed before it, and moving it by 16
@@ -2291,8 +2388,25 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
     ENTER_FRAME();
 
 #define READ_U16() read_u16(&ip)
-#define SLOT(n)    (vm->stack[frame->base + (n)])
-#define SAVE_IP()  (frame->ip = ip)
+/*
+ * A jump taken on a condition. The empty asm keeps it a branch, which the
+ * processor predicts: GCC 15 turned `if (!holds) ip += d` into a
+ * conditional move, so that fetching the next instruction waited for the
+ * comparison and for whatever the comparison waited for (in `loop`, a
+ * division): 2.3 times the cycles of GCC 13's code (bench/README.md,
+ * "Superinstructions (#123)").
+ */
+#if defined(__GNUC__) && !defined(__wasm__)
+#define TAKE_JUMP(d)             \
+    do {                         \
+        ip += (d);               \
+        __asm__ volatile("" ::); \
+    } while (0)
+#else
+#define TAKE_JUMP(d) (ip += (d))
+#endif
+#define SLOT(n)   (vm->stack[frame->base + (n)])
+#define SAVE_IP() (frame->ip = ip)
 #define FAIL(...)                       \
     do {                                \
         SAVE_IP();                      \
@@ -2460,7 +2574,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             holds_ = int_compare_slow(s_[0], s_[1], DROP_X | DROP_Y) OP_ 0; \
         }                                                                   \
         if (!holds_) {                                                      \
-            ip += d_;                                                       \
+            TAKE_JUMP(d_);                                                  \
         }                                                                   \
     } while (0)
 #define JUMP_UNLESS_FLOAT(OP_)                                  \
@@ -2468,7 +2582,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
         uint16_t d_ = READ_U16();                               \
         PlumValue *s_ = &vm->stack[vm->top -= 2];               \
         if (!(plum_as_float(s_[0]) OP_ plum_as_float(s_[1]))) { \
-            ip += d_;                                           \
+            TAKE_JUMP(d_);                                      \
         }                                                       \
     } while (0)
 #define JUMP_UNLESS_INT_K(OP_)                                               \
@@ -2484,7 +2598,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             holds_ = int_compare_slow(*s_, k_value_, DROP_X) OP_ 0;          \
         }                                                                    \
         if (!holds_) {                                                       \
-            ip += d_;                                                        \
+            TAKE_JUMP(d_);                                                   \
         }                                                                    \
     } while (0)
 #define JUMP_UNLESS_FLOAT_K(OP_)                                  \
@@ -2493,7 +2607,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
         uint16_t d_ = READ_U16();                                 \
         PlumValue *s_ = &vm->stack[--vm->top];                    \
         if (!(plum_as_float(*s_) OP_ plum_as_float(KONST(k_)))) { \
-            ip += d_;                                             \
+            TAKE_JUMP(d_);                                        \
         }                                                         \
     } while (0)
 #define JUMP_UNLESS_LK(OP_)                             \
@@ -2502,7 +2616,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
         uint16_t k_ = READ_U16();                       \
         uint16_t d_ = READ_U16();                       \
         if (!(plum_as_int(SLOT(n_)) OP_(int16_t) k_)) { \
-            ip += d_;                                   \
+            TAKE_JUMP(d_);                              \
         }                                               \
     } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
@@ -2526,6 +2640,9 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
 
     for (;;) {
         const uint8_t *op_start = ip; /* where a task that gives way picks up again */
+#if PLUM_OP_COUNTS
+        op_count(vm, op_start);
+#endif
         PlumOpcode op = (PlumOpcode)*ip++;
         switch (op) {
         case PLUM_OP_CONST:
@@ -3691,35 +3808,35 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
         case PLUM_OP_JUMP_IF_FALSE: {
             uint16_t d = READ_U16();
             if (!plum_as_bool(pop(vm))) {
-                ip += d;
+                TAKE_JUMP(d);
             }
             break;
         }
         case PLUM_OP_JUMP_IF_FALSE_KEEP: {
             uint16_t d = READ_U16();
             if (!plum_as_bool(*peek(vm, 0))) {
-                ip += d;
+                TAKE_JUMP(d);
             }
             break;
         }
         case PLUM_OP_JUMP_IF_TRUE_KEEP: {
             uint16_t d = READ_U16();
             if (plum_as_bool(*peek(vm, 0))) {
-                ip += d;
+                TAKE_JUMP(d);
             }
             break;
         }
         case PLUM_OP_JUMP_IF_NOT_NONE_KEEP: {
             uint16_t d = READ_U16();
             if (!plum_is_none(*peek(vm, 0))) {
-                ip += d;
+                TAKE_JUMP(d);
             }
             break;
         }
         case PLUM_OP_JUMP_IF_NONE_KEEP: {
             uint16_t d = READ_U16();
             if (plum_is_none(*peek(vm, 0))) {
-                ip += d;
+                TAKE_JUMP(d);
             }
             break;
         }
@@ -3828,7 +3945,7 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             uint16_t d = READ_U16();
             int64_t i = plum_as_int(SLOT(slot)), end = plum_as_int(SLOT(slot + 1));
             if (inclusive ? i > end : i >= end) {
-                ip += d;
+                TAKE_JUMP(d);
             }
             break;
         }
@@ -4334,6 +4451,9 @@ static int vm_run_main(VM *vm, PlumFunction *main_fn) {
 /* Release the globals and free the VM; with --check-leaks, report what
  * cycles kept alive. Returns `code`, or 1 if the leak check failed. */
 static int vm_destroy(VM *vm, int code) {
+#if PLUM_OP_COUNTS
+    op_counts_write(vm);
+#endif
     drop_tasks(vm);
     for (int i = 0; i < vm->global_count; i++) {
         plum_release(vm->globals[i]);
