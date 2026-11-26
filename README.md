@@ -169,7 +169,7 @@ calling Plumlang ready for production; the whole roadmap is
 | **Zed** | [zed-plum](https://github.com/plumlang/zed-plum), in review for Zed's extension gallery; install it now as a dev extension. |
 | **Helix** | Built-in support in review ([helix#16493](https://github.com/helix-editor/helix/pull/16493)). |
 | **Other editors** | Any editor with LSP support can run `plum lsp`; see [the language server guide](https://plum.elixpo.com/docs/tools/lsp/). |
-| **Tree-sitter** | [tree-sitter-plum](https://github.com/plumlang/tree-sitter-plum): the grammar for Neovim, Helix, Zed and others; npm `@plumlang/tree-sitter-plum`. |
+| **Tree-sitter** | [tree-sitter-plum](https://github.com/plumlang/tree-sitter-plum): the grammar for Neovim, Helix, Zed and others; npm `@plumlang/tree-sitter-plum`; listed in Tree-sitter's [List of parsers](https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers). |
 | **Highlighting on the web** | [highlightjs-plum](https://github.com/plumlang/highlightjs-plum) for highlight.js (npm `@plumlang/highlightjs-plum`) and [pygments-plum](https://github.com/plumlang/pygments-plum) for Pygments, Sphinx and MkDocs (PyPI `pygments-plum`). |
 | **In JavaScript** | [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) on npm: run, check and format Plumlang in Node or the browser (WebAssembly). |
 | **CI** | [setup-plum](https://github.com/plumlang/setup-plum): `uses: plumlang/setup-plum@v1` installs a verified `plum` in GitHub Actions. |
