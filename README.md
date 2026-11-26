@@ -167,7 +167,8 @@ calling Plumlang ready for production; the whole roadmap is
 
 | | |
 |---|---|
-| **VS Code** | [Plumlang extension](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) on the Marketplace: highlighting, errors as you type, hover, go to definition, completion, formatting. Also on [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang) for VSCodium and Cursor. |
+| **VS Code** | [Plumlang extension](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) on the Marketplace: highlighting, errors as you type, hover, go to definition, completion, formatting. |
+| **VSCodium, Cursor, Windsurf** | The same extension on [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang), from the verified `plum-lang` publisher: for every VS Code-based editor that installs from Open VSX (VSCodium, Cursor, Windsurf, Gitpod, Eclipse Theia). |
 | **Zed** | [zed-plum](https://github.com/plumlang/zed-plum), in review for Zed's extension gallery; install it now as a dev extension. |
 | **Helix** | Built-in support in review ([helix#16493](https://github.com/helix-editor/helix/pull/16493)). |
 | **Other editors** | Any editor with LSP support can run `plum lsp`; see [the language server guide](https://plum.elixpo.com/docs/tools/lsp/). |
@@ -186,7 +187,7 @@ Published packages (the full list is at [plum.elixpo.com/docs/ecosystem](https:/
 | [`@plumlang/highlightjs-plum`](https://www.npmjs.com/package/@plumlang/highlightjs-plum) | npm | highlight.js support, also on [jsDelivr](https://cdn.jsdelivr.net/npm/@plumlang/highlightjs-plum/dist/plum.min.js) |
 | [`pygments-plum`](https://pypi.org/project/pygments-plum/) | PyPI | The Pygments lexer |
 | [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) | npm | `plum` as WebAssembly for Node and the browser |
-| [Plumlang](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) | VS Code Marketplace, [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang) | The editor extension |
+| [Plumlang](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) | VS Code Marketplace, [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang) (verified) | The editor extension |
 | [`plumlang/tap/plum`](https://github.com/plumlang/homebrew-tap) | Homebrew | `brew install plumlang/tap/plum` |
 | [`plumlang/plumlang`](https://github.com/aquaproj/aqua-registry/tree/main/pkgs/plumlang/plumlang) | aqua, mise | `aqua g -i plumlang/plumlang`, `mise use aqua:plumlang/plumlang` |
 | `plum` | Nix / NixOS | In review ([NixOS/nixpkgs#592489](https://github.com/NixOS/nixpkgs/pull/592489)); build today with [`packaging/nix`](packaging/README.md#nixpkgs) |
