@@ -4,7 +4,7 @@
 #define PLUM_VERSION_H
 
 #define PLUM_VERSION_MAJOR 2
-#define PLUM_VERSION_MINOR 2
+#define PLUM_VERSION_MINOR 3
 #define PLUM_VERSION_PATCH 0
 
 #define PLUM_STR_(x) #x
