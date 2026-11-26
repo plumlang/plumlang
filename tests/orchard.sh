@@ -268,8 +268,8 @@ check "no plum.lock"                    1 "E0909.*no plum.lock" err -- run .
 before_new=$(pwd)
 mkdir -p "$tmp/new"
 cd "$tmp/new" || exit 1
-check "new: a project"              0 "created my-app/ with 7 files" out -- new my-app
-for f in plum.toml README.md .gitignore .github/workflows/ci.yml src/main.plum src/my_app.plum src/my_app_test.plum; do
+check "new: a project"              0 "created my-app/ with 8 files" out -- new my-app
+for f in plum.toml README.md .gitignore .gitattributes .github/workflows/ci.yml src/main.plum src/my_app.plum src/my_app_test.plum; do
     expect "new: $f exists" test -f "my-app/$f"
 done
 check "new: an existing name"       1 "E0926.*'my-app' already exists" err -- new my-app

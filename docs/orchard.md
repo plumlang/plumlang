@@ -31,6 +31,7 @@ passes its test, is formatted, and packages as it is:
 | `src/NAME_test.plum` | A test of it, run by `plum test` |
 | `README.md` | How to run, test, format and add packages |
 | `.gitignore` | Ignores the bundles `plum package` writes |
+| `.gitattributes` | LF line endings for `.plum` files, so `plum fmt --check` agrees on Windows checkouts |
 | `.github/workflows/ci.yml` | GitHub Actions on Linux, macOS and Windows: [setup-plum](https://github.com/plumlang/setup-plum), then `plum check .`, `plum fmt --check .` and `plum test` |
 
 NAME follows the package-name rules below. `plum new` writes nothing if

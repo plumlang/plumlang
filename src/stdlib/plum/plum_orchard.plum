@@ -801,6 +801,13 @@ branch project_files(name: str) -> map[str, str] {
         # Bundles written by `plum package`
         *.plumpkg
         """
+    files[".gitattributes"] = """
+        # Plumlang files use LF line endings everywhere, so `plum fmt --check`
+        # agrees on Windows checkouts too.
+        *.plum text eol=lf
+        plum.toml text eol=lf
+        plum.lock text eol=lf
+        """
     files[".github/workflows/ci.yml"] = """
         name: ci
         on: [push, pull_request]
