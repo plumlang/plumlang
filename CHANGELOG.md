@@ -16,6 +16,20 @@ Format for a new entry:
 
 ## Unreleased
 
+## v2.3.0 — 2026-11-26
+
+Plumlang 2.3.0 is the fast-VM release. The type checker already knows every
+value's type, so the compiler now picks specialised bytecode for operands,
+fields, method calls, function calls and string building, and the VM does
+less work per instruction: on the benchmark suite, 2.3 is about 2.2 times as
+fast as 2.2.0 built the same way (from 1.1 times on library-bound programs to
+7 times on building text), with no JIT and bytecode that never changes while
+it runs. Error messages, line numbers and stack traces are unchanged. Values
+can be built as 8 bytes instead of 16 (`make NANBOX=1`), which saves up to 40%
+of memory on programs full of numbers but isn't faster, so it stays a build
+option. `plum new` starts a project, and a container image is published with
+each release. bench/README.md records every change measured, kept or rejected.
+
 - **VM** (#123): superinstructions for the instruction pairs the benchmarks run most (counted by a `-DPLUM_OP_COUNTS=1` build and `bench/oppairs.py`): `if x % k == 0` in one instruction (`JUMP_IF_NOT_MOD_EQ0_LK`, `_NE0_LK`), `s += v` on an int local without pushing it (`LOCAL_ADD_INT`, `LOCAL_SUB_INT`), local op local (`ADD_INT_LL` ... `MUL_FLOAT_LL`), and `while` on an int local against a literal tested again at the bottom (`LOOP_IF_*_INT_LK`), with the same results, errors, lines and step counts. Compare-and-jump instructions stay branches with GCC 15, which had made them conditional moves: `loop` ran 2.3 times GCC 13's cycles. With `make`, `loop` runs 2.9 times as fast, `collatz` 1.5, `mandelbrot` 1.27 and `lists` 1.19 times (GCC 13: 1.36, 1.30, 1.28, 1.14; `make release-pgo`: 2.5, 1.43, 1.14, 1.20); the rest level. Keeping the stack top in a register and a register VM were measured and not adopted; the evaluation, with a prototype and an estimate for 3.0, is in bench/README.md, "Superinstructions (#123)".
 - **CLI**: `plum new NAME` starts a project: `plum.toml`, `src/main.plum`, a library module with a test beside it, a README, `.gitignore`, `.gitattributes` (LF endings, so `plum fmt --check` passes on Windows checkouts) and a GitHub Actions workflow (setup-plum, then check, fmt and test on Linux, macOS and Windows). The project runs, passes its test and packages as it is; an invalid or existing name is E0926 and writes nothing (docs/orchard.md, "Starting a project").
 - **Packaging**: a container image, `plumlang/plum` on Docker Hub and `ghcr.io/plumlang/plum`, for linux/amd64, arm64 and riscv64, published after each release from the release's own checked binaries (`packaging/docker`, `.github/workflows/docker.yml`).
