@@ -29,12 +29,14 @@
 
 ## About
 
-Plumlang is a statically typed programming language with a syntax that reads
-like plain English, written from scratch in C11 with no dependencies. Programs
+Plumlang (Plum for short) is a statically typed programming language with a
+syntax that reads like plain English, written from scratch in C11 with no dependencies. Programs
 are checked for type errors before they run, compiled to typed bytecode, and
 run on a small virtual machine. Memory is managed by reference counting with
 copy-on-write values, so it is freed the moment it is no longer used: no
 garbage collector, no pauses, no manual `free`.
+
+New here? The [FAQ](https://plum.elixpo.com/docs/faq/) answers what people ask first.
 
 ```plum
 seed net.http
