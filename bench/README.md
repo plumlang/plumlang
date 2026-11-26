@@ -894,8 +894,8 @@ test (`JUMP_IF_NOT_NE_INT_LK`, 4.6%), `JUMP` then `LOCAL_ADD_INT_K`
 (2.3%, the highest mean share of any pair: 2.4%). The single
 instructions: `MOD_INT_LK` 7.8%, `LOOP` 7.6%, `GET_LOCAL` 7.5%,
 `JUMP_IF_NOT_EQ_INT_K` 7.1%, `SET_LOCAL` 5.8%; by mean share `CONST`
-(9.3%) and `GET_LOCAL` (7.9%) lead. The examples run 4,500 instructions in all and
-change none of this.
+(9.3%) and `GET_LOCAL` (7.9%) lead. The examples run 4,500
+instructions in all and change none of this.
 
 **First, a finding that wasn't a superinstruction.** `loop` ran in 904 M
 cycles with GCC 15 and 387 M with GCC 13, with the same instructions to
@@ -924,12 +924,12 @@ GCC 15, 7 rounds:
 | `LOCAL_ADD_INT`, `LOCAL_SUB_INT`: `s += v` and `s = s + v` on an int local, `v` on the stack | `GET_LOCAL s`, ..., `ADD_INT`, `SET_LOCAL s` | `lists` (`s += a[i] * b[i]`, `s += grid[r][c]`) | lists −18.3% | lists −14% | yes |
 | `ADD_INT_LL` ... `MUL_FLOAT_LL`: local op local, two ints or two floats, `+ - *` | `GET_LOCAL`, `MUL_FLOAT_L` | `mandelbrot` (`x * x`, `y * y`) | mandelbrot −15.9% | mandelbrot −13% | yes |
 | `LOOP_IF_LT_INT_LK` ...: a `while` on an int local against a literal tests again at the bottom, counting a step as `LOOP` did | `LOOP`, `JUMP_IF_NOT_NE_INT_LK` | `collatz` (`while n != 1`) | collatz −12.9% | collatz −5% | yes |
-| `LOOP_FOR_EACH`: `LOOP` back to a `FOR_EACH` running it with no dispatch of its own | `LOOP`, `FOR_EACH` | `lists`, `cart`, `dispatch`, `words` | lists −1.8%, cart +1.3%, the rest ±0.3% (11 rounds) | lists −1.5%, cart −0.8% | no: within noise; a dispatch that is always predicted costs little next to `FOR_EACH`'s own work |
+| `LOOP_FOR_EACH`: `LOOP` back to a `FOR_EACH` running it with no dispatch of its own | `LOOP`, `FOR_EACH` | `lists`, `cart`, `dispatch`, `words` | lists −1.8%, cart +1.3%, dispatch and words −0.2% (11 rounds; jsondoc −5.7% with the same instructions, level in an earlier run) | lists −1.5%, cart −0.8% | no: within noise; a dispatch that is always predicted costs little next to `FOR_EACH`'s own work |
 | `FOR_EACH_NEXT`: `for x in xs` tested at the bottom, like `FOR_NEXT` (one `FOR_EACH` case taking the place of the code to go on or out) | `LOOP`, `FOR_EACH` | the same | — | +8.6% on `mandelbrot`, which runs no `FOR_EACH` | no: GCC allocated the whole run loop's registers worse |
 
 Each gives the same results, the same errors at the same lines and the
-same step counts as what it replaces. Every other benchmark moved by under
-±3%, with the same instructions. The tests: `tests/lang/arith/fused.plum`
+same step counts as what it replaces. Every other benchmark moved by 3%
+or less, with the same instructions. The tests: `tests/lang/arith/fused.plum`
 (every new instruction: negative, power-of-two, 32-bit and 64-bit
 operands, ints at the edges, NaN, infinities and -0.0, every loop
 comparison with `continue` and `break`, the overflow errors and their
