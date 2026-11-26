@@ -72,6 +72,7 @@ app.listen(8080)
 curl -fsSL https://plum.elixpo.com/install.sh | sh     # Linux and macOS
 irm https://plum.elixpo.com/install.ps1 | iex          # Windows (PowerShell)
 brew install plumlang/tap/plum                         # Homebrew
+docker run --rm -v "$PWD":/src elixpo/plumlang run app.plum   # Docker
 ```
 
 The installers check every download against the release's `SHA256SUMS`; see
@@ -130,12 +131,13 @@ requests a second on one thread, and 10,000 idle connections open in 0.16 s.
 
 ## Releases
 
-The current release, **2.2.0**, is on [Releases](https://github.com/plumlang/plumlang/releases):
+The current release, **2.3.0**, is on [Releases](https://github.com/plumlang/plumlang/releases):
 eight builds for Linux, macOS and Windows, with `SHA256SUMS` and build
-attestations, plus the WebAssembly build on npm. It brings `plum test`, a richer
-language server, block and doc comments, nine new standard modules, a faster VM
-and the Apache-2.0 licence. The next milestone is
-[2.3: Fast VM](https://github.com/plumlang/plumlang/milestone/8). Changes are
+attestations, plus the WebAssembly build on npm and a container image on
+[Docker Hub](https://hub.docker.com/r/elixpo/plumlang). It is the fast-VM
+release: about 2.2 times as fast as 2.2.0 on the benchmarks, with `plum new`
+to start a project. The next milestone is
+[2.4: Batteries](https://github.com/plumlang/plumlang/milestone/9). Changes are
 recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Roadmap
@@ -159,6 +161,7 @@ calling Plumlang ready for production; the whole roadmap is
 <p>
   <a href="https://open-vsx.org/extension/plum-lang/plum-lang"><img alt="Open VSX" src="https://img.shields.io/open-vsx/v/plum-lang/plum-lang?style=flat-square&label=Open%20VSX&color=a60ee5"></a>
   <a href="https://github.com/plumlang/homebrew-tap"><img alt="Homebrew" src="https://img.shields.io/badge/brew-plumlang%2Ftap%2Fplum-fbb040?style=flat-square&logo=homebrew&logoColor=white"></a>
+  <a href="https://hub.docker.com/r/elixpo/plumlang"><img alt="Docker Hub" src="https://img.shields.io/docker/v/elixpo/plumlang?style=flat-square&label=docker&color=2496ed&logo=docker&logoColor=white&sort=semver"></a>
   <a href="https://www.npmjs.com/package/@plumlang/tree-sitter-plum"><img alt="tree-sitter-plum on npm" src="https://img.shields.io/npm/v/@plumlang/tree-sitter-plum?style=flat-square&label=tree-sitter&color=cb3837&logo=npm"></a>
   <a href="https://www.npmjs.com/package/@plumlang/highlightjs-plum"><img alt="highlightjs-plum on npm" src="https://img.shields.io/npm/v/@plumlang/highlightjs-plum?style=flat-square&label=highlight.js&color=cb3837&logo=npm"></a>
   <a href="https://pypi.org/project/pygments-plum/"><img alt="pygments-plum on PyPI" src="https://img.shields.io/pypi/v/pygments-plum?style=flat-square&label=pygments&color=3775a9&logo=pypi&logoColor=white"></a>
@@ -189,6 +192,7 @@ Published packages (the full list is at [plum.elixpo.com/docs/ecosystem](https:/
 | [`@plumlang/plumlang`](https://www.npmjs.com/package/@plumlang/plumlang) | npm | `plum` as WebAssembly for Node and the browser |
 | [Plumlang](https://marketplace.visualstudio.com/items?itemName=plum-lang.plum-lang) | VS Code Marketplace, [Open VSX](https://open-vsx.org/extension/plum-lang/plum-lang) (verified) | The editor extension |
 | [`plumlang/tap/plum`](https://github.com/plumlang/homebrew-tap) | Homebrew | `brew install plumlang/tap/plum` |
+| [`elixpo/plumlang`](https://hub.docker.com/r/elixpo/plumlang) | Docker Hub, also `ghcr.io/plumlang/plum` | `docker run --rm -v "$PWD":/src elixpo/plumlang run app.plum` (amd64, arm64, riscv64) |
 | [`plumlang/plumlang`](https://github.com/aquaproj/aqua-registry/tree/main/pkgs/plumlang/plumlang) | aqua, mise | `aqua g -i plumlang/plumlang`, `mise use aqua:plumlang/plumlang` |
 | `plum` | Nix / NixOS | In review ([NixOS/nixpkgs#592489](https://github.com/NixOS/nixpkgs/pull/592489)); build today with [`packaging/nix`](packaging/README.md#nixpkgs) |
 | [`plumlang/setup-plum@v1`](https://github.com/plumlang/setup-plum) | GitHub Actions | Installs `plum` in CI |
