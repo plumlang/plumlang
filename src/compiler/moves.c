@@ -88,10 +88,26 @@ static void slot_uses(PlumOpcode op, uint16_t a, uint16_t b, uint16_t c, int use
     case PLUM_OP_JUMP_IF_NOT_GE_INT_LK:
     case PLUM_OP_JUMP_IF_NOT_EQ_INT_LK:
     case PLUM_OP_JUMP_IF_NOT_NE_INT_LK:
+    case PLUM_OP_JUMP_IF_NOT_MOD_EQ0_LK:
+    case PLUM_OP_JUMP_IF_NOT_MOD_NE0_LK:
+    case PLUM_OP_LOOP_IF_LT_INT_LK:
+    case PLUM_OP_LOOP_IF_LE_INT_LK:
+    case PLUM_OP_LOOP_IF_GT_INT_LK:
+    case PLUM_OP_LOOP_IF_GE_INT_LK:
+    case PLUM_OP_LOOP_IF_EQ_INT_LK:
+    case PLUM_OP_LOOP_IF_NE_INT_LK:
+    case PLUM_OP_LOCAL_ADD_INT:
+    case PLUM_OP_LOCAL_SUB_INT:
     case PLUM_OP_RETURN_LOCAL:
         uses[(*nuses)++] = a;
         return;
     case PLUM_OP_INDEX_LIST_LL:
+    case PLUM_OP_ADD_INT_LL:
+    case PLUM_OP_SUB_INT_LL:
+    case PLUM_OP_MUL_INT_LL:
+    case PLUM_OP_ADD_FLOAT_LL:
+    case PLUM_OP_SUB_FLOAT_LL:
+    case PLUM_OP_MUL_FLOAT_LL:
     case PLUM_OP_LOCAL_ADD_INT_L:
     case PLUM_OP_LOCAL_SUB_INT_L:
         uses[(*nuses)++] = a;
@@ -174,11 +190,19 @@ static long jump_of(PlumOpcode op, uint16_t a, uint16_t b, uint16_t c, bool *end
     case PLUM_OP_JUMP_IF_NOT_GE_INT_LK:
     case PLUM_OP_JUMP_IF_NOT_EQ_INT_LK:
     case PLUM_OP_JUMP_IF_NOT_NE_INT_LK:
+    case PLUM_OP_JUMP_IF_NOT_MOD_EQ0_LK:
+    case PLUM_OP_JUMP_IF_NOT_MOD_NE0_LK:
     case PLUM_OP_FOR_RANGE:
     case PLUM_OP_FOR_EACH:
     case PLUM_OP_FOR_EACH2:
         return c;
     case PLUM_OP_FOR_NEXT:
+    case PLUM_OP_LOOP_IF_LT_INT_LK:
+    case PLUM_OP_LOOP_IF_LE_INT_LK:
+    case PLUM_OP_LOOP_IF_GT_INT_LK:
+    case PLUM_OP_LOOP_IF_GE_INT_LK:
+    case PLUM_OP_LOOP_IF_EQ_INT_LK:
+    case PLUM_OP_LOOP_IF_NE_INT_LK:
         return -(long)c;
     case PLUM_OP_RETURN:
     case PLUM_OP_RETURN_LOCAL:

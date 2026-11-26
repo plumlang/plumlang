@@ -1,0 +1,17 @@
+# An overflow in s += v (LOCAL_ADD_INT, #123) names the line of the +=,
+# in a loop that tests its condition at the bottom (LOOP_IF_LT_INT_LK).
+branch grow(start: int, by: int) -> int {
+    plant s = start
+    plant i = 0
+    while i < 10 {
+        s += by * 2
+        i += 1
+    }
+    return s
+}
+
+branch run() {
+    drop(grow(1, 2))
+    drop(grow(9223372036854775000, 100))
+}
+run()

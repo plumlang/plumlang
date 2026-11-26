@@ -1,0 +1,4 @@
+tests/lang/errors/fused_add_overflow.plum:7: OverflowError: integer overflow: 9223372036854775800 + 200 doesn't fit in an int
+  in grow, line 7
+  in run, line 15
+  in <main>, line 17

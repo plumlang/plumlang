@@ -1,0 +1,9 @@
+# An overflow in a * b of two int locals (MUL_INT_LL, #123) names its line.
+branch area(w: int, h: int) -> int {
+    if w % 2 == 0 {
+        return w * h
+    }
+    return 0
+}
+drop(area(4, 5))
+drop(area(4611686018427387904, 2))

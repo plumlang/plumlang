@@ -1,0 +1,47 @@
+0 218M-2
+1 !31odd
+-1 !31odd
+2 2!31-2
+-2 2!31-2
+6 21-2
+-6 21-2
+7 !317odd
+-7 !317odd
+8 2!318-2
+-8 2!318-2
+14 2!317-2
+-21 17odd
+32767 !31M7odd
+-32767 !31M7odd
+65534 2!31M7-2
+4294967296 2!318-2
+-4294967296 2!318-2
+9223372036854775807 !317odd
+-9223372036854775808 2!318-2
+a global is read the usual way
+50
+[30, -6, 4, 98]
+[0, 0, 0, 100]
+OverflowError: integer overflow: 9223372036854775806 + 3 doesn't fit in an int
+OverflowError: integer overflow: -9223372036854775806 + -3 doesn't fit in an int
+OverflowError: integer overflow: -9223372036854775808 - 1 doesn't fit in an int
+4
+2 10 -24 -10 36
+1.25 1.75 -0.375 -1.75 2.25
+-2 2.3125
+0 0 0 0 0
+0.0 0.0 -0.0 -0.0 0.0
+0 0.0
+inf 1e+308 1e+308
+-inf 0.0 -inf
+nan nan nan
+OverflowError: integer overflow: 9223372036854775807 + 2 doesn't fit in an int
+9223372036854775805
+OverflowError: integer overflow: 9223372036854775807 * 2 doesn't fit in an int
+-9223372036854775804
+OverflowError: integer overflow: -9223372036854775807 - 3 doesn't fit in an int
+OverflowError: integer overflow: -9223372036854775807 * 3 doesn't fit in an int
+4611686018427387902
+4611686018427387906
+-9223372036854775808
+5 -6 6 243 19 5 0 3

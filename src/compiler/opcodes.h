@@ -79,6 +79,9 @@
     X(MUL_INT_LK, 2, "push int local [a] * [b]")                                                   \
     X(FLOORDIV_INT_LK, 2, "push int local [a] // [b], which is above 0")                           \
     X(MOD_INT_LK, 2, "push int local [a] % [b], which is above 0")                                 \
+    X(ADD_INT_LL, 2, "push int local [a] + int local [b]")                                         \
+    X(SUB_INT_LL, 2, "push int local [a] - int local [b]")                                         \
+    X(MUL_INT_LL, 2, "push int local [a] * int local [b]")                                         \
     X(LOCAL_ADD_INT_K, 2, "int local [a] += int constant [b]")                                     \
     X(LOCAL_SUB_INT_K, 2, "int local [a] -= int constant [b]")                                     \
     X(LOCAL_MUL_INT_K, 2, "int local [a] *= int constant [b]")                                     \
@@ -86,6 +89,8 @@
     X(LOCAL_MOD_INT_K, 2, "int local [a] %= int constant [b], which is above 0")                   \
     X(LOCAL_ADD_INT_L, 2, "int local [a] += int local [b]")                                        \
     X(LOCAL_SUB_INT_L, 2, "int local [a] -= int local [b]")                                        \
+    X(LOCAL_ADD_INT, 1, "int local [a] += the int popped (#123)")                                  \
+    X(LOCAL_SUB_INT, 1, "int local [a] -= the int popped (#123)")                                  \
     X(GLOBAL_ADD_INT_K, 2, "int global [a] += int constant [b]")                                   \
     X(GLOBAL_SUB_INT_K, 2, "int global [a] -= int constant [b]")                                   \
     X(GLOBAL_ADD_INT_L, 2, "int global [a] += int local [b]")                                      \
@@ -113,6 +118,9 @@
     X(SUB_FLOAT_L, 1, "a - float local [a]")                                                       \
     X(MUL_FLOAT_L, 1, "a * float local [a]")                                                       \
     X(DIV_FLOAT_L, 1, "a / float local [a]")                                                       \
+    X(ADD_FLOAT_LL, 2, "push float local [a] + float local [b]")                                   \
+    X(SUB_FLOAT_LL, 2, "push float local [a] - float local [b]")                                   \
+    X(MUL_FLOAT_LL, 2, "push float local [a] * float local [b]")                                   \
     X(INT_TO_FLOAT, 0, "convert the top value")                                                    \
     /* Strings */                                                                                  \
     X(CONCAT, 0, "a + b for strings")                                                              \
@@ -223,7 +231,15 @@
     X(JUMP_IF_NOT_GE_INT_LK, 3, "jump [c] unless int local [a] >= [b]")                            \
     X(JUMP_IF_NOT_EQ_INT_LK, 3, "jump [c] unless int local [a] == [b]")                            \
     X(JUMP_IF_NOT_NE_INT_LK, 3, "jump [c] unless int local [a] != [b]")                            \
+    X(JUMP_IF_NOT_MOD_EQ0_LK, 3, "jump [c] unless int local [a] % [b] == 0, [b] above 0")          \
+    X(JUMP_IF_NOT_MOD_NE0_LK, 3, "jump [c] unless int local [a] % [b] != 0, [b] above 0")          \
     X(LOOP, 1, "jump back [a] bytes")                                                              \
+    X(LOOP_IF_LT_INT_LK, 3, "a step, as LOOP; jump back [c] if int local [a] < [b]")               \
+    X(LOOP_IF_LE_INT_LK, 3, "a step, as LOOP; jump back [c] if int local [a] <= [b]")              \
+    X(LOOP_IF_GT_INT_LK, 3, "a step, as LOOP; jump back [c] if int local [a] > [b]")               \
+    X(LOOP_IF_GE_INT_LK, 3, "a step, as LOOP; jump back [c] if int local [a] >= [b]")              \
+    X(LOOP_IF_EQ_INT_LK, 3, "a step, as LOOP; jump back [c] if int local [a] == [b]")              \
+    X(LOOP_IF_NE_INT_LK, 3, "a step, as LOOP; jump back [c] if int local [a] != [b]")              \
     X(FOR_RANGE, 3, "jump forward [c] if local [a] is past local [a+1] (<, or <= if [b])")         \
     X(FOR_NEXT, 3,                                                                                 \
       "if local [a] + 1 is within local [a+1] (<, or <= if [b]): add 1, jump back [c]")            \
