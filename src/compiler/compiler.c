@@ -19,10 +19,6 @@
 
 /* An enclosing loop: where continue goes, and jumps to patch at its end. */
 /* A try statement being compiled: what leaving it early must undo. */
-#ifndef PLUM_SUPER
-#define PLUM_SUPER 0xFF /* experiment (#123): which superinstructions to emit */
-#endif
-
 typedef struct Try {
     struct Try *outer;
     int handlers;            /* TRY instructions still active: 0 to 2 */
@@ -563,7 +559,7 @@ static bool fused_locals(Compiler *c, PlumTokenKind tok, bool fl, const PlumExpr
     };
     int row = tok == PLUM_TOK_PLUS ? 0 : tok == PLUM_TOK_MINUS ? 1 : tok == PLUM_TOK_STAR ? 2 : -1;
     uint16_t a, b;
-    if (!(PLUM_SUPER & 4) || row < 0 ||
+    if (row < 0 ||
         (fl ? !ty_is(left->ty, PLUM_TY_FLOAT) || !ty_is(right->ty, PLUM_TY_FLOAT)
             : !int_like(left->ty) || !int_like(right->ty)) ||
         !plain_local(c, left, &a) || !plain_local(c, right, &b)) {
@@ -702,15 +698,15 @@ static void compile_cond(Compiler *c, const PlumExpr *e, Jumps *out) {
                                         : 5;
     const PlumExpr *l = e->as.binary.left, *r = e->as.binary.right;
     uint16_t mod_slot;
-    if ((PLUM_SUPER & 1) && kind == 0 && row < 2 && r->kind == PLUM_EXPR_INT && r->as.i == 0 &&
-        l->kind == PLUM_EXPR_BINARY && l->as.binary.op == PLUM_TOK_PERCENT &&
-        int_like(l->ty) && int_like(l->as.binary.left->ty) &&
-        l->as.binary.right->kind == PLUM_EXPR_INT && l->as.binary.right->as.i > 0 &&
-        l->as.binary.right->as.i <= INT16_MAX && plain_local(c, l->as.binary.left, &mod_slot)) {
+    if (kind == 0 && row < 2 && r->kind == PLUM_EXPR_INT && r->as.i == 0 &&
+        l->kind == PLUM_EXPR_BINARY && l->as.binary.op == PLUM_TOK_PERCENT && int_like(l->ty) &&
+        int_like(l->as.binary.left->ty) && l->as.binary.right->kind == PLUM_EXPR_INT &&
+        l->as.binary.right->as.i > 0 && l->as.binary.right->as.i <= INT16_MAX &&
+        plain_local(c, l->as.binary.left, &mod_slot)) {
         /* x % k == 0 (or != 0) for an int local and a literal above 0: one
          * instruction, which can't fail (#123) */
-        op2(c, row == 0 ? PLUM_OP_JUMP_IF_NOT_MOD_EQ0_LK : PLUM_OP_JUMP_IF_NOT_MOD_NE0_LK,
-            mod_slot, (uint16_t)l->as.binary.right->as.i, line);
+        op2(c, row == 0 ? PLUM_OP_JUMP_IF_NOT_MOD_EQ0_LK : PLUM_OP_JUMP_IF_NOT_MOD_NE0_LK, mod_slot,
+            (uint16_t)l->as.binary.right->as.i, line);
         plum_chunk_write_u16(chunk(c), 0xFFFF, line);
         plum_array_push(out, chunk(c)->code.len - 2);
         return;
@@ -2908,7 +2904,7 @@ static void compile_while(Compiler *c, const PlumStmt *s) {
     begin_loop(c, &loop, false);
     Jumps exit = {0};
     int row;
-    if ((PLUM_SUPER & 16) && local_literal_comparison(c, s->as.while_.cond, &row)) {
+    if (local_literal_comparison(c, s->as.while_.cond, &row)) {
         static const PlumOpcode back[6] = {
             PLUM_OP_LOOP_IF_EQ_INT_LK, PLUM_OP_LOOP_IF_NE_INT_LK, PLUM_OP_LOOP_IF_LT_INT_LK,
             PLUM_OP_LOOP_IF_LE_INT_LK, PLUM_OP_LOOP_IF_GT_INT_LK, PLUM_OP_LOOP_IF_GE_INT_LK,
@@ -3011,19 +3007,7 @@ static void compile_for_each(Compiler *c, const PlumStmt *s) {
         box_if_captured(c, s->symbol2, s->span);
     }
     compile_block(c, s->as.for_.body);
-    if (PLUM_SUPER & 8) {
-        /* the next item at the bottom, back to the body (#123): no LOOP */
-        size_t distance = chunk(c)->code.len + 7 - (exit_at + 2);
-        if (distance > 0xFFFF) {
-            plum_diag_error(c->diags, s->span, "E0602",
-                            "this loop is too long; split it into functions");
-            distance = 0;
-        }
-        op2(c, two ? PLUM_OP_FOR_EACH2_NEXT : PLUM_OP_FOR_EACH_NEXT, list, var, line);
-        plum_chunk_write_u16(chunk(c), (uint16_t)distance, line);
-    } else {
-        emit_loop(c, loop.start, s->span);
-    }
+    emit_loop(c, loop.start, s->span);
     patch_jump(c, exit_at, s->span);
     end_loop(c, &loop, s->span);
     c->fs->next_slot = saved;
@@ -3404,12 +3388,13 @@ static bool local_add_popped(Compiler *c, const PlumStmt *s) {
         bin = value->as.binary.op;
     }
     uint16_t slot;
-    if (!(PLUM_SUPER & 2) || v == NULL || !ty_is(target->ty, PLUM_TY_INT) || !int_like(v->ty) ||
+    if (v == NULL || !ty_is(target->ty, PLUM_TY_INT) || !int_like(v->ty) ||
         !plain_local(c, target, &slot)) {
         return false;
     }
     compile_expr(c, v);
-    op1(c, bin == PLUM_TOK_PLUS ? PLUM_OP_LOCAL_ADD_INT : PLUM_OP_LOCAL_SUB_INT, slot, s->span.line);
+    op1(c, bin == PLUM_TOK_PLUS ? PLUM_OP_LOCAL_ADD_INT : PLUM_OP_LOCAL_SUB_INT, slot,
+        s->span.line);
     return true;
 }
 

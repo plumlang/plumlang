@@ -168,8 +168,6 @@
     X(FOR_EACH, 3,                                                                                 \
       "next item of local [a] (position in [a+1]) into local [b], or jump forward [c]")            \
     X(FOR_EACH2, 3, "next position and item of local [a] into locals [b], [b+1], or jump [c]")     \
-    X(FOR_EACH_NEXT, 3, "as FOR_EACH, at the bottom: back [c] to the body if local [a] has more")  \
-    X(FOR_EACH2_NEXT, 3, "as FOR_EACH2, at the bottom: back [c] to the body if local [a] has more")\
     /* Trees */                                                                                    \
     X(NEW_OBJECT, 2, "an object of tree constant [a] from its [b] fields on the stack")            \
     X(GET_FIELD, 1, "field [a] of the object on top")                                              \

@@ -2557,55 +2557,55 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
     } while (0)
 /* The _LL forms push local op local (#123); the ints give the same
  * results and errors as GET_LOCAL and the _L form. */
-#define PUSH_CHECKED_LL(fn, symbol)                                     \
-    do {                                                                \
-        uint16_t n_ = READ_U16();                                       \
-        uint16_t m_ = READ_U16();                                       \
+#define PUSH_CHECKED_LL(fn, symbol)                                      \
+    do {                                                                 \
+        uint16_t n_ = READ_U16();                                        \
+        uint16_t m_ = READ_U16();                                        \
         int64_t a = plum_as_int(SLOT(n_)), b = plum_as_int(SLOT(m_)), r; \
-        if (fn(a, b, &r)) {                                             \
-            INT_OVERFLOW_ERROR(a, symbol, b);                           \
-        }                                                               \
-        PUSH_INT(r);                                                    \
+        if (fn(a, b, &r)) {                                              \
+            INT_OVERFLOW_ERROR(a, symbol, b);                            \
+        }                                                                \
+        PUSH_INT(r);                                                     \
     } while (0)
-#define PUSH_FLOAT_LL(OP_)                                                       \
-    do {                                                                         \
-        uint16_t n_ = READ_U16();                                                \
-        uint16_t m_ = READ_U16();                                                \
-        double r_ = plum_as_float(SLOT(n_)) OP_ plum_as_float(SLOT(m_));         \
-        reserve_one(vm);                                                         \
-        vm->stack[vm->top++] = plum_float_raw(r_);                               \
+#define PUSH_FLOAT_LL(OP_)                                               \
+    do {                                                                 \
+        uint16_t n_ = READ_U16();                                        \
+        uint16_t m_ = READ_U16();                                        \
+        double r_ = plum_as_float(SLOT(n_)) OP_ plum_as_float(SLOT(m_)); \
+        reserve_one(vm);                                                 \
+        vm->stack[vm->top++] = plum_float_raw(r_);                       \
     } while (0)
 /* LOCAL_ADD_INT, LOCAL_SUB_INT: an int local changed in place by the int
  * popped (#123), as GET_LOCAL, ADD_INT, SET_LOCAL would. */
-#define LOCAL_POPPED(fn, symbol)                                         \
-    do {                                                                 \
-        uint16_t n_ = READ_U16();                                        \
-        PlumValue *v_ = &SLOT(n_);                                       \
-        PlumValue y_ = vm->stack[--vm->top];                             \
-        int64_t r_;                                                      \
-        if (INT_FAST(fn, *v_, y_, r_)) {                                 \
-            set_small(v_, r_);                                           \
-        } else {                                                         \
-            SAVE_IP();                                                   \
-            if (!int_arith_slow(vm, symbol[0], v_, y_, DROP_Y)) {        \
-                goto thrown;                                             \
-            }                                                            \
-        }                                                                \
+#define LOCAL_POPPED(fn, symbol)                                  \
+    do {                                                          \
+        uint16_t n_ = READ_U16();                                 \
+        PlumValue *v_ = &SLOT(n_);                                \
+        PlumValue y_ = vm->stack[--vm->top];                      \
+        int64_t r_;                                               \
+        if (INT_FAST(fn, *v_, y_, r_)) {                          \
+            set_small(v_, r_);                                    \
+        } else {                                                  \
+            SAVE_IP();                                            \
+            if (!int_arith_slow(vm, symbol[0], v_, y_, DROP_Y)) { \
+                goto thrown;                                      \
+            }                                                     \
+        }                                                         \
     } while (0)
 /* JUMP_IF_NOT_MOD_EQ0_LK, JUMP_IF_NOT_MOD_NE0_LK: `if x % k == 0` for an
  * int local and a literal above 0, as MOD_INT_LK and JUMP_IF_NOT_EQ_INT_K
  * would (#123). The C remainder is 0 exactly when the floor one is. */
-#define JUMP_UNLESS_MOD_ZERO(OP_)                                         \
-    do {                                                                  \
-        uint16_t n_ = READ_U16();                                         \
-        uint16_t k_ = READ_U16();                                         \
-        uint16_t d_ = READ_U16();                                         \
-        int64_t a_ = plum_as_int(SLOT(n_)), k64_ = (int16_t)k_;           \
-        int64_t r_ = small_positive(a_, k64_) ? (int64_t)((uint32_t)a_ % (uint32_t)k64_) \
-                                              : a_ % k64_;                \
-        if (!(r_ OP_ 0)) {                                                \
-            TAKE_JUMP(d_);                                                \
-        }                                                                 \
+#define JUMP_UNLESS_MOD_ZERO(OP_)                                                            \
+    do {                                                                                     \
+        uint16_t n_ = READ_U16();                                                            \
+        uint16_t k_ = READ_U16();                                                            \
+        uint16_t d_ = READ_U16();                                                            \
+        int64_t a_ = plum_as_int(SLOT(n_)), k64_ = (int16_t)k_;                              \
+        int64_t r_ =                                                                         \
+            small_positive(a_, k64_) ? (int64_t)((uint32_t)a_ % (uint32_t)k64_) : a_ % k64_; \
+        if (!(r_ OP_ 0)) {                                                                   \
+            TAKE_JUMP(d_);                                                                   \
+        }                                                                                    \
     } while (0)
 #define FLOAT_WITH(OP_, right)                                               \
     do {                                                                     \
@@ -2673,18 +2673,18 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
     } while (0)
 /* The bottom of `while x < k` (#123): a step, as the LOOP back to the
  * condition counted, then the condition, back to the body while it holds. */
-#define LOOP_IF_LK(OP_)                                \
-    do {                                               \
-        uint16_t n_ = READ_U16();                      \
-        uint16_t k_ = READ_U16();                      \
-        uint16_t d_ = READ_U16();                      \
-        if (!step(vm)) {                               \
-            SAVE_IP();                                 \
-            goto thrown;                               \
-        }                                              \
-        if (plum_as_int(SLOT(n_)) OP_(int16_t) k_) {   \
-            TAKE_JUMP(-(ptrdiff_t)d_);                 \
-        }                                              \
+#define LOOP_IF_LK(OP_)                              \
+    do {                                             \
+        uint16_t n_ = READ_U16();                    \
+        uint16_t k_ = READ_U16();                    \
+        uint16_t d_ = READ_U16();                    \
+        if (!step(vm)) {                             \
+            SAVE_IP();                               \
+            goto thrown;                             \
+        }                                            \
+        if (plum_as_int(SLOT(n_)) OP_(int16_t) k_) { \
+            TAKE_JUMP(-(ptrdiff_t)d_);               \
+        }                                            \
     } while (0)
 /* A module variable read before its `plant` line ran (spec 9.1). */
 #define CHECK_GLOBAL(n)                                                                      \
@@ -3613,35 +3613,22 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
             push(vm, result);
             break;
         }
-        case PLUM_OP_FOR_EACH_NEXT:
-        case PLUM_OP_FOR_EACH2_NEXT:
-            /* the bottom of the loop (#123): a step, as the LOOP back to
-             * FOR_EACH counted, then the same as FOR_EACH, but going back
-             * to the body for the next item and on when there is none */
-            if (!step(vm)) {
-                SAVE_IP();
-                goto thrown;
-            }
-            /* fall through */
         case PLUM_OP_FOR_EACH:
         case PLUM_OP_FOR_EACH2: {
             uint16_t at = READ_U16();
             uint16_t var = READ_U16();
             uint16_t d = READ_U16();
-            bool top = op == PLUM_OP_FOR_EACH || op == PLUM_OP_FOR_EACH2;
-            bool two = op == PLUM_OP_FOR_EACH2 || op == PLUM_OP_FOR_EACH2_NEXT;
-            const uint8_t *done = top ? ip + d : ip, *more = top ? ip : ip - d;
             PlumObjType kind = (PlumObjType)plum_as_obj(SLOT(at))->type;
             if (kind != PLUM_OBJ_STRING && kind != PLUM_OBJ_MAP) { /* a list: the usual case */
                 PlumList *list = plum_as_list(SLOT(at));
                 /* positions and offsets are below 2^50: inline */
                 int64_t pos = plum_small_int_of(SLOT(at + 1));
                 if ((uint64_t)pos >= list->len) {
-                    ip = done;
+                    ip += d;
                     break;
                 }
                 set_small(&SLOT(at + 1), pos + 1);
-                if (two) {
+                if (op == PLUM_OP_FOR_EACH2) {
                     SLOT(var) = plum_int(pos); /* ints hold no reference */
                     var++;
                 }
@@ -3651,14 +3638,13 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                     drop_ref(slot);
                 }
                 *slot = plum_retain(list->items[pos]);
-                ip = more;
                 break;
             }
             if (kind == PLUM_OBJ_STRING) {
                 const PlumString *s = plum_as_string(SLOT(at));
                 size_t from = (size_t)plum_small_int_of(SLOT(at + 1)); /* a byte offset */
                 if (from >= s->len) {
-                    ip = done;
+                    ip += d;
                     break;
                 }
                 size_t to = from + 1;
@@ -3668,7 +3654,6 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 set_small(&SLOT(at + 1), (int64_t)to);
                 plum_release(SLOT(var));
                 SLOT(var) = plum_obj(&plum_string_new(s->chars + from, to - from)->obj);
-                ip = more;
                 break;
             }
             {
@@ -3676,17 +3661,16 @@ VM_RUN_LOOP_ALIGNED static bool execute(VM *vm) {
                 int64_t pos = plum_small_int_of(SLOT(at + 1));
                 const PlumTableEntry *e = plum_table_next(plum_as_table(SLOT(at)), &pos);
                 if (e == NULL) {
-                    ip = done;
+                    ip += d;
                     break;
                 }
                 set_small(&SLOT(at + 1), pos);
                 plum_release(SLOT(var));
                 SLOT(var) = plum_retain(e->key);
-                if (two) {
+                if (op == PLUM_OP_FOR_EACH2) {
                     plum_release(SLOT(var + 1));
                     SLOT(var + 1) = plum_retain(e->value);
                 }
-                ip = more;
                 break;
             }
             break;

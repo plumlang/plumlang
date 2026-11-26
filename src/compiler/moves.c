@@ -128,8 +128,6 @@ static void slot_uses(PlumOpcode op, uint16_t a, uint16_t b, uint16_t c, int use
     case PLUM_OP_FOR_NEXT:
     case PLUM_OP_FOR_EACH:
     case PLUM_OP_FOR_EACH2:
-    case PLUM_OP_FOR_EACH_NEXT:
-    case PLUM_OP_FOR_EACH2_NEXT:
         /* the variable a FOR_EACH sets is written only while it goes on */
         uses[(*nuses)++] = a;
         uses[(*nuses)++] = a + 1;
@@ -205,8 +203,6 @@ static long jump_of(PlumOpcode op, uint16_t a, uint16_t b, uint16_t c, bool *end
     case PLUM_OP_LOOP_IF_GE_INT_LK:
     case PLUM_OP_LOOP_IF_EQ_INT_LK:
     case PLUM_OP_LOOP_IF_NE_INT_LK:
-    case PLUM_OP_FOR_EACH_NEXT:
-    case PLUM_OP_FOR_EACH2_NEXT:
         return -(long)c;
     case PLUM_OP_RETURN:
     case PLUM_OP_RETURN_LOCAL:
@@ -245,16 +241,12 @@ static void live_after(const uint8_t *code, const Insn *insns, size_t i, const T
         }
     }
     /* FOR_EACH sets its variable (two with FOR_EACH2) when it goes on into
-     * the body, its first successor; the slot isn't live just before.
-     * FOR_EACH_NEXT goes on into the body by its jump, its second. */
+     * the body, its first successor; the slot isn't live just before. */
     PlumOpcode op = (PlumOpcode)code[insns[i].at];
-    bool each = op == PLUM_OP_FOR_EACH || op == PLUM_OP_FOR_EACH2;
-    bool next = op == PLUM_OP_FOR_EACH_NEXT || op == PLUM_OP_FOR_EACH2_NEXT;
-    if ((each || next) && insns[i].succ[each ? 0 : 1] >= 0) {
+    if ((op == PLUM_OP_FOR_EACH || op == PLUM_OP_FOR_EACH2) && insns[i].succ[0] >= 0) {
         int var = plum_chunk_read_u16(&code[insns[i].at + 3]);
-        int to = insns[i].succ[each ? 1 : 0];
-        bool two = op == PLUM_OP_FOR_EACH2 || op == PLUM_OP_FOR_EACH2_NEXT;
-        for (int v = var; v <= var + two; v++) {
+        int to = insns[i].succ[1];
+        for (int v = var; v <= var + (op == PLUM_OP_FOR_EACH2); v++) {
             if ((size_t)v < words * 64 && !(to >= 0 && has(&live_in[(size_t)to * words], v))) {
                 out[v / 64] &= ~((Word)1 << (v % 64));
             }

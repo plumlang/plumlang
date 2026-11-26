@@ -1,0 +1,3 @@
+tests/lang/errors/fused_mul_overflow.plum:4: OverflowError: integer overflow: 4611686018427387904 * 2 doesn't fit in an int
+  in area, line 4
+  in <main>, line 9

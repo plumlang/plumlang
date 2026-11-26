@@ -58,6 +58,17 @@ static void test_run(void) {
     CHECK(run("plant i = 0\nwhile good {\n    i += 1\n}\n", &few, out, err, sizeof out) == 1);
     CHECK(strstr(err, "stopped after 1000 steps") != NULL);
 
+    /* A while loop that tests its condition at the bottom (#123) counts a
+     * step each time round, as the jump back to its test did: the calls
+     * of the program and of f are steps 1 and 2, and going round after
+     * drop(8) is step 11, past the limit. */
+    PlumPlaygroundLimits ten = {10, 0, 0};
+    CHECK(run("branch f() {\n    plant i = 0\n    while i < 100 {\n        drop(i)\n"
+              "        i += 1\n    }\n}\nf()\n",
+              &ten, out, err, sizeof out) == 1);
+    CHECK_STR(out, "0\n1\n2\n3\n4\n5\n6\n7\n8\n");
+    CHECK(strstr(err, "stopped after 10 steps") != NULL);
+
     /* So does a list that grows without end, at the memory limit. */
     PlumPlaygroundLimits small = {0, 1 << 20, 0};
     CHECK(run("plant xs = [\"x\"]\nwhile good {\n    xs.push(\"plum\".repeat(100))\n}\n", &small,

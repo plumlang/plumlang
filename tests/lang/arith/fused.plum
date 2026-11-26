@@ -1,0 +1,125 @@
+# Instructions that do the work of two or three (#123): the same results
+# and the same errors, at the same lines, as the instructions they replace.
+branch show(e: Error) {
+    drop("{type_of(e)}: {e.message}")
+}
+
+# x % k == 0 and x % k != 0 for an int local and a literal above 0:
+# JUMP_IF_NOT_MOD_EQ0_LK, JUMP_IF_NOT_MOD_NE0_LK.
+branch divisible(x: int) -> str {
+    plant out = ""
+    if x % 2 == 0 { out += "2" }
+    if x % 3 != 0 { out += "!3" }
+    if x % 1 == 0 { out += "1" }
+    if x % 8 == 0 { out += "8" }
+    if x % 32767 == 0 { out += "M" }
+    if x % 7 == 0 and x % 5 != 0 { out += "7" }
+    if x % 2 == 1 { out += "odd" }       # not against 0: the plain instructions
+    if x % -2 == 0 { out += "-2" }       # a negative literal: the plain instructions
+    return out
+}
+for x in [0, 1, -1, 2, -2, 6, -6, 7, -7, 8, -8, 14, -21, 32767, -32767, 65534,
+          4294967296, -4294967296, 9223372036854775807, -9223372036854775807 - 1] {
+    drop(x, divisible(x))
+}
+plant evens = 0
+for i in 0..100 {
+    if i % 2 == 0 { evens += 1 } else { evens -= 0 }
+}
+plant g = 12
+if g % 4 == 0 { drop("a global is read the usual way") }
+drop(evens)
+
+# s += v, s -= v, s = s + v, s = s - v on an int local, any int v:
+# LOCAL_ADD_INT, LOCAL_SUB_INT.
+branch sums(xs: list[int]) -> list[int] {
+    plant up = 0
+    plant down = 0
+    plant twice = 0
+    plant back = 100
+    for i in 0..len(xs) {
+        up += xs[i] * xs[i]
+        down -= xs[i] + 1
+        twice = twice + xs[i] * 2
+        back = back - xs[len(xs) - 1 - i]
+    }
+    return [up, down, twice, back]
+}
+drop(sums([1, 2, 3, -4]))
+drop(sums([]))
+
+branch add_up(start: int, by: int, times: int) -> int {
+    plant s = start
+    for _ in 0..times {
+        s += by * 1
+    }
+    return s
+}
+try { drop(add_up(9223372036854775800, 3, 5)) } catch e: OverflowError { show(e) }
+try { drop(add_up(-9223372036854775800, -3, 5)) } catch e: OverflowError { show(e) }
+branch take_away(start: int, by: int) -> int {
+    plant s = start
+    s -= by + 0
+    s = s - by * 1
+    return s
+}
+try { drop(take_away(-9223372036854775807, 1)) } catch e: OverflowError { show(e) }
+drop(take_away(10, 3))
+
+# local op local, both ints or both floats: ADD_INT_LL, ..., MUL_FLOAT_LL.
+branch pairs(a: int, b: int, x: float, y: float) {
+    drop(a + b, a - b, a * b, b - a, a * a)
+    drop(x + y, x - y, x * y, y - x, x * x)
+    drop(a + b * 2, x * x + y * y)
+}
+pairs(6, -4, 1.5, -0.25)
+pairs(0, 0, 0.0, -0.0)
+branch float_edges(x: float, y: float) {
+    drop(x * y, x + y, x - y)
+}
+float_edges(1e308, 10.0)
+float_edges(-1e308, 1e308)
+float_edges(0.0 / 0.0, 1.0)
+branch int_edges(a: int, b: int) {
+    try { drop(a + b) } catch e: OverflowError { show(e) }
+    try { drop(a - b) } catch e: OverflowError { show(e) }
+    try { drop(a * b) } catch e: OverflowError { show(e) }
+}
+int_edges(9223372036854775807, 2)
+int_edges(-9223372036854775807, 3)
+int_edges(4611686018427387904, -2)
+
+# while x < k with an int local and a literal tests again at the bottom:
+# LOOP_IF_LT_INT_LK, ...
+branch loops() {
+    plant i = 0
+    while i < 5 { i += 1 }
+    plant j = 10
+    while j > -3 { j -= 4 }
+    plant k = 0
+    while k != 7 {
+        k += 1
+        if k == 3 { continue }
+        if k == 6 { break }
+    }
+    plant m = 1
+    while m <= 100 { m *= 3 }
+    plant n = 20
+    while n >= 20 { n -= 1 }
+    plant z = 0
+    while z == 0 { z = 5 }
+    plant never = 0
+    while never > 0 { never += 1 }
+    plant outer = 0
+    plant count = 0
+    while outer < 3 {
+        plant inner = 0
+        while inner < outer {
+            inner += 1
+            count += 1
+        }
+        outer += 1
+    }
+    drop(i, j, k, m, n, z, never, count)
+}
+loops()
